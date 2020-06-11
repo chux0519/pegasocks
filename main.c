@@ -1,66 +1,99 @@
-#include <event2/event.h>
+#include <event2/listener.h>
+#include <event2/bufferevent.h>
+#include <event2/buffer.h>
+#include <time.h>
+
+#include <arpa/inet.h>
+
+#include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
 
-#ifdef WIN32
-int evthread_use_windows_threads(void);
-#define EVTHREAD_USE_WINDOWS_THREADS_IMPLEMENTED
-#endif
-#ifdef _EVENT_HAVE_PTHREADS
-int evthread_use_pthreads(void);
-#define EVTHREAD_USE_PTHREADS_IMPLEMENTED
-#endif
-
-static void ignore_cb(int severity, const char *msg)
+static void debug(char *data, size_t len)
 {
-}
-
-static FILE *logfile = NULL;
-static void write_to_file_cb(int severity, const char *msg)
-{
-	const char *s;
-	if (!logfile)
-		return;
-	switch (severity) {
-	case _EVENT_LOG_DEBUG:
-		s = "debug";
-		break;
-	case _EVENT_LOG_MSG:
-		s = "msg";
-		break;
-	case _EVENT_LOG_WARN:
-		s = "warn";
-		break;
-	case _EVENT_LOG_ERR:
-		s = "error";
-		break;
-	default:
-		s = "?";
-		break; // never reached
+	for (int i = 0; i < len; i++) {
+		fprintf(stderr, "%02x  ", (int)data[i]);
 	}
-	fprintf(logfile, "[%s] %s\n", s, msg);
 }
 
-void suppress_logging(void)
+static void hello_read_cb(struct bufferevent *bev, void *ctx)
 {
-	event_set_log_callback(ignore_cb);
+	struct evbuffer *output = bufferevent_get_output(bev);
+
+	char data[512] =
+		"HTTP/1.1 200 OK\r\nServer: A\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n";
+
+	time_t now = time(0);
+	struct tm tm = *gmtime(&now);
+	strftime(data + strlen(data), sizeof data,
+		 "Date: %a, %d %b %Y %H:%M:%S %Z\r\n\n", &tm);
+
+	strcat(data, "Hello, World!");
+
+	evbuffer_add(output, data, strlen(data));
 }
 
-void set_log_file(FILE *f)
+static void hello_event_cb(struct bufferevent *bev, short events, void *ctx)
 {
-	logfile = f;
-	event_set_log_callback(write_to_file_cb);
+	if (events & BEV_EVENT_ERROR)
+		perror("Error from bufferevent");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR))
+		bufferevent_free(bev);
 }
 
-int main()
+static void accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
+			   struct sockaddr *address, int socklen, void *ctx)
 {
-	struct event_base *base = event_base_new();
+	// new connection, setup a bufferevent for it
+	struct event_base *base = evconnlistener_get_base(listener);
+	struct bufferevent *bev =
+		bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
 
-	const char **methods = event_get_supported_methods();
-	printf("Starting libevent %s, methods: \n", event_get_version());
-	for (int i = 0; methods[i] != NULL; i++) {
-		printf("\t%s\n", methods[i]);
-	}
+	bufferevent_setcb(bev, hello_read_cb, NULL, hello_event_cb, NULL);
+	bufferevent_enable(bev, EV_READ | EV_WRITE);
+}
 
-	event_base_free(base);
+static void accept_error_cb(struct evconnlistener *listener, void *ctx)
+{
+	struct event_base *base = evconnlistener_get_base(listener);
+	int err = EVUTIL_SOCKET_ERROR();
+
+	fprintf(stderr,
+		"Got an error %d (%s) on the listener."
+		"Shutting down \n",
+		err, evutil_socket_error_to_string(err));
+
+	event_base_loopexit(base, NULL);
+}
+
+int main(int argc, char **argv)
+{
+	struct event_base *base;
+	struct evconnlistener *listener;
+	struct sockaddr_in sin;
+
+	int port = 8080;
+
+	if (argc > 1)
+		port = atoi(argv[1]);
+
+	base = event_base_new();
+
+	memset(&sin, 0, sizeof(sin));
+
+	sin.sin_family = AF_INET;
+	sin.sin_addr.s_addr = htonl(0); // 0.0.0.0
+	sin.sin_port = htons(port);
+
+	listener = evconnlistener_new_bind(
+		base, accept_conn_cb, NULL,
+		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE, -1,
+		(struct sockaddr *)&sin, sizeof(sin));
+
+	evconnlistener_set_error_cb(listener, accept_error_cb);
+	event_base_dispatch(base);
+
 	return 0;
 }
+
