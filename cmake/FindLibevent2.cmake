@@ -15,11 +15,12 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 else()
 	FIND_PATH(LIBEVENT2_INCLUDE_DIR event2/event.h HINTS /usr/include/event2 )
 
-	# -levent -levent_core -levent_extra
+	# -levent -levent_core -levent_extra -levent_openssl
 
 	FIND_LIBRARY(LIBEVENT2_LIBRARIES NAMES event libevent )
 	FIND_LIBRARY(LIBEVENT2_CORE_LIBRARIES NAMES event_core libevent_core )
 	FIND_LIBRARY(LIBEVENT2_EXTRA_LIBRARIES NAMES event_extra libevent_extra )
+  FIND_LIBRARY(LIBEVENT2_SSL_LIBRARIES NAMES event_openssl libevent_openssl )
 endif()
 
 
@@ -33,6 +34,7 @@ IF(LIBEVENT2_FOUND)
 		MESSAGE(STATUS "Found libevent2 library: ${LIBEVENT2_LIBRARIES}")
 		MESSAGE(STATUS "Found libevent2 core library: ${LIBEVENT2_CORE_LIBRARIES}")
 		MESSAGE(STATUS "Found libevent2 extra library: ${LIBEVENT2_EXTRA_LIBRARIES}")
+    MESSAGE(STATUS "Found libevent2 openssl library: ${LIBEVENT2_SSL_LIBRARIES}")
 	ENDIF (NOT Libevent2_FIND_QUIETLY)
 ELSE(LIBEVENT2_FOUND)
 	IF (Libevent2_FIND_REQUIRED)
