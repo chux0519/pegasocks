@@ -7,6 +7,7 @@
 typedef struct crm_local_server_s crm_local_server_t;
 
 struct crm_local_server_s {
+	// TODO: add config, lb
 	crm_socket_t server_fd;
 	crm_ev_base_t *base;
 	crm_listener_t *listener;

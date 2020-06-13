@@ -8,7 +8,7 @@
 #include <pthread.h>
 #include "crm_local_server.h"
 
-#define MAX_THREADS 4
+#define MAX_THREADS 1
 
 // Start new local server
 // One Local Server Per Thread
@@ -61,6 +61,8 @@ int main(int argc, char **argv)
 		perror("bind");
 		return err;
 	}
+
+	printf("Server listening at: %d\n", port);
 
 	pthread_t threads[MAX_THREADS];
 	pthread_attr_t attr;

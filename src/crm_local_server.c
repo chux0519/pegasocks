@@ -1,5 +1,6 @@
 #include "crm_local_server.h"
 #include "crm_socks5.h"
+#include "crm_session.h"
 #include <stdlib.h>
 
 static void accept_error_cb(crm_listener_t *listener, void *ctx)
@@ -15,41 +16,21 @@ static void accept_error_cb(crm_listener_t *listener, void *ctx)
 	event_base_loopexit(base, NULL);
 }
 
-static void new_conn_read_cb(struct bufferevent *bev, void *ctx)
-{
-	// Socks5 local
-	// Then choose server type
-	struct evbuffer *output = bufferevent_get_output(bev);
-	struct evbuffer *input = bufferevent_get_input(bev);
-
-	crm_local_server_t *local = (crm_local_server_t *)ctx;
-
-	// read from local
-	// TODO: add conn {rbuf, wbuf}, add socks5 state_machine, then pass to tls
-	// check step machine, and write response
-
-	// set write buffer
-	// evbuffer_add(output, data, strlen(data));
-}
-
-static void new_conn_event_cb(struct bufferevent *bev, short events, void *ctx)
-{
-	if (events & BEV_EVENT_ERROR)
-		perror("Error from bufferevent");
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR))
-		bufferevent_free(bev);
-}
-
 static void accept_conn_cb(crm_listener_t *listener, crm_socket_t fd,
 			   crm_sockaddr_t *address, int socklen, void *ctx)
 {
-	// new connection, setup a bufferevent for it
-	struct event_base *base = evconnlistener_get_base(listener);
-	struct bufferevent *bev = bufferevent_socket_new(base, fd, 0);
+	struct sockaddr_in *sin = (struct sockaddr_in *)address;
+	char *ip = inet_ntoa(sin->sin_addr);
+	printf("new client from port %s:%d\n", ip, sin->sin_port);
 
-	// after socks5 end, pass fd to remains
-	bufferevent_setcb(bev, new_conn_read_cb, NULL, new_conn_event_cb, ctx);
-	bufferevent_enable(bev, EV_READ | EV_WRITE);
+	crm_local_server_t *local = (crm_local_server_t *)ctx;
+	// new session
+	crm_session_t *session = crm_session_new(fd, local);
+	// start session
+	// it will perform a socks5 handshake
+	// then choose specific type of proxy server
+	// and to the proxy process
+	crm_session_start(session);
 }
 
 // New server
