@@ -29,5 +29,5 @@ target_link_libraries(hello-world-multi ${LIBEVENT2_LIBRARIES} Threads::Threads)
 
 # cram
 add_executable(cram main.c ${SOURCES})
-target_link_libraries(cram ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES})
+target_link_libraries(cram ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} Threads::Threads)
 
