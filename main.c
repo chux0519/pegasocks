@@ -8,19 +8,27 @@
 #include <pthread.h>
 #include "crm_local_server.h"
 
-#define MAX_THREADS 1
+#define MAX_THREADS 4
+
+struct local_server_ctx {
+	int fd;
+	crm_mpsc_t *mpsc;
+};
 
 // Start new local server
 // One Local Server Per Thread
-void *start_local_server(void *server_fd)
+void *start_local_server(void *data)
 {
-	int sfd = *(int *)server_fd;
-	crm_local_server_t *local = crm_local_server_new(sfd);
+	struct local_server_ctx *ctx = (struct local_server_ctx *)data;
+	crm_local_server_t *local = crm_local_server_new(ctx->fd, ctx->mpsc);
+
+	crm_logger_debug(local->logger, "hello from logger");
 
 	// will block here
 	crm_local_server_run(local);
 
 	// Destroy here
+	// After loop exit
 	crm_local_server_destroy(local);
 
 	return 0;
@@ -64,18 +72,24 @@ int main(int argc, char **argv)
 
 	printf("Server listening at: %d\n", port);
 
-	pthread_t threads[MAX_THREADS];
+	pthread_t threads[MAX_THREADS + 1];
 	pthread_attr_t attr;
 
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-	for (int i = 0; i < MAX_THREADS; i++) {
+	crm_mpsc_t *mpsc = crm_mpsc_new(64);
+	crm_logger_t *logger = crm_logger_new(mpsc, DEBUG);
+
+	struct local_server_ctx ctx = { server_fd, mpsc };
+
+	pthread_create(&threads[0], &attr, start_logger, logger);
+	for (int i = 1; i <= MAX_THREADS; i++) {
 		pthread_create(&threads[i], &attr, start_local_server,
-			       (void *)&server_fd);
+			       (void *)&ctx);
 	}
 
-	for (int i = 0; i < MAX_THREADS; i++) {
+	for (int i = 0; i <= MAX_THREADS; i++) {
 		pthread_join(threads[i], NULL);
 	}
 

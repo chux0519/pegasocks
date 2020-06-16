@@ -4,6 +4,8 @@
 #include <arpa/inet.h> // sockaddr type
 #include <string.h> // memset
 #include <stdlib.h> // malloc
+#include <stdbool.h> // bool
+#include <stdio.h> // FILE etc
 
 #define _CRM_BUFSIZE 32 * 1024
 #define _CRM_READ_BUFSZIE 16 * 1024
@@ -13,6 +15,8 @@
 
 typedef struct sockaddr crm_sockaddr_t;
 typedef int crm_socket_t;
+typedef pthread_t crm_thread_t;
+typedef unsigned long crm_tid;
 
 typedef unsigned char crm_buf_t;
 typedef unsigned long long crm_size_t;

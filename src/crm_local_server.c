@@ -2,6 +2,7 @@
 #include "crm_socks5.h"
 #include "crm_session.h"
 #include <stdlib.h>
+#include <pthread.h>
 
 static void accept_error_cb(crm_listener_t *listener, void *ctx)
 {
@@ -13,6 +14,7 @@ static void accept_error_cb(crm_listener_t *listener, void *ctx)
 		"Shutting down \n",
 		err, evutil_socket_error_to_string(err));
 
+	// after loop exit, outter process have to free the local_server
 	event_base_loopexit(base, NULL);
 }
 
@@ -34,16 +36,19 @@ static void accept_conn_cb(crm_listener_t *listener, crm_socket_t fd,
 }
 
 // New server
-crm_local_server_t *crm_local_server_new(crm_socket_t sfd)
+crm_local_server_t *crm_local_server_new(crm_socket_t fd, crm_mpsc_t *mpsc)
+
 {
 	crm_local_server_t *ptr = malloc(sizeof(crm_local_server_t));
+	ptr->tid = (crm_tid)pthread_self();
+	ptr->logger = crm_logger_new(mpsc, DEBUG);
 
 	ptr->base = event_base_new();
 
 	ptr->listener =
 		evconnlistener_new(ptr->base, accept_conn_cb, ptr,
 				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
-				   -1, sfd);
+				   -1, fd);
 
 	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
 

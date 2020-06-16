@@ -73,7 +73,7 @@ static void accept_error_cb(struct evconnlistener *listener, void *ctx)
 
 void *start_server(void *server_fd)
 {
-	int sfd = (int)server_fd;
+	int sfd = *(int *)server_fd;
 
 	struct event_base *base;
 	struct evconnlistener *listener;
@@ -132,10 +132,11 @@ int main(int argc, char **argv)
 	pthread_attr_t attr;
 
 	pthread_attr_init(&attr);
-	pthread_setcancelstate(&attr, PTHREAD_CREATE_JOINABLE);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
 	for (int i = 0; i < MAX_THREADS; i++) {
-		pthread_create(&threads[i], &attr, start_server, server_fd);
+		pthread_create(&threads[i], &attr, start_server,
+			       (void *)&server_fd);
 	}
 
 	for (int i = 0; i < MAX_THREADS; i++) {
