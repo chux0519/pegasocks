@@ -18,7 +18,8 @@ typedef enum { DEBUG, INFO, WARN, ERROR } LOG_LEVEL;
 typedef struct crm_logger_msg_s crm_logger_msg_t;
 typedef struct crm_logger_server_s crm_logger_server_t;
 
-void debug(unsigned char *buf, int size);
+void crm_logger_debug_buffer(crm_logger_t *logger, unsigned char *buf,
+			     int size);
 
 struct crm_logger_s {
 	crm_mpsc_t *mpsc;

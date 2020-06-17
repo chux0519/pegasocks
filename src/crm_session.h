@@ -6,6 +6,17 @@
 #include "crm_local_server.h"
 #include "crm_socks5.h"
 
+#define crm_session_debug(session, ...)                                        \
+	crm_logger_debug(session->local_server->logger, __VA_ARGS__)
+#define crm_session_info(session, ...)                                         \
+	crm_logger_info(session->local_server->logger, __VA_ARGS__)
+#define crm_session_warn(session, ...)                                         \
+	crm_logger_warn(session->local_server->logger, __VA_ARGS__)
+#define crm_session_error(session, ...)                                        \
+	crm_logger_error(session->local_server->logger, __VA_ARGS__)
+#define crm_session_debug_buffer(session, buf, len)                            \
+	crm_logger_debug_buffer(session->local_server->logger, buf, len)
+
 typedef struct crm_session_s crm_session_t;
 
 struct crm_session_s {

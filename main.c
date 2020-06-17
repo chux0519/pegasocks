@@ -1,5 +1,4 @@
 #include <arpa/inet.h>
-
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -8,31 +7,7 @@
 #include <pthread.h>
 #include "crm_local_server.h"
 
-#define MAX_THREADS 4
-
-struct local_server_ctx {
-	int fd;
-	crm_mpsc_t *mpsc;
-};
-
-// Start new local server
-// One Local Server Per Thread
-void *start_local_server(void *data)
-{
-	struct local_server_ctx *ctx = (struct local_server_ctx *)data;
-	crm_local_server_t *local = crm_local_server_new(ctx->fd, ctx->mpsc);
-
-	crm_logger_debug(local->logger, "hello from logger");
-
-	// will block here
-	crm_local_server_run(local);
-
-	// Destroy here
-	// After loop exit
-	crm_local_server_destroy(local);
-
-	return 0;
-}
+#define MAX_SERVER_THREADS 4
 
 int main(int argc, char **argv)
 {
@@ -70,26 +45,30 @@ int main(int argc, char **argv)
 		return err;
 	}
 
-	printf("Server listening at: %d\n", port);
-
-	pthread_t threads[MAX_THREADS + 1];
+	pthread_t threads[MAX_SERVER_THREADS + 1];
 	pthread_attr_t attr;
 
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
+	// mpsc with 64 message slots
 	crm_mpsc_t *mpsc = crm_mpsc_new(64);
+	// logger for logger server
 	crm_logger_t *logger = crm_logger_new(mpsc, DEBUG);
 
-	struct local_server_ctx ctx = { server_fd, mpsc };
+	crm_local_server_ctx_t ctx = { server_fd, mpsc };
 
+	// Start logger thread
 	pthread_create(&threads[0], &attr, start_logger, logger);
-	for (int i = 1; i <= MAX_THREADS; i++) {
+
+	// Local server threads
+	for (int i = 1; i <= MAX_SERVER_THREADS; i++) {
 		pthread_create(&threads[i], &attr, start_local_server,
 			       (void *)&ctx);
 	}
 
-	for (int i = 0; i <= MAX_THREADS; i++) {
+	// block on all threads
+	for (int i = 0; i <= MAX_SERVER_THREADS; i++) {
 		pthread_join(threads[i], NULL);
 	}
 

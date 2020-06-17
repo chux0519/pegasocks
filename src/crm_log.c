@@ -20,12 +20,14 @@ void crm_logger_msg_free(crm_logger_msg_t *lmsg)
 	crm_free(lmsg);
 }
 
-void debug(unsigned char *buf, int size)
+void crm_logger_debug_buffer(crm_logger_t *logger, unsigned char *buf, int size)
 {
+	char hexbuf[2 * size + 1];
 	for (int i = 0; i < size; i++) {
-		printf("%02x ", (int)buf[i]);
+		sprintf(hexbuf + i * 2, "%02x", (int)buf[i]);
 	}
-	printf("\n");
+	hexbuf[2 * size] = '\0';
+	crm_logger_debug(logger, "%s", hexbuf);
 }
 
 crm_logger_t *crm_logger_new(crm_mpsc_t *mpsc, LOG_LEVEL level)
@@ -55,7 +57,7 @@ void crm_logger_log(LOG_LEVEL level, crm_logger_t *logger, const char *fmt, ...)
 	char msg[MAX_MSG_LEN - 64];
 	char datetime[64];
 	va_start(args, fmt);
-	sprintf(msg, fmt, args);
+	vsprintf(msg, fmt, args);
 	va_end(args);
 
 	time_t t;
