@@ -12,6 +12,7 @@
 #define crm_memzero(buf, n) (void)memset(buf, 0, n)
 #define crm_free free
 #define crm_malloc malloc
+#define crm_calloc calloc
 
 typedef struct sockaddr crm_sockaddr_t;
 typedef int crm_socket_t;

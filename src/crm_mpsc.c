@@ -9,7 +9,7 @@ crm_mpsc_t *crm_mpsc_new(long size)
 
 	ptr->out_pos = 0;
 	ptr->max = size;
-	ptr->slots = crm_malloc(sizeof(void *) * size);
+	ptr->slots = crm_calloc(size, sizeof(void *));
 	return ptr;
 }
 

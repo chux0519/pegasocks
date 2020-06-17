@@ -6,15 +6,27 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include "crm_local_server.h"
+#include "crm_config.h"
 
 #define MAX_SERVER_THREADS 4
+#define MAX_LOG_MPSC_SIZE 64
 
 int main(int argc, char **argv)
 {
 	int err = 0;
 	struct sockaddr_in sin;
 
-	int port = 8080;
+	// load config
+	crm_config_t *config = crm_config_load("config.json");
+	if (config == NULL) {
+		perror("invalid config");
+		return -1;
+	}
+
+	printf("Starting Server at %s:%d\n", config->local_address,
+	       config->local_port);
+
+	int port = config->local_port;
 
 	if (argc > 1)
 		port = atoi(argv[1]);
@@ -22,7 +34,14 @@ int main(int argc, char **argv)
 	memset(&sin, 0, sizeof(sin));
 
 	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = htonl(0); // 0.0.0.0
+	err = inet_pton(AF_INET, config->local_address, &sin.sin_addr);
+	if (err <= 0) {
+		if (err == 0)
+			fprintf(stderr, "Not in presentation format");
+		else
+			perror("inet_pton");
+		exit(EXIT_FAILURE);
+	}
 	sin.sin_port = htons(port);
 
 	int server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -44,19 +63,19 @@ int main(int argc, char **argv)
 		perror("bind");
 		return err;
 	}
+	// mpsc with 64 message slots
+	crm_mpsc_t *mpsc = crm_mpsc_new(MAX_LOG_MPSC_SIZE);
+	// logger for logger server
+	crm_logger_t *logger = crm_logger_new(mpsc, config->log_level);
 
+	crm_local_server_ctx_t ctx = { server_fd, mpsc };
+
+	// Spawn threads
 	pthread_t threads[MAX_SERVER_THREADS + 1];
 	pthread_attr_t attr;
 
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-
-	// mpsc with 64 message slots
-	crm_mpsc_t *mpsc = crm_mpsc_new(64);
-	// logger for logger server
-	crm_logger_t *logger = crm_logger_new(mpsc, DEBUG);
-
-	crm_local_server_ctx_t ctx = { server_fd, mpsc };
 
 	// Start logger thread
 	pthread_create(&threads[0], &attr, start_logger, logger);
