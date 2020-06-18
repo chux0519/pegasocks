@@ -56,6 +56,6 @@ crm_logger_msg_t *crm_logger_msg_new(char *msg, crm_tid tid);
 void crm_logger_msg_free(crm_logger_msg_t *lmsg);
 
 // start point, will run in a seperate thread
-void *start_logger(void *logger);
+void *start_logger(void *ctx);
 
 #endif

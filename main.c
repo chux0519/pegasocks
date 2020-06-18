@@ -70,6 +70,9 @@ int main(int argc, char **argv)
 
 	crm_local_server_ctx_t ctx = { server_fd, mpsc };
 
+	crm_logger_server_t *logger_server =
+		crm_logger_server_new(logger, config->log_file);
+
 	// Spawn threads
 	pthread_t threads[MAX_SERVER_THREADS + 1];
 	pthread_attr_t attr;
@@ -78,7 +81,7 @@ int main(int argc, char **argv)
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
 	// Start logger thread
-	pthread_create(&threads[0], &attr, start_logger, logger);
+	pthread_create(&threads[0], &attr, start_logger, logger_server);
 
 	// Local server threads
 	for (int i = 1; i <= MAX_SERVER_THREADS; i++) {

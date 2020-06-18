@@ -106,12 +106,9 @@ void crm_logger_server_serve(crm_logger_server_t *server)
 	}
 }
 
-void *start_logger(void *logger)
+void *start_logger(void *ctx)
 {
-	crm_logger_server_t *lserver =
-		crm_logger_server_new((crm_logger_t *)logger, stderr);
-
-	crm_logger_server_serve(lserver);
+	crm_logger_server_serve((crm_logger_server_t *)ctx);
 
 	return 0;
 }
