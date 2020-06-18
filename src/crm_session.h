@@ -32,6 +32,7 @@ struct crm_session_s {
 struct crm_session_bound_s {
 	crm_conn_t *conn;
 	crm_bev_t *bev;
+	void *ctx;
 };
 
 crm_session_bound_t *crm_session_bound_new(crm_conn_t *conn, crm_bev_t *bev);

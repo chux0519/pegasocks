@@ -2,6 +2,10 @@
 #include "crm_log.h"
 #include "unistd.h" // close
 
+/*
+ * inbound on read handler
+ * socks5 handshake -> proxy
+ */
 static void on_local_read(struct bufferevent *bev, void *ctx)
 {
 	crm_session_t *session = (crm_session_t *)ctx;
@@ -19,24 +23,32 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 	crm_session_debug_buffer(session, (unsigned char *)conn->rbuf,
 				 conn->read_bytes);
 
-	// socks5 fsm
-	crm_socks5_step(&session->fsm_socks5);
-
-	if (session->fsm_socks5.state == ERR) {
-		crm_session_error(session, "%s", session->fsm_socks5.err_msg);
-		other_session_event_cb(bev, BEV_EVENT_ERROR, ctx);
+	if (session->fsm_socks5.state != PROXY) {
+		// socks5 fsm
+		crm_socks5_step(&session->fsm_socks5);
+		if (session->fsm_socks5.state == ERR) {
+			crm_session_error(session, "%s",
+					  session->fsm_socks5.err_msg);
+			other_session_event_cb(bev, BEV_EVENT_ERROR, ctx);
+		}
+		// repsond to local socket
+		evbuffer_add(output, conn->wbuf, conn->write_bytes);
+		if (session->fsm_socks5.state == PROXY) {
+			crm_session_debug(session,
+					  "TODO: should tls handshake or ws");
+			// outbound comes in at this point
+			// add header to trojan write buffer
+			// using local read buffer(CMD) construct outbound session context
+			// create new session then start
+			// change local bev read callback to relative callback
+		}
+		return;
 	}
-
-	if (session->fsm_socks5.state == PROXY) {
-		crm_session_debug(session, "TODO: should tls handshake or ws");
-		// ws connection, then tls handshake, then proxy
-		// init outbound session(bev)
-	}
-
-	// write back to local socket
-	evbuffer_add(output, conn->wbuf, conn->write_bytes);
 }
 
+/**
+ * EOF and ERROR handler
+ */
 static void other_session_event_cb(struct bufferevent *bev, short events,
 				   void *ctx)
 {
@@ -51,6 +63,14 @@ static void other_session_event_cb(struct bufferevent *bev, short events,
 	}
 }
 
+/**
+ * Create New Sesson
+ *
+ * @param fd the local socket fd
+ * @param local_address the local_server object
+ *  which contains logger, base, etc..
+ * @return a pointer of new session
+ */
 crm_session_t *crm_session_new(crm_socket_t fd,
 			       crm_local_server_t *local_server)
 {
@@ -74,6 +94,12 @@ crm_session_t *crm_session_new(crm_socket_t fd,
 	return ptr;
 }
 
+/**
+ * Start session
+ *
+ * it will set event callbacks for local socket fd
+ * then enable READ event
+ */
 void crm_session_start(crm_session_t *session)
 {
 	// new connection, setup a bufferevent for it
@@ -101,6 +127,7 @@ crm_session_bound_t *crm_session_bound_new(crm_conn_t *conn, crm_bev_t *bev)
 	crm_session_bound_t *ptr = crm_malloc(sizeof(crm_session_bound_t));
 	ptr->conn = conn;
 	ptr->bev = bev;
+	ptr->ctx = NULL;
 	return ptr;
 }
 
@@ -111,6 +138,9 @@ void crm_session_bound_free(crm_session_bound_t *sb)
 	}
 	if (sb->bev) {
 		crm_bev_free(sb->bev);
+	}
+	if (sb->ctx) {
+		crm_free(sb->ctx);
 	}
 	crm_free(sb);
 }

@@ -14,6 +14,7 @@ struct crm_local_server_s {
 	crm_ev_base_t *base;
 	crm_listener_t *listener;
 	crm_logger_t *logger;
+	// TODO: add dns_base and ssl ctx
 };
 
 struct crm_local_server_ctx_s {
@@ -36,4 +37,3 @@ void crm_local_server_destroy(crm_local_server_t *local);
 void *start_local_server(void *data);
 
 #endif
-
