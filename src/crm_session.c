@@ -2,7 +2,7 @@
 #include "crm_log.h"
 #include "unistd.h" // close
 
-static void do_socks5_handshake(struct bufferevent *bev, void *ctx)
+static void on_local_read(struct bufferevent *bev, void *ctx)
 {
 	crm_session_t *session = (crm_session_t *)ctx;
 	crm_session_debug(session, "read triggered");
@@ -11,7 +11,7 @@ static void do_socks5_handshake(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	crm_conn_t *conn = session->conn;
+	crm_conn_t *conn = session->inbound->conn;
 
 	// read from local
 	conn->read_bytes =
@@ -29,6 +29,8 @@ static void do_socks5_handshake(struct bufferevent *bev, void *ctx)
 
 	if (session->fsm_socks5.state == PROXY) {
 		crm_session_debug(session, "TODO: should tls handshake or ws");
+		// ws connection, then tls handshake, then proxy
+		// init outbound session(bev)
 	}
 
 	// write back to local socket
@@ -38,6 +40,7 @@ static void do_socks5_handshake(struct bufferevent *bev, void *ctx)
 static void other_session_event_cb(struct bufferevent *bev, short events,
 				   void *ctx)
 {
+	// free buffer event and related session
 	crm_session_t *session = (crm_session_t *)ctx;
 	if (events & BEV_EVENT_ERROR)
 		crm_session_error(session, "Error from bufferevent");
@@ -52,14 +55,21 @@ crm_session_t *crm_session_new(crm_socket_t fd,
 			       crm_local_server_t *local_server)
 {
 	crm_session_t *ptr = crm_malloc(sizeof(crm_session_t));
-	ptr->conn = crm_conn_new(fd);
+
+	crm_conn_t *local_conn = crm_conn_new(fd);
+	crm_bev_t *bev = crm_bev_socket_new(local_server->base, fd,
+					    BEV_OPT_CLOSE_ON_FREE);
+	ptr->inbound = crm_session_bound_new(local_conn, bev);
+
+	ptr->outbound = NULL;
+
 	ptr->local_server = local_server;
 
 	// init socks5 structure
-	ptr->fsm_socks5.rbuf = ptr->conn->rbuf;
-	ptr->fsm_socks5.wbuf = ptr->conn->wbuf;
-	ptr->fsm_socks5.read_bytes_ptr = &ptr->conn->read_bytes;
-	ptr->fsm_socks5.write_bytes_ptr = &ptr->conn->write_bytes;
+	ptr->fsm_socks5.rbuf = ptr->inbound->conn->rbuf;
+	ptr->fsm_socks5.wbuf = ptr->inbound->conn->wbuf;
+	ptr->fsm_socks5.read_bytes_ptr = &ptr->inbound->conn->read_bytes;
+	ptr->fsm_socks5.write_bytes_ptr = &ptr->inbound->conn->write_bytes;
 
 	return ptr;
 }
@@ -67,21 +77,40 @@ crm_session_t *crm_session_new(crm_socket_t fd,
 void crm_session_start(crm_session_t *session)
 {
 	// new connection, setup a bufferevent for it
-	crm_bev_t *bev = crm_bev_socket_new(session, 0);
+	crm_bev_t *bev = session->inbound->bev;
 
 	// socks5 handshake
-	bufferevent_setcb(bev, do_socks5_handshake, NULL,
-			  other_session_event_cb, session);
+	bufferevent_setcb(bev, on_local_read, NULL, other_session_event_cb,
+			  session);
 	bufferevent_enable(bev, EV_READ);
 }
 
 void crm_session_free(crm_session_t *session)
 {
-	if (session->conn) {
-		crm_conn_free(session->conn);
-		// close fd
-		close(session->conn->fd);
+	if (session->inbound) {
+		crm_session_bound_free(session->inbound);
+	}
+	if (session->outbound) {
+		crm_session_bound_free(session->outbound);
 	}
 	crm_free(session);
 }
 
+crm_session_bound_t *crm_session_bound_new(crm_conn_t *conn, crm_bev_t *bev)
+{
+	crm_session_bound_t *ptr = crm_malloc(sizeof(crm_session_bound_t));
+	ptr->conn = conn;
+	ptr->bev = bev;
+	return ptr;
+}
+
+void crm_session_bound_free(crm_session_bound_t *sb)
+{
+	if (sb->conn) {
+		crm_conn_free(sb->conn);
+	}
+	if (sb->bev) {
+		crm_bev_free(sb->bev);
+	}
+	crm_free(sb);
+}

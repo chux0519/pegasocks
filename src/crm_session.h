@@ -18,12 +18,24 @@
 	crm_logger_debug_buffer(session->local_server->logger, buf, len)
 
 typedef struct crm_session_s crm_session_t;
+typedef struct crm_session_bound_s crm_session_bound_t;
 
 struct crm_session_s {
-	crm_conn_t *conn;
+	crm_session_bound_t *inbound;
+	crm_session_bound_t *outbound;
+	// server state(logger, base, etc..)
 	crm_local_server_t *local_server;
+	// socks5 state machine
 	crm_socks5_t fsm_socks5;
 };
+
+struct crm_session_bound_s {
+	crm_conn_t *conn;
+	crm_bev_t *bev;
+};
+
+crm_session_bound_t *crm_session_bound_new(crm_conn_t *conn, crm_bev_t *bev);
+void crm_session_bound_free(crm_session_bound_t *sb);
 
 static void do_socks5_handshake(struct bufferevent *bev, void *ctx);
 static void other_session_event_cb(struct bufferevent *bev, short events,
