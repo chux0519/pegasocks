@@ -4,6 +4,7 @@
 #include "crm_core.h"
 #include "crm_ev.h"
 #include "crm_log.h"
+#include "crm_config.h"
 
 typedef struct crm_local_server_s crm_local_server_t;
 typedef struct crm_local_server_ctx_s crm_local_server_ctx_t;
@@ -14,12 +15,15 @@ struct crm_local_server_s {
 	crm_ev_base_t *base;
 	crm_listener_t *listener;
 	crm_logger_t *logger;
+  // shared from main thread
+  crm_config_t *config;
 	// TODO: add dns_base and ssl ctx
 };
 
 struct crm_local_server_ctx_s {
 	int fd;
 	crm_mpsc_t *mpsc;
+  crm_config_t *config;
 };
 
 static void new_conn_read_cb(struct bufferevent *bev, void *ctx);

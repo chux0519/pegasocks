@@ -44,6 +44,7 @@ crm_local_server_t *crm_local_server_new(crm_local_server_ctx_t *ctx)
 	ptr->tid = (crm_tid)pthread_self();
 	ptr->logger = crm_logger_new(ctx->mpsc, DEBUG);
 	ptr->base = event_base_new();
+	ptr->config = ctx->config;
 	ptr->listener =
 		evconnlistener_new(ptr->base, accept_conn_cb, ptr,
 				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
@@ -65,6 +66,7 @@ void crm_local_server_destroy(crm_local_server_t *local)
 {
 	evconnlistener_free(local->listener);
 	event_base_free(local->base);
+	crm_logger_free(local->logger);
 	free(local);
 }
 
@@ -75,7 +77,9 @@ void *start_local_server(void *data)
 	crm_local_server_ctx_t *ctx = (crm_local_server_ctx_t *)data;
 	crm_local_server_t *local = crm_local_server_new(ctx);
 
-	crm_logger_debug(local->logger, "hello from logger");
+	crm_logger_debug(local->logger, "Listening at %s:%d",
+			 local->config->local_address,
+			 local->config->local_port);
 
 	// will block here
 	crm_local_server_run(local);

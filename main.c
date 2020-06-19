@@ -23,9 +23,6 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	printf("Starting Server at %s:%d\n", config->local_address,
-	       config->local_port);
-
 	int port = config->local_port;
 
 	if (argc > 1)
@@ -68,7 +65,7 @@ int main(int argc, char **argv)
 	// logger for logger server
 	crm_logger_t *logger = crm_logger_new(mpsc, config->log_level);
 
-	crm_local_server_ctx_t ctx = { server_fd, mpsc };
+	crm_local_server_ctx_t ctx = { server_fd, mpsc, config };
 
 	crm_logger_server_t *logger_server =
 		crm_logger_server_new(logger, config->log_file);
@@ -95,6 +92,11 @@ int main(int argc, char **argv)
 	}
 
 	pthread_attr_destroy(&attr);
+
+  crm_logger_server_free(logger_server);
+  crm_logger_free(logger);
+  crm_mpsc_free(mpsc);
+  crm_config_free(config);
 
 	return 0;
 }
