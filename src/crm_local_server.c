@@ -8,16 +8,16 @@ static void accept_error_cb(crm_listener_t *listener, void *ctx)
 {
 	crm_local_server_t *local = (crm_local_server_t *)ctx;
 
-	struct event_base *base = evconnlistener_get_base(listener);
-	int err = EVUTIL_SOCKET_ERROR();
+	struct event_base *base = local->base;
+	int err = CRM_EVUTIL_SOCKET_ERROR();
 
 	crm_logger_debug(local->logger,
 			 "Got an error %d (%s) on the listener."
 			 "Shutting down \n",
-			 err, evutil_socket_error_to_string(err))
+			 err, crm_evutil_socket_error_to_string(err))
 
 		// after loop exit, outter process have to free the local_server
-		event_base_loopexit(base, NULL);
+		crm_ev_base_loopexit(base, NULL);
 }
 
 static void accept_conn_cb(crm_listener_t *listener, crm_socket_t fd,
@@ -43,14 +43,17 @@ crm_local_server_t *crm_local_server_new(crm_local_server_ctx_t *ctx)
 	crm_local_server_t *ptr = malloc(sizeof(crm_local_server_t));
 	ptr->tid = (crm_tid)pthread_self();
 	ptr->logger = crm_logger_new(ctx->mpsc, DEBUG);
-	ptr->base = event_base_new();
+	ptr->base = crm_ev_base_new();
+	ptr->dns_base = crm_ev_dns_base_new(ptr->base,
+					    EVDNS_BASE_INITIALIZE_NAMESERVERS);
 	ptr->config = ctx->config;
 	ptr->listener =
-		evconnlistener_new(ptr->base, accept_conn_cb, ptr,
-				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
-				   -1, ctx->fd);
+		crm_listener_new(ptr->base, accept_conn_cb, ptr,
+				 LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE, -1,
+				 ctx->fd);
+	crm_listener_set_error_cb(ptr->listener, accept_error_cb);
 
-	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
+	// TODO: create ssl context here
 
 	return ptr;
 }
@@ -58,16 +61,17 @@ crm_local_server_t *crm_local_server_new(crm_local_server_ctx_t *ctx)
 // Run the Loop
 void crm_local_server_run(crm_local_server_t *local)
 {
-	event_base_dispatch(local->base);
+	crm_ev_base_dispatch(local->base);
 }
 
 // Destroy local server
 void crm_local_server_destroy(crm_local_server_t *local)
 {
-	evconnlistener_free(local->listener);
-	event_base_free(local->base);
+	crm_listener_free(local->listener);
+	crm_ev_base_free(local->base);
+	crm_ev_dns_base_free(local->dns_base, 0);
 	crm_logger_free(local->logger);
-	free(local);
+	crm_free(local);
 }
 
 // Start new local server

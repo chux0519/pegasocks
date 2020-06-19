@@ -13,17 +13,18 @@ struct crm_local_server_s {
 	crm_tid tid;
 	crm_socket_t server_fd;
 	crm_ev_base_t *base;
+	crm_ev_dns_base_t *dns_base;
 	crm_listener_t *listener;
 	crm_logger_t *logger;
-  // shared from main thread
-  crm_config_t *config;
+	// shared from main thread
+	crm_config_t *config;
 	// TODO: add dns_base and ssl ctx
 };
 
 struct crm_local_server_ctx_s {
 	int fd;
 	crm_mpsc_t *mpsc;
-  crm_config_t *config;
+	crm_config_t *config;
 };
 
 static void new_conn_read_cb(struct bufferevent *bev, void *ctx);
