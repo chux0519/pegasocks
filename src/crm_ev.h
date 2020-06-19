@@ -21,6 +21,10 @@ typedef struct bufferevent crm_bev_t;
 #define crm_bev_socket_free bufferevent_socket_free
 #define crm_bev_new bufferevent_new
 #define crm_bev_free bufferevent_free
+#define crm_bev_get_output bufferevent_get_output
+#define crm_bev_get_input bufferevent_get_input
+#define crm_bev_setcb bufferevent_setcb
+#define crm_bev_enable bufferevent_enable
 #define CRM_EVUTIL_SOCKET_ERROR EVUTIL_SOCKET_ERROR
 #define crm_evutil_socket_error_to_string evutil_socket_error_to_string
 #define crm_ev_base_loopexit event_base_loopexit

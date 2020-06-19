@@ -2,6 +2,22 @@
 #include "crm_log.h"
 #include "unistd.h" // close
 
+/**
+ * inbount event handler
+ */
+static void on_local_event(struct bufferevent *bev, short events, void *ctx)
+{
+	// free buffer event and related session
+	crm_session_t *session = (crm_session_t *)ctx;
+	if (events & BEV_EVENT_ERROR)
+		crm_session_error(session, "Error from bufferevent");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		crm_bev_free(bev);
+
+		crm_session_free(session);
+	}
+}
+
 /*
  * inbound on read handler
  * socks5 handshake -> proxy
@@ -12,8 +28,8 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 	crm_session_debug(session, "read triggered");
 	// Socks5 local
 	// Then choose server type
-	struct evbuffer *output = bufferevent_get_output(bev);
-	struct evbuffer *input = bufferevent_get_input(bev);
+	struct evbuffer *output = crm_bev_get_output(bev);
+	struct evbuffer *input = crm_bev_get_input(bev);
 
 	crm_conn_t *conn = session->inbound->conn;
 
@@ -29,7 +45,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 		if (session->fsm_socks5.state == ERR) {
 			crm_session_error(session, "%s",
 					  session->fsm_socks5.err_msg);
-			other_session_event_cb(bev, BEV_EVENT_ERROR, ctx);
+			on_local_event(bev, BEV_EVENT_ERROR, ctx);
 		}
 		// repsond to local socket
 		evbuffer_add(output, conn->wbuf, conn->write_bytes);
@@ -43,23 +59,6 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			// change local bev read callback to relative callback
 		}
 		return;
-	}
-}
-
-/**
- * EOF and ERROR handler
- */
-static void other_session_event_cb(struct bufferevent *bev, short events,
-				   void *ctx)
-{
-	// free buffer event and related session
-	crm_session_t *session = (crm_session_t *)ctx;
-	if (events & BEV_EVENT_ERROR)
-		crm_session_error(session, "Error from bufferevent");
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		bufferevent_free(bev);
-
-		crm_session_free(session);
 	}
 }
 
@@ -105,10 +104,8 @@ void crm_session_start(crm_session_t *session)
 	// new connection, setup a bufferevent for it
 	crm_bev_t *bev = session->inbound->bev;
 
-	// socks5 handshake
-	bufferevent_setcb(bev, on_local_read, NULL, other_session_event_cb,
-			  session);
-	bufferevent_enable(bev, EV_READ);
+	crm_bev_setcb(bev, on_local_read, NULL, on_local_event, session);
+	crm_bev_enable(bev, EV_READ);
 }
 
 void crm_session_free(crm_session_t *session)

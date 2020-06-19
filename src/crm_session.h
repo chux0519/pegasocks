@@ -38,10 +38,6 @@ struct crm_session_bound_s {
 crm_session_bound_t *crm_session_bound_new(crm_conn_t *conn, crm_bev_t *bev);
 void crm_session_bound_free(crm_session_bound_t *sb);
 
-static void do_socks5_handshake(struct bufferevent *bev, void *ctx);
-static void other_session_event_cb(struct bufferevent *bev, short events,
-				   void *ctx);
-
 crm_session_t *crm_session_new(crm_socket_t fd,
 			       crm_local_server_t *local_server);
 void crm_session_free(crm_session_t *session);
