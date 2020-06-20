@@ -40,3 +40,8 @@ target_link_libraries(json_parse ${JSONC_LIBRARIES})
 add_executable(cram main.c ${SOURCES})
 target_link_libraries(cram ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${LIBWEBSOCKETS_LIBRARIES} ${JSONC_LIBRARIES} Threads::Threads)
 
+enable_testing()
+
+add_subdirectory(test)
+
+

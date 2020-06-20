@@ -35,6 +35,12 @@ struct crm_session_bound_s {
 	void *ctx;
 };
 
+struct crm_trojansession_ctx_s {
+	// sha224(password) + "\r\n" + cmd[1] + cmd.substr(3) + "\r\n"
+	char *head;
+	crm_size_t head_len;
+};
+
 crm_session_bound_t *crm_session_bound_new(crm_conn_t *conn, crm_bev_t *bev);
 void crm_session_bound_free(crm_session_bound_t *sb);
 

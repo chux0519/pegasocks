@@ -8,7 +8,7 @@
 #include <stdio.h> // FILE etc
 
 #define _CRM_BUFSIZE 32 * 1024
-#define _CRM_READ_BUFSZIE 16 * 1024
+#define _CRM_READ_BUFSZIE 32 * 1024
 #define crm_memzero(buf, n) (void)memset(buf, 0, n)
 #define crm_free free
 #define crm_malloc malloc
