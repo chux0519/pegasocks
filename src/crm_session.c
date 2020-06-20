@@ -5,7 +5,7 @@
 /**
  * inbount event handler
  */
-static void on_local_event(struct bufferevent *bev, short events, void *ctx)
+static void on_local_event(crm_bev_t *bev, short events, void *ctx)
 {
 	// free buffer event and related session
 	crm_session_t *session = (crm_session_t *)ctx;
@@ -22,7 +22,7 @@ static void on_local_event(struct bufferevent *bev, short events, void *ctx)
  * inbound on read handler
  * socks5 handshake -> proxy
  */
-static void on_local_read(struct bufferevent *bev, void *ctx)
+static void on_local_read(crm_bev_t *bev, void *ctx)
 {
 	crm_session_t *session = (crm_session_t *)ctx;
 	crm_session_debug(session, "read triggered");

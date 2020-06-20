@@ -1,6 +1,7 @@
 #include "crm_config.h"
 #include <stdio.h>
 #include <json-c/json.h>
+#include "crm_util.h"
 
 /**
  * load config
@@ -40,19 +41,16 @@ crm_config_t *crm_config_load(const char *config)
 	{
 		if (strcmp(key, "local_address") == 0) {
 			ptr->local_address = json_object_get_string(val);
-			if (ptr->local_address == NULL) {
-				crm_config_free(ptr);
-			}
+			if (ptr->local_address == NULL)
+				goto error;
 		} else if (strcmp(key, "local_port") == 0) {
 			ptr->local_port = json_object_get_int(val);
-			if (ptr->local_port == 0) {
-				crm_config_free(ptr);
-			}
+			if (ptr->local_port == 0)
+				goto error;
 		} else if (strcmp(key, "timeout") == 0) {
 			ptr->timeout = json_object_get_int(val);
-			if (ptr->timeout == 0) {
-				crm_config_free(ptr);
-			}
+			if (ptr->timeout == 0)
+				goto error;
 		} else if (strcmp(key, "log_level") == 0) {
 			ptr->log_level = json_object_get_int(val);
 		} else if (strcmp(key, "log_file") == 0) {
@@ -60,7 +58,7 @@ crm_config_t *crm_config_load(const char *config)
 			if (log_file != NULL) {
 				FILE *log_fd = fopen(log_file, "a+");
 				if (log_fd == NULL) {
-					crm_config_free(ptr);
+					goto error;
 				} else {
 					ptr->log_file = log_fd;
 				}
@@ -68,12 +66,15 @@ crm_config_t *crm_config_load(const char *config)
 		} else if (strcmp(key, "servers") == 0) {
 			ptr->servers_count = json_object_array_length(val);
 			ptr->servers = crm_config_parse_servers(val);
-			if (ptr->servers == NULL) {
-				crm_config_free(ptr);
-			}
+			if (ptr->servers == NULL)
+				goto error;
 		}
 	}
 	return ptr;
+error:
+	perror("parse config");
+	crm_config_free(ptr);
+	return NULL;
 }
 
 crm_server_config_t *crm_config_parse_servers(json_object *jobj)
@@ -81,49 +82,66 @@ crm_server_config_t *crm_config_parse_servers(json_object *jobj)
 	int len = json_object_array_length(jobj);
 	if (len == 0)
 		return NULL;
-	crm_server_config_t *ptr =
-		crm_malloc(sizeof(crm_server_config_t) * len);
+	crm_server_config_t *ptr = crm_servers_config_new(len);
 	for (int i = 0; i < len; i++) {
 		json_object *jobj_server = json_object_array_get_idx(jobj, i);
-		if (jobj_server == NULL) {
+		if (jobj_server == NULL)
 			goto error;
-		}
 
 		json_object_object_foreach(jobj_server, key, val)
 		{
 			if (strcmp(key, "server_address") == 0) {
 				ptr[i].server_address =
 					json_object_get_string(val);
-				if (ptr[i].server_address == NULL) {
+				if (ptr[i].server_address == NULL)
 					goto error;
-				}
 			} else if (strcmp(key, "server_port") == 0) {
 				ptr[i].server_port = json_object_get_int(val);
-				if (ptr[i].server_port == 0) {
+				if (ptr[i].server_port == 0)
 					goto error;
-				}
 			} else if (strcmp(key, "server_type") == 0) {
 				ptr[i].server_type =
 					json_object_get_string(val);
-				if (ptr[i].server_type == NULL) {
+				if (ptr[i].server_type == NULL)
 					goto error;
-				}
 			} else if (strcmp(key, "password") == 0) {
-				ptr[i].password = json_object_get_string(val);
-				if (ptr[i].password == NULL) {
+				ptr[i].password =
+					(char *)json_object_get_string(val);
+				if (ptr[i].password == NULL)
 					goto error;
-				}
 			}
 		}
 		// parse type specific data
 		ptr[i].extra = crm_server_config_parse_extra(ptr[i].server_type,
 							     jobj_server);
+		if (strcmp(ptr[i].server_type, "trojan") == 0) {
+			// password = to_hexstring(sha224(password))
+			crm_buf_t encoded_pass[28];
+			crm_size_t encoded_len = 0;
+			sha224((const crm_buf_t *)ptr[i].password,
+			       strlen(ptr[i].password), encoded_pass,
+			       &encoded_len);
+			if (encoded_len != 28)
+				goto error;
+
+			crm_buf_t *hexpass =
+				to_hexstring(encoded_pass, encoded_len);
+
+			ptr[i].password = (char *)hexpass;
+		}
 	}
 	return ptr;
 error:
 	perror("parse servers config");
-	crm_free(ptr);
+	crm_servers_config_free(ptr, len);
 	return NULL;
+}
+
+void crm_server_config_free_extra(const char *server_type, void *ptr)
+{
+	if (strcmp(server_type, "trojan") == 0) {
+		return crm_trojanserver_config_free(ptr);
+	}
 }
 
 void *crm_server_config_parse_extra(const char *server_type, json_object *jobj)
@@ -193,14 +211,9 @@ crm_trojanserver_config_t *crm_trojanserver_config_new()
 
 void crm_trojanserver_config_free(crm_trojanserver_config_t *ptr)
 {
-	if (ptr->ssl.cert)
-		crm_free((char *)ptr->ssl.cert);
-	if (ptr->websocket.hostname)
-		crm_free((char *)ptr->websocket.hostname);
-	if (ptr->websocket.path)
-		crm_free((char *)ptr->websocket.path);
-
+	// fields are refs of json_object
 	crm_free(ptr);
+	ptr = NULL;
 }
 
 crm_config_t *crm_config_new()
@@ -216,18 +229,43 @@ crm_config_t *crm_config_new()
 	return ptr;
 }
 
+crm_server_config_t *crm_servers_config_new(crm_size_t len)
+{
+	crm_server_config_t *ptr =
+		crm_malloc(sizeof(crm_server_config_t) * len);
+	for (int i = 0; i < len; i++) {
+		ptr[i].server_address = NULL;
+		ptr[i].server_port = 0;
+		ptr[i].server_type = NULL;
+		ptr[i].password = NULL;
+		ptr[i].extra = NULL;
+	}
+	return ptr;
+}
+
+void crm_servers_config_free(crm_server_config_t *ptr, crm_size_t len)
+{
+	if (ptr == NULL || len == 0)
+		return;
+	for (int i = 0; i < len; i++) {
+		if (ptr[i].extra)
+			crm_server_config_free_extra(ptr[i].server_type,
+						     ptr[i].extra);
+		if (ptr[i].server_type != NULL &&
+		    strcmp(ptr[i].server_type, "trojan") == 0 &&
+		    ptr[i].password != NULL)
+			crm_free(ptr[i].password);
+	}
+	crm_free(ptr);
+	ptr = NULL;
+}
+
 void crm_config_free(crm_config_t *config)
 {
-	if (config->local_address != NULL) {
-		crm_free((char *)config->local_address);
-	}
-	if (config->log_file != stderr) {
+	if (config->log_file != stderr)
 		fclose(config->log_file);
-	}
-
-	if (config->servers != NULL) {
-		crm_free(config->servers);
-	}
+	if (config->servers)
+		crm_servers_config_free(config->servers, config->servers_count);
 
 	crm_free(config);
 

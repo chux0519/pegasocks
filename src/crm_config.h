@@ -25,7 +25,7 @@ struct crm_server_config_s {
 	const char *server_address;
 	const char *server_type;
 	int server_port;
-	const char *password;
+	char *password;
 	void *extra; // type specific
 };
 
@@ -45,6 +45,8 @@ crm_config_t *crm_config_load(const char *config);
 crm_server_config_t *crm_config_parse_servers(json_object *jobj);
 
 void *crm_server_config_parse_extra(const char *server_type, json_object *jobj);
+void crm_server_config_free_extra(const char *server_type, void *ptr);
+
 crm_trojanserver_config_t *crm_trojanserver_config_parse(json_object *jobj);
 
 crm_trojanserver_config_t *crm_trojanserver_config_new();
@@ -52,5 +54,9 @@ void crm_trojanserver_config_free(crm_trojanserver_config_t *tconf);
 
 crm_config_t *crm_config_new();
 void crm_config_free(crm_config_t *config);
+
+crm_server_config_t *crm_servers_config_new(crm_size_t len);
+void crm_servers_config_free(crm_server_config_t *servers,
+			     crm_size_t servers_count);
 
 #endif
