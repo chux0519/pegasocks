@@ -115,6 +115,8 @@ crm_server_config_t *crm_config_parse_servers(json_object *jobj)
 		ptr[i].extra = crm_server_config_parse_extra(ptr[i].server_type,
 							     jobj_server);
 		if (strcmp(ptr[i].server_type, "trojan") == 0) {
+			if (ptr[i].extra == NULL)
+				goto error;
 			// password = to_hexstring(sha224(password))
 			crm_buf_t encoded_pass[SHA224_LEN];
 			crm_size_t encoded_len = 0;
@@ -158,7 +160,7 @@ crm_trojanserver_config_t *crm_trojanserver_config_parse(json_object *jobj)
 
 	json_object *ssl_obj = json_object_object_get(jobj, "ssl");
 	json_object *ws_obj = json_object_object_get(jobj, "websocket");
-	if (ssl_obj == NULL || ws_obj == NULL)
+	if (ssl_obj == NULL)
 		goto error;
 
 	// parse ssl config
@@ -171,23 +173,28 @@ crm_trojanserver_config_t *crm_trojanserver_config_parse(json_object *jobj)
 		}
 	}
 
-	// parse websocket config
-	json_object_object_foreach(ws_obj, k, v)
-	{
-		if (strcmp(k, "enabled") == 0) {
-			ptr->websocket.enabled = json_object_get_boolean(v);
-		} else if (strcmp(k, "path") == 0) {
-			ptr->websocket.path = json_object_get_string(v);
-		} else if (strcmp(k, "hostname") == 0) {
-			ptr->websocket.hostname = json_object_get_string(v);
-		} else if (strcmp(k, "double_tls") == 0) {
-			ptr->websocket.double_tls = json_object_get_boolean(v);
+	if (ws_obj != NULL) {
+		// parse websocket config
+		json_object_object_foreach(ws_obj, k, v)
+		{
+			if (strcmp(k, "enabled") == 0) {
+				ptr->websocket.enabled =
+					json_object_get_boolean(v);
+			} else if (strcmp(k, "path") == 0) {
+				ptr->websocket.path = json_object_get_string(v);
+			} else if (strcmp(k, "hostname") == 0) {
+				ptr->websocket.hostname =
+					json_object_get_string(v);
+			} else if (strcmp(k, "double_tls") == 0) {
+				ptr->websocket.double_tls =
+					json_object_get_boolean(v);
+			}
 		}
-	}
 
-	if (ptr->websocket.enabled &&
-	    (ptr->websocket.path == NULL || ptr->websocket.hostname == NULL))
-		goto error;
+		if (ptr->websocket.enabled && (ptr->websocket.path == NULL ||
+					       ptr->websocket.hostname == NULL))
+			goto error;
+	}
 
 	return ptr;
 error:
