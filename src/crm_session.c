@@ -1,6 +1,7 @@
 #include "crm_session.h"
 #include "crm_log.h"
 #include "unistd.h" // close
+#include "crm_util.h"
 
 /**
  * inbount event handler
@@ -13,7 +14,7 @@ static void on_local_event(crm_bev_t *bev, short events, void *ctx)
 		crm_session_error(session, "Error from bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		crm_bev_free(bev);
-
+		crm_session_error(session, "EOF from local, free session");
 		crm_session_free(session);
 	}
 }
@@ -57,6 +58,13 @@ static void on_local_read(crm_bev_t *bev, void *ctx)
 			// using local read buffer(CMD) construct outbound session context
 			// create new session then start
 			// change local bev read callback to relative callback
+			// create context, create session bound, do logic
+			// TODO: server manager to pick a server config
+			// server manager should take its own thread
+			crm_server_config_t *config =
+				&session->local_server->config->servers[0];
+			session->outbound =
+				crm_session_outbound_new(session, config);
 		}
 		return;
 	}
@@ -78,7 +86,7 @@ crm_session_t *crm_session_new(crm_socket_t fd,
 	crm_conn_t *local_conn = crm_conn_new(fd);
 	crm_bev_t *bev = crm_bev_socket_new(local_server->base, fd,
 					    BEV_OPT_CLOSE_ON_FREE);
-	ptr->inbound = crm_session_bound_new(local_conn, bev);
+	ptr->inbound = crm_session_inbound_new(local_conn, bev);
 
 	ptr->outbound = NULL;
 
@@ -111,24 +119,23 @@ void crm_session_start(crm_session_t *session)
 void crm_session_free(crm_session_t *session)
 {
 	if (session->inbound) {
-		crm_session_bound_free(session->inbound);
+		crm_session_inbound_free(session->inbound);
 	}
 	if (session->outbound) {
-		crm_session_bound_free(session->outbound);
+		crm_session_outbound_free(session->outbound);
 	}
 	crm_free(session);
 }
 
-crm_session_bound_t *crm_session_bound_new(crm_conn_t *conn, crm_bev_t *bev)
+crm_session_inbound_t *crm_session_inbound_new(crm_conn_t *conn, crm_bev_t *bev)
 {
-	crm_session_bound_t *ptr = crm_malloc(sizeof(crm_session_bound_t));
+	crm_session_inbound_t *ptr = crm_malloc(sizeof(crm_session_inbound_t));
 	ptr->conn = conn;
 	ptr->bev = bev;
-	ptr->ctx = NULL;
 	return ptr;
 }
 
-void crm_session_bound_free(crm_session_bound_t *sb)
+void crm_session_inbound_free(crm_session_inbound_t *sb)
 {
 	if (sb->conn) {
 		crm_conn_free(sb->conn);
@@ -136,8 +143,70 @@ void crm_session_bound_free(crm_session_bound_t *sb)
 	if (sb->bev) {
 		crm_bev_free(sb->bev);
 	}
-	if (sb->ctx) {
-		crm_free(sb->ctx);
-	}
 	crm_free(sb);
+}
+
+crm_trojansession_ctx_t *crm_trojansession_ctx_new(const char *encodepass,
+						   crm_size_t passlen,
+						   const char *cmd,
+						   crm_size_t cmdlen)
+{
+	if (passlen != SHA224_LEN * 2 || cmdlen < 3)
+		return NULL;
+	crm_trojansession_ctx_t *ptr =
+		crm_malloc(sizeof(crm_trojansession_ctx_t));
+	// sha224(password) + "\r\n" + cmd[1] + cmd.substr(3) + "\r\n"
+	ptr->head_len = passlen + 2 + 1 + cmdlen - 3 + 2;
+	ptr->head = crm_malloc(sizeof(char) * ptr->head_len);
+	char cmdslice[cmdlen - 3 + 1];
+	crm_memcpy(cmdslice, cmd + 3, cmdlen - 3);
+	cmdslice[cmdlen - 3 + 1 - 1] = '\0';
+	sprintf(ptr->head, "%s\r\n%c%s\r\n", encodepass, cmd[1], cmdslice);
+	return ptr;
+}
+
+void crm_trojansession_ctx_free(crm_trojansession_ctx_t *ctx)
+{
+	if (ctx->head)
+		crm_free(ctx->head);
+	ctx->head = NULL;
+	crm_free(ctx);
+	ctx = NULL;
+}
+
+crm_session_outbound_t *
+crm_session_outbound_new(crm_session_t *session,
+			 const crm_server_config_t *config)
+{
+	crm_session_outbound_t *ptr =
+		crm_malloc(sizeof(crm_session_outbound_t));
+	ptr->config = config;
+	ptr->bev = crm_bev_socket_new(session->local_server->base, -1,
+				      BEV_OPT_CLOSE_ON_FREE);
+	ptr->ctx = NULL; // create ctx
+
+	if (strcmp(config->server_type, "trojan") == 0) {
+		ptr->ctx = crm_trojansession_ctx_new(
+			config->password, 56,
+			(const char *)session->inbound->conn->rbuf,
+			session->inbound->conn->read_bytes);
+		// set bev cb, and enable event
+	}
+
+	return ptr;
+}
+
+void crm_session_outbound_free(crm_session_outbound_t *ptr)
+{
+	if (ptr->bev)
+		crm_bev_free(ptr->bev);
+	if (ptr->ctx) {
+		if (strcmp(ptr->config->server_type, "trojan") == 0) {
+			crm_trojansession_ctx_free(ptr->ctx);
+		}
+	}
+	ptr->bev = NULL;
+	ptr->ctx = NULL;
+	crm_free(ptr);
+	ptr = NULL;
 }

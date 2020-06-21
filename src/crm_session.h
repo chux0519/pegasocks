@@ -18,20 +18,27 @@
 	crm_logger_debug_buffer(session->local_server->logger, buf, len)
 
 typedef struct crm_session_s crm_session_t;
-typedef struct crm_session_bound_s crm_session_bound_t;
+typedef struct crm_session_inbound_s crm_session_inbound_t;
+typedef struct crm_session_outbound_s crm_session_outbound_t;
+typedef struct crm_trojansession_ctx_s crm_trojansession_ctx_t;
 
 struct crm_session_s {
-	crm_session_bound_t *inbound;
-	crm_session_bound_t *outbound;
+	crm_session_inbound_t *inbound;
+	crm_session_outbound_t *outbound;
 	// server state(logger, base, etc..)
 	crm_local_server_t *local_server;
 	// socks5 state machine
 	crm_socks5_t fsm_socks5;
 };
 
-struct crm_session_bound_s {
+struct crm_session_inbound_s {
 	crm_conn_t *conn;
 	crm_bev_t *bev;
+};
+
+struct crm_session_outbound_s {
+	crm_bev_t *bev;
+	const crm_server_config_t *config;
 	void *ctx;
 };
 
@@ -41,8 +48,21 @@ struct crm_trojansession_ctx_s {
 	crm_size_t head_len;
 };
 
-crm_session_bound_t *crm_session_bound_new(crm_conn_t *conn, crm_bev_t *bev);
-void crm_session_bound_free(crm_session_bound_t *sb);
+crm_trojansession_ctx_t *crm_trojansession_ctx_new(const char *encodepass,
+						   crm_size_t passlen,
+						   const char *cmd,
+						   crm_size_t cmdlen);
+void crm_trojansession_ctx_free(crm_trojansession_ctx_t *ctx);
+
+crm_session_inbound_t *crm_session_inbound_new(crm_conn_t *conn,
+					       crm_bev_t *bev);
+void crm_session_inbound_free(crm_session_inbound_t *sb);
+
+crm_session_outbound_t *
+crm_session_outbound_new(crm_session_t *session,
+			 const crm_server_config_t *config);
+
+void crm_session_outbound_free(crm_session_outbound_t *outbound);
 
 crm_session_t *crm_session_new(crm_socket_t fd,
 			       crm_local_server_t *local_server);
