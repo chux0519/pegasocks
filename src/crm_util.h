@@ -3,6 +3,8 @@
 
 #include "crm_core.h"
 
+#define SHA224_LEN 28
+
 void sha224(const crm_buf_t *input, crm_size_t input_len, crm_buf_t *res,
 	    crm_size_t *res_len);
 

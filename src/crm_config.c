@@ -116,12 +116,12 @@ crm_server_config_t *crm_config_parse_servers(json_object *jobj)
 							     jobj_server);
 		if (strcmp(ptr[i].server_type, "trojan") == 0) {
 			// password = to_hexstring(sha224(password))
-			crm_buf_t encoded_pass[28];
+			crm_buf_t encoded_pass[SHA224_LEN];
 			crm_size_t encoded_len = 0;
 			sha224((const crm_buf_t *)ptr[i].password,
 			       strlen(ptr[i].password), encoded_pass,
 			       &encoded_len);
-			if (encoded_len != 28)
+			if (encoded_len != SHA224_LEN)
 				goto error;
 
 			crm_buf_t *hexpass =
