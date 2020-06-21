@@ -16,9 +16,6 @@ include_directories(${LIBEVENT2_INCLUDE_DIR})
 find_package(OpenSSL 1.1.1 REQUIRED)
 include_directories(${OPENSSL_INCLUDE_DIR})
 
-find_package(LibWebSockets REQUIRED)
-include_directories(${LIBWEBSOCKETS_INCLUDE_DIR})
-
 find_package(jsonc REQUIRED)
 include_directories(${JSONC_INCLUDE_DIRS})
 
@@ -38,7 +35,7 @@ target_link_libraries(json_parse ${JSONC_LIBRARIES})
 
 # cram
 add_executable(cram main.c ${SOURCES})
-target_link_libraries(cram ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${LIBWEBSOCKETS_LIBRARIES} ${JSONC_LIBRARIES} Threads::Threads)
+target_link_libraries(cram ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} Threads::Threads)
 
 enable_testing()
 
