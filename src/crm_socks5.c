@@ -26,7 +26,7 @@ void crm_socks5_step(crm_socks5_t *s)
 			uint8_t atype = rdata[3];
 			uint16_t port = rdata[len - 2] << 8 | rdata[len - 1];
 
-			strncpy((char *)s->wbuf, (const char *)s->rbuf, len);
+			crm_memcpy((char *)s->wbuf, (const char *)s->rbuf, len);
 			// write ack to local socket
 			s->wbuf[1] = 0x00;
 

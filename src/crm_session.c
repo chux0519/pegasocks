@@ -48,6 +48,9 @@ static void on_local_read(crm_bev_t *bev, void *ctx)
 					  session->fsm_socks5.err_msg);
 			on_local_event(bev, BEV_EVENT_ERROR, ctx);
 		}
+		crm_session_debug(session, "response: ");
+		crm_session_debug_buffer(session, (unsigned char *)conn->wbuf,
+					 conn->write_bytes);
 		// repsond to local socket
 		evbuffer_add(output, conn->wbuf, conn->write_bytes);
 		if (session->fsm_socks5.state == PROXY) {
