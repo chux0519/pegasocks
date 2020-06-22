@@ -16,9 +16,8 @@ struct crm_local_server_s {
 	crm_ev_dns_base_t *dns_base;
 	crm_listener_t *listener;
 	crm_logger_t *logger;
-	// shared from main thread
+	// shared from main thread, read only
 	crm_config_t *config;
-	// TODO: add dns_base and ssl ctx
 };
 
 struct crm_local_server_ctx_s {

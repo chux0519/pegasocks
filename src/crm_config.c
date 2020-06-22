@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <json-c/json.h>
 #include "crm_util.h"
+#include <openssl/ssl.h>
 
 /**
  * load config
@@ -196,7 +197,16 @@ crm_trojanserver_config_t *crm_trojanserver_config_parse(json_object *jobj)
 			goto error;
 	}
 
+	ptr->ssl_ctx = SSL_CTX_new(SSLv23_method());
+	if (SSL_CTX_load_verify_locations(ptr->ssl_ctx, ptr->ssl.cert, NULL) !=
+	    1) {
+		fprintf(stderr, "SSL_CTX_load_verify_locations");
+		goto error;
+	}
+	SSL_CTX_set_verify(ptr->ssl_ctx, SSL_VERIFY_PEER, NULL);
+
 	return ptr;
+
 error:
 	perror("parse trojan server config");
 	crm_trojanserver_config_free(ptr);
@@ -212,13 +222,15 @@ crm_trojanserver_config_t *crm_trojanserver_config_new()
 	ptr->websocket.enabled = false;
 	ptr->websocket.hostname = NULL;
 	ptr->websocket.path = NULL;
+	ptr->ssl_ctx = NULL;
 
 	return ptr;
 }
 
 void crm_trojanserver_config_free(crm_trojanserver_config_t *ptr)
 {
-	// fields are refs of json_object
+	if (ptr->ssl_ctx != NULL)
+		SSL_CTX_free(ptr->ssl_ctx);
 	crm_free(ptr);
 	ptr = NULL;
 }

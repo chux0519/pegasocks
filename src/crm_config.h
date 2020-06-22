@@ -39,6 +39,7 @@ struct crm_trojanserver_config_s {
 		const char *hostname;
 		bool double_tls;
 	} websocket;
+	crm_ssl_ctx_t *ssl_ctx;
 };
 
 crm_config_t *crm_config_load(const char *config);

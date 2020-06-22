@@ -53,8 +53,6 @@ crm_local_server_t *crm_local_server_new(crm_local_server_ctx_t *ctx)
 				 ctx->fd);
 	crm_listener_set_error_cb(ptr->listener, accept_error_cb);
 
-	// TODO: create ssl context here
-
 	return ptr;
 }
 

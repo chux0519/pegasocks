@@ -5,6 +5,7 @@
 #include <event2/bufferevent.h>
 #include <event2/buffer.h>
 #include <event2/dns.h>
+#include <event2/bufferevent_ssl.h>
 
 typedef struct evconnlistener crm_listener_t;
 typedef struct event_base crm_ev_base_t;
