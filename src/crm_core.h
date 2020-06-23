@@ -2,7 +2,8 @@
 #define _CRM_CORE
 
 #include <arpa/inet.h> // sockaddr type
-#include <openssl/ossl_typ.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 #include <string.h> // memset
 #include <stdlib.h> // malloc
 #include <stdbool.h> // bool
@@ -23,5 +24,11 @@ typedef unsigned long crm_tid;
 typedef unsigned char crm_buf_t;
 typedef unsigned long long crm_size_t;
 typedef SSL_CTX crm_ssl_ctx_t;
+typedef SSL crm_ssl_t;
+
+crm_ssl_ctx_t *crm_ssl_ctx_new();
+
+crm_ssl_t *crm_ssl_new(crm_ssl_ctx_t *ctx, void *hostname);
+void crm_ssl_close(crm_ssl_t *ssl);
 
 #endif

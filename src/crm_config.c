@@ -198,27 +198,16 @@ crm_trojanserver_config_t *crm_trojanserver_config_parse(json_object *jobj)
 			goto error;
 	}
 
-	SSL_library_init();
-	OpenSSL_add_all_algorithms();
-	ERR_load_crypto_strings();
-	SSL_load_error_strings();
-	ptr->ssl_ctx = SSL_CTX_new(SSLv23_method());
+	ptr->ssl_ctx = crm_ssl_ctx_new();
 	if (ptr->ssl_ctx == NULL) {
-		fprintf(stderr, "SSL_CTX_new");
-		ERR_print_errors_fp(stderr);
+		fprintf(stderr, "crm_ssl_ctx_new");
 		goto error;
 	}
-	//if (SSL_CTX_load_verify_locations(ptr->ssl_ctx, ptr->ssl.cert, NULL) !=
-	//    1) {
-	//	fprintf(stderr, "SSL_CTX_load_verify_locations");
-	//	goto error;
-	//}
-	//SSL_CTX_set_verify(ptr->ssl_ctx, SSL_VERIFY_PEER, NULL);
 
 	return ptr;
 
 error:
-	perror("parse trojan server config");
+	fprintf(stderr, "parse trojan server config");
 	crm_trojanserver_config_free(ptr);
 	return NULL;
 }

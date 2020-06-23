@@ -159,12 +159,12 @@ crm_session_outbound_new(crm_session_t *session,
 			(const char *)session->inbound->conn->rbuf,
 			session->inbound->conn->read_bytes);
 
-		SSL *ssl = SSL_new(trojanconf->ssl_ctx);
+		crm_ssl_t *ssl = crm_ssl_new(trojanconf->ssl_ctx,
+					     (void *)config->server_address);
 		if (ssl == NULL) {
 			fprintf(stderr, "SSL_new");
 			goto error;
 		}
-		SSL_set_tlsext_host_name(ssl, config->server_address);
 		ptr->bev = bufferevent_openssl_socket_new(
 			session->local_server->base, -1, ssl,
 			BUFFEREVENT_SSL_CONNECTING,
@@ -287,16 +287,15 @@ static void on_local_read(crm_bev_t *bev, void *ctx)
 static void on_trojan_ws_remote_event(crm_bev_t *bev, short events, void *ctx)
 {
 	crm_session_t *session = (crm_session_t *)ctx;
-	int e = bufferevent_socket_get_dns_error(bev);
-	crm_session_debug(session, "events: %x, dns err: %d, %s", events, e,
-			  evutil_gai_strerror(e));
-	ERR_print_errors_fp(stderr);
 
 	if (events & BEV_EVENT_CONNECTED)
 		do_trojan_ws_remote_request(bev, ctx);
 	if (events & BEV_EVENT_ERROR)
 		crm_session_error(session, "Error from bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		crm_ssl_t *ssl = bufferevent_openssl_get_ssl(bev);
+		if (ssl)
+			crm_ssl_close(ssl);
 		crm_bev_free(bev);
 		crm_session_error(session, "EOF from remote, free session");
 		crm_session_free(session);

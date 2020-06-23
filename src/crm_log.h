@@ -4,7 +4,7 @@
 #include "crm_mpsc.h"
 #include "stdio.h"
 
-#define MAX_MSG_LEN 32 * 1024
+#define MAX_MSG_LEN 4096
 #define TIME_FORMAT "%Y-%m-%d %H:%M:%S"
 #define crm_logger_debug(logger, ...)                                          \
 	crm_logger_log(DEBUG, logger, __VA_ARGS__);
@@ -38,18 +38,15 @@ struct crm_logger_server_s {
 };
 
 crm_logger_t *crm_logger_new(crm_mpsc_t *mpsc, LOG_LEVEL level);
-
 void crm_logger_free(crm_logger_t *logger);
 
 // for client, construct and send string to mpsc
 void crm_logger_log(LOG_LEVEL level, crm_logger_t *logger, const char *fmt,
 		    ...);
 
+// logger thread functions
 crm_logger_server_t *crm_logger_server_new(crm_logger_t *logger, FILE *output);
-
 void crm_logger_server_free(crm_logger_server_t *server);
-
-// drain log and write to output
 void crm_logger_server_serve(crm_logger_server_t *server);
 
 crm_logger_msg_t *crm_logger_msg_new(char *msg, crm_tid tid);
