@@ -72,16 +72,18 @@ void crm_local_server_destroy(crm_local_server_t *local)
 	crm_free(local);
 }
 
-// Start new local server
-// One Local Server Per Thread
+/*
+ * Start new local server
+ * One Local Server Per Thread
+ * */
 void *start_local_server(void *data)
 {
 	crm_local_server_ctx_t *ctx = (crm_local_server_ctx_t *)data;
 	crm_local_server_t *local = crm_local_server_new(ctx);
 
-	crm_logger_debug(local->logger, "Listening at %s:%d",
-			 local->config->local_address,
-			 local->config->local_port);
+	crm_logger_info(local->logger, "Listening at %s:%d",
+			local->config->local_address,
+			local->config->local_port);
 
 	// will block here
 	crm_local_server_run(local);
