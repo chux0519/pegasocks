@@ -165,11 +165,11 @@ crm_session_outbound_new(crm_session_t *session,
 			fprintf(stderr, "SSL_new");
 			goto error;
 		}
-		ptr->bev = bufferevent_openssl_socket_new(
+		ptr->bev = crm_bev_openssl_socket_new(
 			session->local_server->base, -1, ssl,
 			BUFFEREVENT_SSL_CONNECTING,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-		bufferevent_openssl_set_allow_dirty_shutdown(ptr->bev, 1);
+		crm_bev_openssl_set_allow_dirty_shutdown(ptr->bev, 1);
 
 		if (trojanconf->websocket.enabled) {
 			// websocket support(trojan-go)
@@ -178,7 +178,7 @@ crm_session_outbound_new(crm_session_t *session,
 			crm_bev_setcb(session->inbound->bev,
 				      on_trojan_ws_local_read, NULL,
 				      on_local_event, session);
-			bufferevent_enable(ptr->bev, EV_READ);
+			crm_bev_enable(ptr->bev, EV_READ);
 		} else {
 			// trojan-gfw
 			// TODO:
@@ -211,10 +211,10 @@ void crm_session_outbound_run(crm_session_t *session)
 	const crm_server_config_t *config = session->outbound->config;
 	crm_session_debug(session, "connect: %s:%d", config->server_address,
 			  config->server_port);
-	bufferevent_socket_connect_hostname(session->outbound->bev,
-					    session->local_server->dns_base,
-					    AF_INET, config->server_address,
-					    config->server_port);
+	crm_bev_socket_connect_hostname(session->outbound->bev,
+					session->local_server->dns_base,
+					AF_INET, config->server_address,
+					config->server_port);
 }
 
 /**
@@ -243,14 +243,14 @@ static void on_local_read(crm_bev_t *bev, void *ctx)
 	crm_session_debug(session, "read triggered");
 	// Socks5 local
 	// Then choose server type
-	struct evbuffer *output = crm_bev_get_output(bev);
-	struct evbuffer *input = crm_bev_get_input(bev);
+	crm_evbuffer_t *output = crm_bev_get_output(bev);
+	crm_evbuffer_t *input = crm_bev_get_input(bev);
 
 	crm_conn_t *conn = session->inbound->conn;
 
 	// read from local
 	conn->read_bytes =
-		evbuffer_remove(input, conn->rbuf, sizeof conn->rbuf);
+		crm_evbuffer_remove(input, conn->rbuf, sizeof conn->rbuf);
 	crm_session_debug_buffer(session, (unsigned char *)conn->rbuf,
 				 conn->read_bytes);
 
@@ -266,7 +266,7 @@ static void on_local_read(crm_bev_t *bev, void *ctx)
 		crm_session_debug_buffer(session, (unsigned char *)conn->wbuf,
 					 conn->write_bytes);
 		// repsond to local socket
-		evbuffer_add(output, conn->wbuf, conn->write_bytes);
+		crm_evbuffer_add(output, conn->wbuf, conn->write_bytes);
 		if (session->fsm_socks5.state == PROXY) {
 			crm_server_config_t *config =
 				&session->local_server->config->servers[0];
@@ -293,7 +293,7 @@ static void on_trojan_ws_remote_event(crm_bev_t *bev, short events, void *ctx)
 	if (events & BEV_EVENT_ERROR)
 		crm_session_error(session, "Error from bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		crm_ssl_t *ssl = bufferevent_openssl_get_ssl(bev);
+		crm_ssl_t *ssl = crm_bev_openssl_get_ssl(bev);
 		if (ssl)
 			crm_ssl_close(ssl);
 		crm_bev_free(bev);
@@ -311,11 +311,11 @@ static void on_trojan_ws_remote_read(crm_bev_t *bev, void *ctx)
 {
 	crm_session_t *session = (crm_session_t *)ctx;
 	crm_session_debug(session, "remote read triggered");
-	struct evbuffer *output = crm_bev_get_output(bev);
-	struct evbuffer *input = crm_bev_get_input(bev);
+	crm_evbuffer_t *output = crm_bev_get_output(bev);
+	crm_evbuffer_t *input = crm_bev_get_input(bev);
 
-	crm_size_t data_len = evbuffer_get_length(input);
-	unsigned char *data = evbuffer_pullup(input, data_len);
+	crm_size_t data_len = crm_evbuffer_get_length(input);
+	unsigned char *data = crm_evbuffer_pullup(input, data_len);
 	// read from remote
 	crm_session_debug_buffer(session, data, data_len);
 
@@ -331,7 +331,7 @@ static void on_trojan_ws_remote_read(crm_bev_t *bev, void *ctx)
 			on_trojan_ws_remote_event(bev, BEV_EVENT_ERROR, ctx);
 		} else {
 			//drain
-			evbuffer_drain(input, data_len);
+			crm_evbuffer_drain(input, data_len);
 			trojan_s_ctx->upgraded = true;
 			// local buffer should have data already
 			do_trojan_ws_remote_write(bev, ctx);
@@ -369,22 +369,22 @@ static void do_trojan_ws_remote_request(crm_bev_t *bev, void *ctx)
 	const crm_server_config_t *config = session->outbound->config;
 	const crm_trojanserver_config_t *trojanconfig = config->extra;
 
-	struct evbuffer *out = bufferevent_get_output(session->outbound->bev);
+	crm_evbuffer_t *out = crm_bev_get_output(session->outbound->bev);
 
 	crm_session_debug(session, "do_trojan_ws_remote_request");
 
-	evbuffer_add_printf(out, "GET %s HTTP/1.1\r\n",
-			    trojanconfig->websocket.path);
-	evbuffer_add_printf(out, "Host:%s:%d\r\n", config->server_address,
-			    config->server_port);
-	evbuffer_add_printf(out, "Upgrade:websocket\r\n");
-	evbuffer_add_printf(out, "Connection:upgrade\r\n");
-	evbuffer_add_printf(out, "Sec-WebSocket-Key:%s\r\n", ws_key);
-	evbuffer_add_printf(out, "Sec-WebSocket-Version:13\r\n");
-	evbuffer_add_printf(
+	crm_evbuffer_add_printf(out, "GET %s HTTP/1.1\r\n",
+				trojanconfig->websocket.path);
+	crm_evbuffer_add_printf(out, "Host:%s:%d\r\n", config->server_address,
+				config->server_port);
+	crm_evbuffer_add_printf(out, "Upgrade:websocket\r\n");
+	crm_evbuffer_add_printf(out, "Connection:upgrade\r\n");
+	crm_evbuffer_add_printf(out, "Sec-WebSocket-Key:%s\r\n", ws_key);
+	crm_evbuffer_add_printf(out, "Sec-WebSocket-Version:13\r\n");
+	crm_evbuffer_add_printf(
 		out, "Origin:https://%s:%d\r\n", config->server_address,
 		config->server_port); //missing this key will lead to 403 response.
-	evbuffer_add_printf(out, "\r\n");
+	crm_evbuffer_add_printf(out, "\r\n");
 	crm_session_debug(session, "do_trojan_ws_remote_request done");
 }
 
@@ -400,12 +400,12 @@ static void do_trojan_ws_remote_write(crm_bev_t *bev, void *ctx)
 	crm_bev_t *inbev = session->inbound->bev;
 	crm_bev_t *outbev = session->outbound->bev;
 
-	struct evbuffer *outboundw = crm_bev_get_output(outbev);
-	struct evbuffer *inboundr = crm_bev_get_input(inbev);
+	crm_evbuffer_t *outboundw = crm_bev_get_output(outbev);
+	crm_evbuffer_t *inboundr = crm_bev_get_input(inbev);
 
-	struct evbuffer *buf = outboundw;
-	crm_size_t len = evbuffer_get_length(inboundr);
-	unsigned char *msg = evbuffer_pullup(inboundr, len);
+	crm_evbuffer_t *buf = outboundw;
+	crm_size_t len = crm_evbuffer_get_length(inboundr);
+	unsigned char *msg = crm_evbuffer_pullup(inboundr, len);
 	crm_session_debug_buffer(session, msg, len);
 
 	crm_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
@@ -434,29 +434,29 @@ static void do_trojan_ws_remote_write(crm_bev_t *bev, void *ctx)
 		d = htonll(len);
 	}
 
-	evbuffer_add(buf, &a, 1);
-	evbuffer_add(buf, &b, 1);
+	crm_evbuffer_add(buf, &a, 1);
+	crm_evbuffer_add(buf, &b, 1);
 
 	if (c)
-		evbuffer_add(buf, &c, sizeof(c));
+		crm_evbuffer_add(buf, &c, sizeof(c));
 	else if (d)
-		evbuffer_add(buf, &d, sizeof(d));
+		crm_evbuffer_add(buf, &d, sizeof(d));
 
 	// tls will protect data
 	// mask data makes nonsense
 	uint8_t mask_key[4] = { 0, 0, 0, 0 };
-	evbuffer_add(buf, &mask_key, 4);
+	crm_evbuffer_add(buf, &mask_key, 4);
 
 	if (head_len > 0) {
-		evbuffer_add(buf, trojan_s_ctx->head, head_len);
+		crm_evbuffer_add(buf, trojan_s_ctx->head, head_len);
 		trojan_s_ctx->head_len = 0;
 		crm_session_debug_buffer(
 			session, (unsigned char *)trojan_s_ctx->head, head_len);
 	}
 	// x ^ 0 = x
-	evbuffer_add(buf, msg, len - head_len);
+	crm_evbuffer_add(buf, msg, len - head_len);
 
-	evbuffer_drain(inboundr, len - head_len);
+	crm_evbuffer_drain(inboundr, len - head_len);
 }
 
 /*
@@ -471,14 +471,14 @@ static void do_trojan_ws_local_write(crm_bev_t *bev, void *ctx)
 	crm_bev_t *inbev = session->inbound->bev;
 	crm_bev_t *outbev = session->outbound->bev;
 
-	struct evbuffer *outboundr = crm_bev_get_input(outbev);
-	struct evbuffer *inboundw = crm_bev_get_output(inbev);
+	crm_evbuffer_t *outboundr = crm_bev_get_input(outbev);
+	crm_evbuffer_t *inboundw = crm_bev_get_output(inbev);
 
-	crm_size_t data_len = evbuffer_get_length(outboundr);
+	crm_size_t data_len = crm_evbuffer_get_length(outboundr);
 	if (data_len < 2)
 		return;
 
-	unsigned char *data = evbuffer_pullup(outboundr, data_len);
+	unsigned char *data = crm_evbuffer_pullup(outboundr, data_len);
 
 	int fin = !!(*data & 0x80);
 	int opcode = *data & 0x0F;
@@ -516,13 +516,13 @@ static void do_trojan_ws_local_write(crm_bev_t *bev, void *ctx)
 
 	if (opcode == 0x01) {
 		// write to local
-		evbuffer_add(inboundw, data + header_len, payload_len);
+		crm_evbuffer_add(inboundw, data + header_len, payload_len);
 	}
 
 	if (!fin)
 		crm_session_debug(session, "frame to be continue..");
 
-	evbuffer_drain(outboundr, header_len + payload_len);
+	crm_evbuffer_drain(outboundr, header_len + payload_len);
 
 	//next frame
 	do_trojan_ws_local_write(bev, ctx);
