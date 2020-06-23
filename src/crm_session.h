@@ -46,6 +46,7 @@ struct crm_trojansession_ctx_s {
 	// sha224(password) + "\r\n" + cmd[1] + cmd.substr(3) + "\r\n"
 	char *head;
 	crm_size_t head_len;
+	bool upgraded;
 };
 
 crm_trojansession_ctx_t *crm_trojansession_ctx_new(const char *encodepass,
@@ -63,6 +64,8 @@ crm_session_outbound_new(crm_session_t *session,
 			 const crm_server_config_t *config);
 
 void crm_session_outbound_free(crm_session_outbound_t *outbound);
+
+void crm_session_outbound_run(crm_session_t *session);
 
 crm_session_t *crm_session_new(crm_socket_t fd,
 			       crm_local_server_t *local_server);

@@ -3,6 +3,7 @@
 #include <json-c/json.h>
 #include "crm_util.h"
 #include <openssl/ssl.h>
+#include <openssl/err.h>
 
 /**
  * load config
@@ -197,13 +198,22 @@ crm_trojanserver_config_t *crm_trojanserver_config_parse(json_object *jobj)
 			goto error;
 	}
 
+	SSL_library_init();
+	OpenSSL_add_all_algorithms();
+	ERR_load_crypto_strings();
+	SSL_load_error_strings();
 	ptr->ssl_ctx = SSL_CTX_new(SSLv23_method());
-	if (SSL_CTX_load_verify_locations(ptr->ssl_ctx, ptr->ssl.cert, NULL) !=
-	    1) {
-		fprintf(stderr, "SSL_CTX_load_verify_locations");
+	if (ptr->ssl_ctx == NULL) {
+		fprintf(stderr, "SSL_CTX_new");
+		ERR_print_errors_fp(stderr);
 		goto error;
 	}
-	SSL_CTX_set_verify(ptr->ssl_ctx, SSL_VERIFY_PEER, NULL);
+	//if (SSL_CTX_load_verify_locations(ptr->ssl_ctx, ptr->ssl.cert, NULL) !=
+	//    1) {
+	//	fprintf(stderr, "SSL_CTX_load_verify_locations");
+	//	goto error;
+	//}
+	//SSL_CTX_set_verify(ptr->ssl_ctx, SSL_VERIFY_PEER, NULL);
 
 	return ptr;
 

@@ -8,7 +8,7 @@
 #include "crm_local_server.h"
 #include "crm_config.h"
 
-#define MAX_SERVER_THREADS 4
+#define MAX_SERVER_THREADS 1
 #define MAX_LOG_MPSC_SIZE 64
 
 int main(int argc, char **argv)
@@ -93,10 +93,10 @@ int main(int argc, char **argv)
 
 	pthread_attr_destroy(&attr);
 
-  crm_logger_server_free(logger_server);
-  crm_logger_free(logger);
-  crm_mpsc_free(mpsc);
-  crm_config_free(config);
+	crm_logger_server_free(logger_server);
+	crm_logger_free(logger);
+	crm_mpsc_free(mpsc);
+	crm_config_free(config);
 
 	return 0;
 }

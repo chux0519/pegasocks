@@ -4,7 +4,7 @@
 #include "crm_mpsc.h"
 #include "stdio.h"
 
-#define MAX_MSG_LEN 1024
+#define MAX_MSG_LEN 32 * 1024
 #define TIME_FORMAT "%Y-%m-%d %H:%M:%S"
 #define crm_logger_debug(logger, ...)                                          \
 	crm_logger_log(DEBUG, logger, __VA_ARGS__);

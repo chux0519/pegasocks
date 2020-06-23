@@ -42,7 +42,7 @@ crm_local_server_t *crm_local_server_new(crm_local_server_ctx_t *ctx)
 {
 	crm_local_server_t *ptr = malloc(sizeof(crm_local_server_t));
 	ptr->tid = (crm_tid)pthread_self();
-	ptr->logger = crm_logger_new(ctx->mpsc, DEBUG);
+	ptr->logger = crm_logger_new(ctx->mpsc, ctx->config->log_level);
 	ptr->base = crm_ev_base_new();
 	ptr->dns_base = crm_ev_dns_base_new(ptr->base,
 					    EVDNS_BASE_INITIALIZE_NAMESERVERS);
