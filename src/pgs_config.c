@@ -4,6 +4,7 @@
 #include "pgs_util.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <unistd.h>
 
 /**
  * load config
@@ -51,6 +52,8 @@ pgs_config_t *pgs_config_load(const char *config)
 			}
 		}
 	}
+
+	ptr->log_isatty = isatty(fileno(ptr->log_file));
 
 	json_object_object_foreach(jobj, key, val)
 	{

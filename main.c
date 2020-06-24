@@ -82,7 +82,8 @@ int main(int argc, char **argv)
 	// mpsc with 64 message slots
 	pgs_mpsc_t *mpsc = pgs_mpsc_new(MAX_LOG_MPSC_SIZE);
 	// logger for logger server
-	pgs_logger_t *logger = pgs_logger_new(mpsc, config->log_level);
+	pgs_logger_t *logger =
+		pgs_logger_new(mpsc, config->log_level, config->log_isatty);
 
 	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config };
 

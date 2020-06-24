@@ -25,6 +25,7 @@ struct pgs_config_s {
 	int timeout;
 	int log_level;
 	FILE *log_file;
+	bool log_isatty;
 };
 
 struct pgs_server_config_s {

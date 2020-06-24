@@ -5,7 +5,9 @@
 #include <unistd.h>
 #include <stdarg.h>
 
-static char *log_levels[] = { "debug", "info", "warn", "error" };
+static char *log_levels[] = { "DEBUG", "INFO", "WARN", "ERROR" };
+static char *log_colors[] = { "\e[01;32m", "\e[01;32m", "\e[01;35m",
+			      "\e[01;31m" };
 
 pgs_logger_msg_t *pgs_logger_msg_new(char *msg, pgs_tid tid)
 {
@@ -30,12 +32,13 @@ void pgs_logger_debug_buffer(pgs_logger_t *logger, unsigned char *buf, int size)
 	pgs_logger_debug(logger, "%s", hexbuf);
 }
 
-pgs_logger_t *pgs_logger_new(pgs_mpsc_t *mpsc, LOG_LEVEL level)
+pgs_logger_t *pgs_logger_new(pgs_mpsc_t *mpsc, LOG_LEVEL level, bool isatty)
 {
 	pgs_logger_t *ptr = pgs_malloc(sizeof(pgs_logger_t));
 	ptr->level = level;
 	ptr->mpsc = mpsc;
 	ptr->tid = (pgs_tid)pthread_self();
+	ptr->isatty = isatty;
 	return ptr;
 }
 
@@ -67,8 +70,18 @@ void pgs_logger_log(LOG_LEVEL level, pgs_logger_t *logger, const char *fmt, ...)
 	strftime(datetime, sizeof(datetime), TIME_FORMAT, now);
 
 	char *m = pgs_malloc(sizeof(char) * MAX_MSG_LEN);
-	sprintf(m, "[%s] %s thread-%05d: %s", log_levels[logger->level],
-		datetime, (int)(logger->tid & 0xFFFF), msg);
+
+	if (logger->isatty) {
+		sprintf(m, "%s%s [thread-%04d] %s: \e[0m%s",
+			log_colors[logger->level], datetime,
+			(int)(logger->tid % 10000), log_levels[logger->level],
+			msg);
+
+	} else {
+		sprintf(m, "%s [thread-%04d] %s: %s", datetime,
+			(int)(logger->tid % 10000), log_levels[logger->level],
+			msg);
+	}
 	pgs_logger_msg_t *_msg = pgs_logger_msg_new(m, logger->tid);
 
 	pgs_mpsc_send(logger->mpsc, _msg);
@@ -92,7 +105,14 @@ void pgs_logger_main_log(LOG_LEVEL level, FILE *output, const char *fmt, ...)
 	now = localtime(&t);
 	strftime(datetime, sizeof(datetime), TIME_FORMAT, now);
 
-	fprintf(output, "[%s] %s: %s\n", log_levels[level], datetime, msg);
+	if (isatty(fileno(output))) {
+		fprintf(output, "%s%s [thread-main] %s: \e[0m%s\n",
+			log_colors[level], datetime, log_levels[level], msg);
+	} else {
+		fprintf(output, "%s [thread-main] %s: %s\n", datetime,
+			log_levels[level], msg);
+	}
+
 	fflush(output);
 }
 
@@ -100,6 +120,8 @@ pgs_logger_server_t *pgs_logger_server_new(pgs_logger_t *logger, FILE *output)
 {
 	pgs_logger_server_t *ptr = pgs_malloc(sizeof(pgs_logger_server_t));
 	ptr->logger = logger;
+	// update thread id
+	ptr->logger->tid = (pgs_tid)pthread_self();
 	ptr->output = output;
 	return ptr;
 }

@@ -42,7 +42,8 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 {
 	pgs_local_server_t *ptr = malloc(sizeof(pgs_local_server_t));
 	ptr->tid = (pgs_tid)pthread_self();
-	ptr->logger = pgs_logger_new(ctx->mpsc, ctx->config->log_level);
+	ptr->logger = pgs_logger_new(ctx->mpsc, ctx->config->log_level,
+				     ctx->config->log_isatty);
 	ptr->base = pgs_ev_base_new();
 	ptr->dns_base = pgs_ev_dns_base_new(ptr->base,
 					    EVDNS_BASE_INITIALIZE_NAMESERVERS);

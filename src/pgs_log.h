@@ -27,6 +27,7 @@ struct pgs_logger_s {
 	pgs_mpsc_t *mpsc;
 	LOG_LEVEL level;
 	pgs_tid tid;
+	bool isatty;
 };
 
 struct pgs_logger_msg_s {
@@ -39,7 +40,7 @@ struct pgs_logger_server_s {
 	FILE *output;
 };
 
-pgs_logger_t *pgs_logger_new(pgs_mpsc_t *mpsc, LOG_LEVEL level);
+pgs_logger_t *pgs_logger_new(pgs_mpsc_t *mpsc, LOG_LEVEL level, bool isatty);
 void pgs_logger_free(pgs_logger_t *logger);
 
 // for client, construct and send string to mpsc
