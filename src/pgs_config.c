@@ -1,7 +1,7 @@
-#include "crm_config.h"
+#include "pgs_config.h"
 #include <stdio.h>
 #include <json-c/json.h>
-#include "crm_util.h"
+#include "pgs_util.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
@@ -14,7 +14,7 @@
  * @param config file path, must in json format
  * @return a pointer to newly created config
  */
-crm_config_t *crm_config_load(const char *config)
+pgs_config_t *pgs_config_load(const char *config)
 {
 	// Open config file, parse as json
 	FILE *fp = fopen(config, "r");
@@ -33,11 +33,11 @@ crm_config_t *crm_config_load(const char *config)
 	json_object *jobj = json_tokener_parse(fcontent);
 
 	// Release buffer and fd
-	crm_free(fcontent);
+	pgs_free(fcontent);
 	fclose(fp);
 
 	// Parse content
-	crm_config_t *ptr = crm_config_new();
+	pgs_config_t *ptr = pgs_config_new();
 
 	json_object *log_file_obj = json_object_object_get(jobj, "log_file");
 	if (log_file_obj) {
@@ -70,25 +70,25 @@ crm_config_t *crm_config_load(const char *config)
 			ptr->log_level = json_object_get_int(val);
 		} else if (strcmp(key, "servers") == 0) {
 			ptr->servers_count = json_object_array_length(val);
-			ptr->servers = crm_config_parse_servers(ptr, val);
+			ptr->servers = pgs_config_parse_servers(ptr, val);
 			if (ptr->servers == NULL)
 				goto error;
 		}
 	}
 	return ptr;
 error:
-	crm_config_error(ptr, "Error: crm_config_load");
-	crm_config_free(ptr);
+	pgs_config_error(ptr, "Error: pgs_config_load");
+	pgs_config_free(ptr);
 	return NULL;
 }
 
-crm_server_config_t *crm_config_parse_servers(crm_config_t *config,
+pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 					      json_object *jobj)
 {
 	int len = json_object_array_length(jobj);
 	if (len == 0)
 		return NULL;
-	crm_server_config_t *ptr = crm_servers_config_new(len);
+	pgs_server_config_t *ptr = pgs_servers_config_new(len);
 	for (int i = 0; i < len; i++) {
 		json_object *jobj_server = json_object_array_get_idx(jobj, i);
 		if (jobj_server == NULL)
@@ -119,55 +119,55 @@ crm_server_config_t *crm_config_parse_servers(crm_config_t *config,
 		}
 		if (strcmp(ptr[i].server_type, "trojan") == 0) {
 			// password = to_hexstring(sha224(password))
-			crm_buf_t encoded_pass[SHA224_LEN];
-			crm_size_t encoded_len = 0;
-			sha224((const crm_buf_t *)ptr[i].password,
+			pgs_buf_t encoded_pass[SHA224_LEN];
+			pgs_size_t encoded_len = 0;
+			sha224((const pgs_buf_t *)ptr[i].password,
 			       strlen(ptr[i].password), encoded_pass,
 			       &encoded_len);
 			if (encoded_len != SHA224_LEN)
 				goto error;
 
-			crm_buf_t *hexpass =
+			pgs_buf_t *hexpass =
 				to_hexstring(encoded_pass, encoded_len);
 
 			ptr[i].password = (char *)hexpass;
 		}
 		// parse type specific data
-		ptr[i].extra = crm_server_config_parse_extra(
+		ptr[i].extra = pgs_server_config_parse_extra(
 			config, ptr[i].server_type, jobj_server);
 		if (ptr[i].extra == NULL)
 			goto error;
 	}
 	return ptr;
 error:
-	crm_config_error(config, "Error: crm_config_parse_servers");
-	crm_servers_config_free(ptr, len);
+	pgs_config_error(config, "Error: pgs_config_parse_servers");
+	pgs_servers_config_free(ptr, len);
 	return NULL;
 }
 
-void crm_server_config_free_extra(const char *server_type, void *ptr)
+void pgs_server_config_free_extra(const char *server_type, void *ptr)
 {
 	if (strcmp(server_type, "trojan") == 0) {
-		return crm_trojanserver_config_free(ptr);
+		return pgs_trojanserver_config_free(ptr);
 	}
 }
 
-void *crm_server_config_parse_extra(crm_config_t *config,
+void *pgs_server_config_parse_extra(pgs_config_t *config,
 				    const char *server_type, json_object *jobj)
 {
 	if (strcmp(server_type, "trojan") == 0) {
-		return crm_trojanserver_config_parse(config, jobj);
+		return pgs_trojanserver_config_parse(config, jobj);
 	}
 	return NULL;
 }
 
-crm_trojanserver_config_t *crm_trojanserver_config_parse(crm_config_t *config,
+pgs_trojanserver_config_t *pgs_trojanserver_config_parse(pgs_config_t *config,
 							 json_object *jobj)
 {
-	crm_trojanserver_config_t *ptr = crm_trojanserver_config_new();
-	ptr->ssl_ctx = crm_ssl_ctx_new();
+	pgs_trojanserver_config_t *ptr = pgs_trojanserver_config_new();
+	ptr->ssl_ctx = pgs_ssl_ctx_new();
 	if (ptr->ssl_ctx == NULL) {
-		crm_config_error(config, "Error: crm_ssl_ctx_new");
+		pgs_config_error(config, "Error: pgs_ssl_ctx_new");
 		goto error;
 	}
 
@@ -208,15 +208,15 @@ crm_trojanserver_config_t *crm_trojanserver_config_parse(crm_config_t *config,
 	return ptr;
 
 error:
-	crm_config_error(config, "Error: crm_trojanserver_config_parse");
-	crm_trojanserver_config_free(ptr);
+	pgs_config_error(config, "Error: pgs_trojanserver_config_parse");
+	pgs_trojanserver_config_free(ptr);
 	return NULL;
 }
 
-crm_trojanserver_config_t *crm_trojanserver_config_new()
+pgs_trojanserver_config_t *pgs_trojanserver_config_new()
 {
-	crm_trojanserver_config_t *ptr =
-		crm_malloc(sizeof(crm_trojanserver_config_t));
+	pgs_trojanserver_config_t *ptr =
+		pgs_malloc(sizeof(pgs_trojanserver_config_t));
 	ptr->ssl.cert = NULL;
 	ptr->websocket.double_tls = false;
 	ptr->websocket.enabled = false;
@@ -227,17 +227,17 @@ crm_trojanserver_config_t *crm_trojanserver_config_new()
 	return ptr;
 }
 
-void crm_trojanserver_config_free(crm_trojanserver_config_t *ptr)
+void pgs_trojanserver_config_free(pgs_trojanserver_config_t *ptr)
 {
 	if (ptr->ssl_ctx != NULL)
 		SSL_CTX_free(ptr->ssl_ctx);
-	crm_free(ptr);
+	pgs_free(ptr);
 	ptr = NULL;
 }
 
-crm_config_t *crm_config_new()
+pgs_config_t *pgs_config_new()
 {
-	crm_config_t *ptr = crm_malloc(sizeof(crm_config_t));
+	pgs_config_t *ptr = pgs_malloc(sizeof(pgs_config_t));
 	ptr->servers = NULL;
 	ptr->servers_count = 0;
 	ptr->local_address = NULL;
@@ -248,10 +248,10 @@ crm_config_t *crm_config_new()
 	return ptr;
 }
 
-crm_server_config_t *crm_servers_config_new(crm_size_t len)
+pgs_server_config_t *pgs_servers_config_new(pgs_size_t len)
 {
-	crm_server_config_t *ptr =
-		crm_malloc(sizeof(crm_server_config_t) * len);
+	pgs_server_config_t *ptr =
+		pgs_malloc(sizeof(pgs_server_config_t) * len);
 	for (int i = 0; i < len; i++) {
 		ptr[i].server_address = NULL;
 		ptr[i].server_port = 0;
@@ -262,31 +262,31 @@ crm_server_config_t *crm_servers_config_new(crm_size_t len)
 	return ptr;
 }
 
-void crm_servers_config_free(crm_server_config_t *ptr, crm_size_t len)
+void pgs_servers_config_free(pgs_server_config_t *ptr, pgs_size_t len)
 {
 	if (ptr == NULL || len == 0)
 		return;
 	for (int i = 0; i < len; i++) {
 		if (ptr[i].extra)
-			crm_server_config_free_extra(ptr[i].server_type,
+			pgs_server_config_free_extra(ptr[i].server_type,
 						     ptr[i].extra);
 		if (ptr[i].server_type != NULL &&
 		    strcmp(ptr[i].server_type, "trojan") == 0 &&
 		    ptr[i].password != NULL)
-			crm_free(ptr[i].password);
+			pgs_free(ptr[i].password);
 	}
-	crm_free(ptr);
+	pgs_free(ptr);
 	ptr = NULL;
 }
 
-void crm_config_free(crm_config_t *config)
+void pgs_config_free(pgs_config_t *config)
 {
 	if (config->log_file != stderr)
 		fclose(config->log_file);
 	if (config->servers)
-		crm_servers_config_free(config->servers, config->servers_count);
+		pgs_servers_config_free(config->servers, config->servers_count);
 
-	crm_free(config);
+	pgs_free(config);
 
 	config = NULL;
 }

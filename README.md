@@ -1,6 +1,6 @@
-# cram
+# pegasocks
 
-cram `/si:'ræm /` 是一个基于 socks5 协议的代理客户端，意图在于支持多种类型的代理服务。
+是一个基于 socks5 协议的代理客户端，意图在于支持多种类型的代理服务。
 C 语言编写，轻量，支持类 unix 系统。
 
 ## 依赖
@@ -17,7 +17,7 @@ C 语言编写，轻量，支持类 unix 系统。
 
 ## 运行
 
-> cram -c config.json
+> pegas -c config.json
 
 ## 配置文件
 
@@ -39,7 +39,7 @@ C 语言编写，轻量，支持类 unix 系统。
   "local_address": "0.0.0.0",
   "local_port": 1080,
   "log_level": 1,
-  "log_file": "cram.log"
+  "log_file": "app.log"
 }
 ```
 

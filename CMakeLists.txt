@@ -33,9 +33,8 @@ target_link_libraries(hello-world-multi ${LIBEVENT2_LIBRARIES} Threads::Threads)
 target_link_libraries(json_parse ${JSONC_LIBRARIES})
 
 
-# cram
-add_executable(cram main.c ${SOURCES})
-target_link_libraries(cram ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} Threads::Threads)
+add_executable(pegas main.c ${SOURCES})
+target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} Threads::Threads)
 
 enable_testing()
 

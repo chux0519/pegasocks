@@ -1,8 +1,8 @@
-#include "crm_util.h"
+#include "pgs_util.h"
 #include <openssl/evp.h>
 
-void sha224(const crm_buf_t *input, crm_size_t input_len, crm_buf_t *res,
-	    crm_size_t *res_len)
+void sha224(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res,
+	    pgs_size_t *res_len)
 {
 	EVP_MD_CTX *ctx;
 	if ((ctx = EVP_MD_CTX_new()) == NULL)
@@ -24,9 +24,9 @@ error:
 	*res_len = 0;
 }
 
-crm_buf_t *to_hexstring(const crm_buf_t *buf, crm_size_t size)
+pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size)
 {
-	crm_buf_t *hexbuf = crm_malloc(sizeof(crm_buf_t) * (2 * size + 1));
+	pgs_buf_t *hexbuf = pgs_malloc(sizeof(pgs_buf_t) * (2 * size + 1));
 	for (int i = 0; i < size; i++) {
 		sprintf((char *)hexbuf + i * 2, "%02x", (int)buf[i]);
 	}

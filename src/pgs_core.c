@@ -1,8 +1,8 @@
-#include "crm_core.h"
+#include "pgs_core.h"
 
-crm_ssl_ctx_t *crm_ssl_ctx_new()
+pgs_ssl_ctx_t *pgs_ssl_ctx_new()
 {
-	crm_ssl_ctx_t *ctx = NULL;
+	pgs_ssl_ctx_t *ctx = NULL;
 
 	SSL_load_error_strings();
 	SSL_library_init();
@@ -18,16 +18,16 @@ crm_ssl_ctx_t *crm_ssl_ctx_new()
 	return ctx;
 }
 
-crm_ssl_t *crm_ssl_new(crm_ssl_ctx_t *ctx, void *hostname)
+pgs_ssl_t *pgs_ssl_new(pgs_ssl_ctx_t *ctx, void *hostname)
 {
-	crm_ssl_t *ssl = NULL;
+	pgs_ssl_t *ssl = NULL;
 	if ((ssl = SSL_new(ctx)))
 		SSL_set_tlsext_host_name(ssl, hostname);
 
 	return ssl;
 }
 
-void crm_ssl_close(crm_ssl_t *ssl)
+void pgs_ssl_close(pgs_ssl_t *ssl)
 {
 	SSL_shutdown(ssl);
 	SSL_clear(ssl);

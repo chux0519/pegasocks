@@ -6,8 +6,8 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <unistd.h>
-#include "crm_local_server.h"
-#include "crm_config.h"
+#include "pgs_local_server.h"
+#include "pgs_config.h"
 
 #define MAX_SERVER_THREADS 4
 #define MAX_LOG_MPSC_SIZE 64
@@ -36,13 +36,13 @@ int main(int argc, char **argv)
 	struct sockaddr_in sin;
 
 	// load config
-	crm_config_t *config = crm_config_load(config_path);
+	pgs_config_t *config = pgs_config_load(config_path);
 	if (config == NULL) {
 		fprintf(stderr, "invalid config");
 		return -1;
 	}
 
-	crm_config_info(config, "worker threads: %d, config: %s",
+	pgs_config_info(config, "worker threads: %d, config: %s",
 			server_threads, config_path);
 
 	int port = config->local_port;
@@ -53,7 +53,7 @@ int main(int argc, char **argv)
 	err = inet_pton(AF_INET, config->local_address, &sin.sin_addr);
 	if (err <= 0) {
 		if (err == 0)
-			crm_config_error(config, "Not in presentation format");
+			pgs_config_error(config, "Not in presentation format");
 		else
 			perror("inet_pton");
 		exit(EXIT_FAILURE);
@@ -80,14 +80,14 @@ int main(int argc, char **argv)
 		return err;
 	}
 	// mpsc with 64 message slots
-	crm_mpsc_t *mpsc = crm_mpsc_new(MAX_LOG_MPSC_SIZE);
+	pgs_mpsc_t *mpsc = pgs_mpsc_new(MAX_LOG_MPSC_SIZE);
 	// logger for logger server
-	crm_logger_t *logger = crm_logger_new(mpsc, config->log_level);
+	pgs_logger_t *logger = pgs_logger_new(mpsc, config->log_level);
 
-	crm_local_server_ctx_t ctx = { server_fd, mpsc, config };
+	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config };
 
-	crm_logger_server_t *logger_server =
-		crm_logger_server_new(logger, config->log_file);
+	pgs_logger_server_t *logger_server =
+		pgs_logger_server_new(logger, config->log_file);
 
 	// Spawn threads
 	pthread_t threads[server_threads + 1];
@@ -112,10 +112,10 @@ int main(int argc, char **argv)
 
 	pthread_attr_destroy(&attr);
 
-	crm_logger_server_free(logger_server);
-	crm_logger_free(logger);
-	crm_mpsc_free(mpsc);
-	crm_config_free(config);
+	pgs_logger_server_free(logger_server);
+	pgs_logger_free(logger);
+	pgs_mpsc_free(mpsc);
+	pgs_config_free(config);
 
 	return 0;
 }

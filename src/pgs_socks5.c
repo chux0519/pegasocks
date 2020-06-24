@@ -1,9 +1,9 @@
-#include "crm_socks5.h"
+#include "pgs_socks5.h"
 
-void crm_socks5_step(crm_socks5_t *s)
+void pgs_socks5_step(pgs_socks5_t *s)
 {
 	unsigned char *rdata = s->rbuf;
-	crm_size_t len = *s->read_bytes_ptr;
+	pgs_size_t len = *s->read_bytes_ptr;
 
 	switch (s->state) {
 	case AUTH:
@@ -26,7 +26,7 @@ void crm_socks5_step(crm_socks5_t *s)
 			uint8_t atype = rdata[3];
 			uint16_t port = rdata[len - 2] << 8 | rdata[len - 1];
 
-			crm_memcpy((char *)s->wbuf, (const char *)s->rbuf, len);
+			pgs_memcpy((char *)s->wbuf, (const char *)s->rbuf, len);
 			// write ack to local socket
 			s->wbuf[1] = 0x00;
 
