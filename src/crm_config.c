@@ -39,6 +39,19 @@ crm_config_t *crm_config_load(const char *config)
 	// Parse content
 	crm_config_t *ptr = crm_config_new();
 
+	json_object *log_file_obj = json_object_object_get(jobj, "log_file");
+	if (log_file_obj) {
+		const char *log_file = json_object_get_string(log_file_obj);
+		if (log_file != NULL) {
+			FILE *log_fd = fopen(log_file, "a+");
+			if (log_fd == NULL) {
+				goto error;
+			} else {
+				ptr->log_file = log_fd;
+			}
+		}
+	}
+
 	json_object_object_foreach(jobj, key, val)
 	{
 		if (strcmp(key, "local_address") == 0) {
@@ -55,31 +68,22 @@ crm_config_t *crm_config_load(const char *config)
 				goto error;
 		} else if (strcmp(key, "log_level") == 0) {
 			ptr->log_level = json_object_get_int(val);
-		} else if (strcmp(key, "log_file") == 0) {
-			const char *log_file = json_object_get_string(val);
-			if (log_file != NULL) {
-				FILE *log_fd = fopen(log_file, "a+");
-				if (log_fd == NULL) {
-					goto error;
-				} else {
-					ptr->log_file = log_fd;
-				}
-			}
 		} else if (strcmp(key, "servers") == 0) {
 			ptr->servers_count = json_object_array_length(val);
-			ptr->servers = crm_config_parse_servers(val);
+			ptr->servers = crm_config_parse_servers(ptr, val);
 			if (ptr->servers == NULL)
 				goto error;
 		}
 	}
 	return ptr;
 error:
-	perror("parse config");
+	crm_config_error(ptr, "Error: crm_config_load");
 	crm_config_free(ptr);
 	return NULL;
 }
 
-crm_server_config_t *crm_config_parse_servers(json_object *jobj)
+crm_server_config_t *crm_config_parse_servers(crm_config_t *config,
+					      json_object *jobj)
 {
 	int len = json_object_array_length(jobj);
 	if (len == 0)
@@ -113,12 +117,7 @@ crm_server_config_t *crm_config_parse_servers(json_object *jobj)
 					goto error;
 			}
 		}
-		// parse type specific data
-		ptr[i].extra = crm_server_config_parse_extra(ptr[i].server_type,
-							     jobj_server);
 		if (strcmp(ptr[i].server_type, "trojan") == 0) {
-			if (ptr[i].extra == NULL)
-				goto error;
 			// password = to_hexstring(sha224(password))
 			crm_buf_t encoded_pass[SHA224_LEN];
 			crm_size_t encoded_len = 0;
@@ -133,10 +132,15 @@ crm_server_config_t *crm_config_parse_servers(json_object *jobj)
 
 			ptr[i].password = (char *)hexpass;
 		}
+		// parse type specific data
+		ptr[i].extra = crm_server_config_parse_extra(
+			config, ptr[i].server_type, jobj_server);
+		if (ptr[i].extra == NULL)
+			goto error;
 	}
 	return ptr;
 error:
-	perror("parse servers config");
+	crm_config_error(config, "Error: crm_config_parse_servers");
 	crm_servers_config_free(ptr, len);
 	return NULL;
 }
@@ -148,48 +152,51 @@ void crm_server_config_free_extra(const char *server_type, void *ptr)
 	}
 }
 
-void *crm_server_config_parse_extra(const char *server_type, json_object *jobj)
+void *crm_server_config_parse_extra(crm_config_t *config,
+				    const char *server_type, json_object *jobj)
 {
 	if (strcmp(server_type, "trojan") == 0) {
-		return crm_trojanserver_config_parse(jobj);
+		return crm_trojanserver_config_parse(config, jobj);
 	}
 	return NULL;
 }
 
-crm_trojanserver_config_t *crm_trojanserver_config_parse(json_object *jobj)
+crm_trojanserver_config_t *crm_trojanserver_config_parse(crm_config_t *config,
+							 json_object *jobj)
 {
 	crm_trojanserver_config_t *ptr = crm_trojanserver_config_new();
+	ptr->ssl_ctx = crm_ssl_ctx_new();
+	if (ptr->ssl_ctx == NULL) {
+		crm_config_error(config, "Error: crm_ssl_ctx_new");
+		goto error;
+	}
 
 	json_object *ssl_obj = json_object_object_get(jobj, "ssl");
 	json_object *ws_obj = json_object_object_get(jobj, "websocket");
-	if (ssl_obj == NULL)
-		goto error;
 
-	// parse ssl config
-	json_object_object_foreach(ssl_obj, key, val)
-	{
-		if (strcmp(key, "cert") == 0) {
-			ptr->ssl.cert = json_object_get_string(val);
-			if (ptr->ssl.cert == NULL)
-				goto error;
+	if (ssl_obj) {
+		// parse ssl config
+		// wss(trojan-go) not required
+		json_object_object_foreach(ssl_obj, key, val)
+		{
+			if (strcmp(key, "cert") == 0) {
+				ptr->ssl.cert = json_object_get_string(val);
+				if (ptr->ssl.cert == NULL)
+					goto error;
+			}
 		}
 	}
 
-	if (ws_obj != NULL) {
+	if (ws_obj) {
 		// parse websocket config
+		ptr->websocket.enabled = true;
 		json_object_object_foreach(ws_obj, k, v)
 		{
-			if (strcmp(k, "enabled") == 0) {
-				ptr->websocket.enabled =
-					json_object_get_boolean(v);
-			} else if (strcmp(k, "path") == 0) {
+			if (strcmp(k, "path") == 0) {
 				ptr->websocket.path = json_object_get_string(v);
 			} else if (strcmp(k, "hostname") == 0) {
 				ptr->websocket.hostname =
 					json_object_get_string(v);
-			} else if (strcmp(k, "double_tls") == 0) {
-				ptr->websocket.double_tls =
-					json_object_get_boolean(v);
 			}
 		}
 
@@ -198,16 +205,10 @@ crm_trojanserver_config_t *crm_trojanserver_config_parse(json_object *jobj)
 			goto error;
 	}
 
-	ptr->ssl_ctx = crm_ssl_ctx_new();
-	if (ptr->ssl_ctx == NULL) {
-		fprintf(stderr, "crm_ssl_ctx_new");
-		goto error;
-	}
-
 	return ptr;
 
 error:
-	fprintf(stderr, "parse trojan server config");
+	crm_config_error(config, "Error: crm_trojanserver_config_parse");
 	crm_trojanserver_config_free(ptr);
 	return NULL;
 }

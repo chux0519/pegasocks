@@ -67,11 +67,33 @@ void crm_logger_log(LOG_LEVEL level, crm_logger_t *logger, const char *fmt, ...)
 	strftime(datetime, sizeof(datetime), TIME_FORMAT, now);
 
 	char *m = crm_malloc(sizeof(char) * MAX_MSG_LEN);
-	sprintf(m, "[%s] %s %lu: %s", log_levels[logger->level], datetime,
-		logger->tid, msg);
+	sprintf(m, "[%s] %s thread-%05d: %s", log_levels[logger->level],
+		datetime, (int)(logger->tid & 0xFFFF), msg);
 	crm_logger_msg_t *_msg = crm_logger_msg_new(m, logger->tid);
 
 	crm_mpsc_send(logger->mpsc, _msg);
+}
+
+// directly send to log file
+// called from main thread
+void crm_logger_main_log(LOG_LEVEL level, FILE *output, const char *fmt, ...)
+{
+	va_list args;
+	// LEVEL date-time: MSG
+	char msg[MAX_MSG_LEN - 64];
+	char datetime[64];
+	va_start(args, fmt);
+	vsprintf(msg, fmt, args);
+	va_end(args);
+
+	time_t t;
+	struct tm *now;
+	time(&t);
+	now = localtime(&t);
+	strftime(datetime, sizeof(datetime), TIME_FORMAT, now);
+
+	fprintf(output, "[%s] %s: %s\n", log_levels[level], datetime, msg);
+	fflush(output);
 }
 
 crm_logger_server_t *crm_logger_server_new(crm_logger_t *logger, FILE *output)
@@ -100,6 +122,7 @@ void crm_logger_server_serve(crm_logger_server_t *server)
 		crm_logger_msg_t *msg = crm_mpsc_recv(server->logger->mpsc);
 		if (msg != NULL) {
 			fprintf(server->output, "%s\n", msg->msg);
+			fflush(server->output);
 		} else {
 			sleep(1);
 		}

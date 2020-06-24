@@ -2,6 +2,7 @@
 #define _CRM_CONFIG
 
 #include "crm_core.h"
+#include "crm_log.h"
 #include <stdbool.h>
 #include <json-c/json.h>
 
@@ -10,6 +11,11 @@ typedef struct crm_server_config_s crm_server_config_t;
 typedef struct crm_trojanserver_config_s crm_trojanserver_config_t;
 typedef struct crm_trojanserver_ssl_s crm_trojanserver_ssl_t;
 typedef struct crm_trojanserver_ws_s crm_trojanserver_ws_t;
+
+#define crm_config_info(config, ...)                                           \
+	crm_logger_main_info(config->log_file, __VA_ARGS__)
+#define crm_config_error(config, ...)                                          \
+	crm_logger_main_error(config->log_file, __VA_ARGS__)
 
 struct crm_config_s {
 	crm_server_config_t *servers;
@@ -43,12 +49,15 @@ struct crm_trojanserver_config_s {
 };
 
 crm_config_t *crm_config_load(const char *config);
-crm_server_config_t *crm_config_parse_servers(json_object *jobj);
+crm_server_config_t *crm_config_parse_servers(crm_config_t *config,
+					      json_object *jobj);
 
-void *crm_server_config_parse_extra(const char *server_type, json_object *jobj);
+void *crm_server_config_parse_extra(crm_config_t *config,
+				    const char *server_type, json_object *jobj);
 void crm_server_config_free_extra(const char *server_type, void *ptr);
 
-crm_trojanserver_config_t *crm_trojanserver_config_parse(json_object *jobj);
+crm_trojanserver_config_t *crm_trojanserver_config_parse(crm_config_t *config,
+							 json_object *jobj);
 
 crm_trojanserver_config_t *crm_trojanserver_config_new();
 void crm_trojanserver_config_free(crm_trojanserver_config_t *tconf);

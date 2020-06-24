@@ -14,10 +14,10 @@ static void accept_error_cb(crm_listener_t *listener, void *ctx)
 	crm_logger_debug(local->logger,
 			 "Got an error %d (%s) on the listener."
 			 "Shutting down \n",
-			 err, crm_evutil_socket_error_to_string(err))
+			 err, crm_evutil_socket_error_to_string(err));
 
-		// after loop exit, outter process have to free the local_server
-		crm_ev_base_loopexit(base, NULL);
+	// after loop exit, outter process have to free the local_server
+	crm_ev_base_loopexit(base, NULL);
 }
 
 static void accept_conn_cb(crm_listener_t *listener, crm_socket_t fd,

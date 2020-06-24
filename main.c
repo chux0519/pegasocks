@@ -32,17 +32,18 @@ int main(int argc, char **argv)
 		}
 	}
 
-	printf("using %d threads, config: %s\n", server_threads, config_path);
-
 	int err = 0;
 	struct sockaddr_in sin;
 
 	// load config
 	crm_config_t *config = crm_config_load(config_path);
 	if (config == NULL) {
-		perror("invalid config");
+		fprintf(stderr, "invalid config");
 		return -1;
 	}
+
+	crm_config_info(config, "worker threads: %d, config: %s",
+			server_threads, config_path);
 
 	int port = config->local_port;
 
@@ -52,7 +53,7 @@ int main(int argc, char **argv)
 	err = inet_pton(AF_INET, config->local_address, &sin.sin_addr);
 	if (err <= 0) {
 		if (err == 0)
-			fprintf(stderr, "Not in presentation format");
+			crm_config_error(config, "Not in presentation format");
 		else
 			perror("inet_pton");
 		exit(EXIT_FAILURE);
