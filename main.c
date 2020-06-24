@@ -5,28 +5,46 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <unistd.h>
 #include "crm_local_server.h"
 #include "crm_config.h"
 
-#define MAX_SERVER_THREADS 1
+#define MAX_SERVER_THREADS 4
 #define MAX_LOG_MPSC_SIZE 64
 
 int main(int argc, char **argv)
 {
+	// default settings
+	int server_threads = MAX_SERVER_THREADS;
+	char default_config_path[] = "config.json";
+	char *config_path = default_config_path;
+
+	// parse opt
+	int opt = 0;
+	while ((opt = getopt(argc, argv, "c:t:")) != -1) {
+		switch (opt) {
+		case 'c':
+			config_path = optarg;
+			break;
+		case 't':
+			server_threads = atoi(optarg);
+			break;
+		}
+	}
+
+	printf("using %d threads, config: %s\n", server_threads, config_path);
+
 	int err = 0;
 	struct sockaddr_in sin;
 
 	// load config
-	crm_config_t *config = crm_config_load("config.json");
+	crm_config_t *config = crm_config_load(config_path);
 	if (config == NULL) {
 		perror("invalid config");
 		return -1;
 	}
 
 	int port = config->local_port;
-
-	if (argc > 1)
-		port = atoi(argv[1]);
 
 	memset(&sin, 0, sizeof(sin));
 
@@ -71,7 +89,7 @@ int main(int argc, char **argv)
 		crm_logger_server_new(logger, config->log_file);
 
 	// Spawn threads
-	pthread_t threads[MAX_SERVER_THREADS + 1];
+	pthread_t threads[server_threads + 1];
 	pthread_attr_t attr;
 
 	pthread_attr_init(&attr);
@@ -81,13 +99,13 @@ int main(int argc, char **argv)
 	pthread_create(&threads[0], &attr, start_logger, logger_server);
 
 	// Local server threads
-	for (int i = 1; i <= MAX_SERVER_THREADS; i++) {
+	for (int i = 1; i <= server_threads; i++) {
 		pthread_create(&threads[i], &attr, start_local_server,
 			       (void *)&ctx);
 	}
 
 	// block on all threads
-	for (int i = 0; i <= MAX_SERVER_THREADS; i++) {
+	for (int i = 0; i <= server_threads; i++) {
 		pthread_join(threads[i], NULL);
 	}
 
