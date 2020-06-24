@@ -1,4 +1,4 @@
-# pegasocks
+# pegasocks (WIP)
 
 是一个基于 socks5 协议的代理客户端，意图在于支持多种类型的代理服务。
 C 语言编写，轻量，支持类 unix 系统。
@@ -27,17 +27,19 @@ C 语言编写，轻量，支持类 unix 系统。
 {
   "servers": [
     {
-      "server_address": "example.com",
+      "server_address": "yourhost.name",
       "server_type": "trojan",
       "server_port": 443,
       "password": "password",
       "websocket": {
-        "path": "/trojan"
+        "path": "/trojan",
+        "hostname": "yourhost.name"
       }
     }
   ],
   "local_address": "0.0.0.0",
   "local_port": 1080,
+  "timeout": 60,
   "log_level": 1,
   "log_file": "app.log"
 }
@@ -68,14 +70,12 @@ trojan 的传输层由 ssl/tls 保护，因此 `server\_port` 为 443，同时�
 
 ## 开发计划
 
-原计划支持 shadowsocks 以及 sip003，在敏感时期，shadowsocks 之类的方案存活率很低，因此这里暂时不做实现，优先实现 tls 之上的代理协议
-
-由于对 windows 平台不熟，且手上暂时没有 windows 设备，没有做 windows 的适配
-
-### TODO
-
-- [ ] 支持 v2ray 的 tls + websocket 模式
-- [ ] windwows 支持
-- [ ] metrics 接口
-- [ ] 简单的 GUI (systray)
+- 多种协议支持
+  - [x] trojan (wss)
+  - [ ] trojan (直连)
+  - [ ] v2ray (wss)
+- 多类型服务端负载均衡
+- 平台适配
+  - [ ] osx 适配（应该可以直接用，暂未测试）
+  - [ ] windows 适配
 
