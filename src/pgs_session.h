@@ -45,7 +45,7 @@ struct pgs_trojansession_ctx_s {
 	// sha224(password) + "\r\n" + cmd[1] + cmd.substr(3) + "\r\n"
 	char *head;
 	pgs_size_t head_len;
-	bool upgraded;
+	bool connected;
 };
 
 // trojan session context

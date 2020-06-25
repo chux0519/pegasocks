@@ -31,6 +31,15 @@ static void do_trojan_ws_remote_request(pgs_bev_t *bev, void *ctx);
 static void do_trojan_ws_remote_write(pgs_bev_t *bev, void *ctx);
 static void do_trojan_ws_local_write(pgs_bev_t *bev, void *ctx);
 
+/*
+ * trojan gfw session handler
+ */
+static void on_trojan_gfw_remote_event(pgs_bev_t *bev, short events, void *ctx);
+static void on_trojan_gfw_remote_read(pgs_bev_t *bev, void *ctx);
+static void on_trojan_gfw_local_read(pgs_bev_t *bev, void *ctx);
+static void do_trojan_gfw_remote_write(pgs_bev_t *bev, void *ctx);
+static void do_trojan_gfw_local_write(pgs_bev_t *bev, void *ctx);
+
 /**
  * Create New Sesson
  *
@@ -129,7 +138,7 @@ pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const char *encodepass,
 	ptr->head[ptr->head_len - 2] = '\r';
 	ptr->head[ptr->head_len - 1] = '\n';
 
-	ptr->upgraded = false;
+	ptr->connected = false;
 	return ptr;
 }
 
@@ -181,7 +190,12 @@ pgs_session_outbound_new(pgs_session_t *session,
 			pgs_bev_enable(ptr->bev, EV_READ);
 		} else {
 			// trojan-gfw
-			// TODO:
+			pgs_bev_setcb(ptr->bev, on_trojan_gfw_remote_read, NULL,
+				      on_trojan_gfw_remote_event, session);
+			pgs_bev_setcb(session->inbound->bev,
+				      on_trojan_gfw_local_read, NULL,
+				      on_local_event, session);
+			pgs_bev_enable(ptr->bev, EV_READ);
 		}
 	}
 
@@ -321,7 +335,7 @@ static void on_trojan_ws_remote_read(pgs_bev_t *bev, void *ctx)
 	pgs_session_debug_buffer(session, data, data_len);
 
 	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-	if (!trojan_s_ctx->upgraded) {
+	if (!trojan_s_ctx->connected) {
 		if (!strstr((const char *)data, "\r\n\r\n"))
 			return;
 
@@ -333,7 +347,7 @@ static void on_trojan_ws_remote_read(pgs_bev_t *bev, void *ctx)
 		} else {
 			//drain
 			pgs_evbuffer_drain(input, data_len);
-			trojan_s_ctx->upgraded = true;
+			trojan_s_ctx->connected = true;
 			// local buffer should have data already
 			do_trojan_ws_remote_write(bev, ctx);
 		}
@@ -354,7 +368,7 @@ static void on_trojan_ws_local_read(pgs_bev_t *bev, void *ctx)
 	pgs_session_debug(session, "local read triggered");
 
 	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-	if (!trojan_s_ctx->upgraded)
+	if (!trojan_s_ctx->connected)
 		return;
 
 	pgs_session_debug(session, "write to remote");
@@ -527,4 +541,125 @@ static void do_trojan_ws_local_write(pgs_bev_t *bev, void *ctx)
 
 	//next frame
 	do_trojan_ws_local_write(bev, ctx);
+}
+
+/*
+ * trojan gfw event handler
+ */
+static void on_trojan_gfw_remote_event(pgs_bev_t *bev, short events, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+
+	if (events & BEV_EVENT_CONNECTED) {
+		pgs_session_debug(session, "connected");
+		pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
+		trojan_s_ctx->connected = true;
+		do_trojan_gfw_remote_write(bev, ctx);
+	}
+	if (events & BEV_EVENT_ERROR)
+		pgs_session_error(session, "Error from bufferevent");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		pgs_ssl_t *ssl = pgs_bev_openssl_get_ssl(bev);
+		if (ssl)
+			pgs_ssl_close(ssl);
+		pgs_bev_free(bev);
+		pgs_session_error(session, "EOF from remote, free session");
+		pgs_session_free(session);
+	}
+}
+
+/*
+ * outound read handler
+ * it will handle websocket upgrade or 
+ * remote -> local
+ */
+static void on_trojan_gfw_remote_read(pgs_bev_t *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "remote read triggered");
+
+	pgs_evbuffer_t *input = pgs_bev_get_input(bev);
+
+	pgs_size_t data_len = pgs_evbuffer_get_length(input);
+	unsigned char *data = pgs_evbuffer_pullup(input, data_len);
+	// read from remote
+	pgs_session_debug_buffer(session, data, data_len);
+
+	do_trojan_gfw_local_write(bev, ctx);
+}
+
+/*
+ * inbound read handler
+ * it will be enanled after upgraded
+ * local -> remote
+ * */
+static void on_trojan_gfw_local_read(pgs_bev_t *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "local read triggered");
+
+	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
+	if (!trojan_s_ctx->connected)
+		return;
+
+	pgs_session_debug(session, "write to remote");
+	do_trojan_gfw_remote_write(bev, ctx);
+}
+
+/*
+ * helper method to write data
+ * from local to remote
+ * local -> remote
+ * */
+static void do_trojan_gfw_remote_write(pgs_bev_t *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "local -> remote");
+	pgs_bev_t *inbev = session->inbound->bev;
+	pgs_bev_t *outbev = session->outbound->bev;
+
+	pgs_evbuffer_t *outboundw = pgs_bev_get_output(outbev);
+	pgs_evbuffer_t *inboundr = pgs_bev_get_input(inbev);
+
+	pgs_evbuffer_t *buf = outboundw;
+	pgs_size_t len = pgs_evbuffer_get_length(inboundr);
+	unsigned char *msg = pgs_evbuffer_pullup(inboundr, len);
+	pgs_session_debug_buffer(session, msg, len);
+
+	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
+	pgs_size_t head_len = trojan_s_ctx->head_len;
+	if (head_len > 0)
+		len += head_len;
+
+	if (head_len > 0) {
+		pgs_evbuffer_add(buf, trojan_s_ctx->head, head_len);
+		trojan_s_ctx->head_len = 0;
+		pgs_session_debug_buffer(
+			session, (unsigned char *)trojan_s_ctx->head, head_len);
+	}
+	pgs_evbuffer_add(buf, msg, len - head_len);
+
+	pgs_evbuffer_drain(inboundr, len - head_len);
+}
+
+/*
+ * helper method to write data
+ * from remote to local
+ * remote -> local
+ * */
+static void do_trojan_gfw_local_write(pgs_bev_t *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "remote -> local");
+	pgs_bev_t *inbev = session->inbound->bev;
+	pgs_bev_t *outbev = session->outbound->bev;
+
+	pgs_evbuffer_t *outboundr = pgs_bev_get_input(outbev);
+	pgs_evbuffer_t *inboundw = pgs_bev_get_output(inbev);
+
+	pgs_size_t data_len = pgs_evbuffer_get_length(outboundr);
+	unsigned char *data = pgs_evbuffer_pullup(outboundr, data_len);
+
+	pgs_evbuffer_add(inboundw, data, data_len);
+	pgs_evbuffer_drain(outboundr, data_len);
 }
