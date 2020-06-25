@@ -72,10 +72,9 @@ trojan 的传输层由 ssl/tls 保护，因此 `server\_port` 为 443，同时�
 
 - 多种协议支持
   - [x] trojan (wss)
-  - [ ] trojan (直连)
+  - [x] trojan (直连)
   - [ ] v2ray (wss)
 - 多类型服务端负载均衡
 - 平台适配
   - [ ] osx 适配（应该可以直接用，暂未测试）
   - [ ] windows 适配
-
