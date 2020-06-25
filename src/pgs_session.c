@@ -276,8 +276,9 @@ static void on_local_read(pgs_bev_t *bev, void *ctx)
 		}
 		return;
 	} else {
-		// unreachable
 		pgs_session_error(session, "unreachable");
+		pgs_bev_free(bev);
+		pgs_session_free(session);
 	}
 }
 

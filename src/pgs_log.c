@@ -72,15 +72,13 @@ void pgs_logger_log(LOG_LEVEL level, pgs_logger_t *logger, const char *fmt, ...)
 	char *m = pgs_malloc(sizeof(char) * MAX_MSG_LEN);
 
 	if (logger->isatty) {
-		sprintf(m, "%s%s [thread-%04d] %s: \e[0m%s",
-			log_colors[logger->level], datetime,
-			(int)(logger->tid % 10000), log_levels[logger->level],
+		sprintf(m, "%s%s [thread-%04d] %s: \e[0m%s", log_colors[level],
+			datetime, (int)(logger->tid % 10000), log_levels[level],
 			msg);
 
 	} else {
 		sprintf(m, "%s [thread-%04d] %s: %s", datetime,
-			(int)(logger->tid % 10000), log_levels[logger->level],
-			msg);
+			(int)(logger->tid % 10000), log_levels[level], msg);
 	}
 	pgs_logger_msg_t *_msg = pgs_logger_msg_new(m, logger->tid);
 
