@@ -38,6 +38,8 @@ struct pgs_session_inbound_s {
 struct pgs_session_outbound_s {
 	pgs_bev_t *bev;
 	const pgs_server_config_t *config;
+	char *dest;
+	int port;
 	void *ctx;
 };
 

@@ -1,4 +1,5 @@
 #include "pgs_session.h"
+#include "pgs_server_manager.h"
 #include "pgs_log.h"
 #include "unistd.h" // close
 #include "pgs_util.h"
@@ -94,6 +95,10 @@ void pgs_session_free(pgs_session_t *session)
 		pgs_session_inbound_free(session->inbound);
 	}
 	if (session->outbound) {
+		const char *addr = session->outbound->dest;
+		LTRIM(addr);
+		pgs_session_info(session, "connection to %s:%d closed", addr,
+				 session->outbound->port);
 		pgs_session_outbound_free(session->outbound);
 	}
 	pgs_free(session);
@@ -162,12 +167,19 @@ pgs_session_outbound_new(pgs_session_t *session,
 	ptr->bev = NULL;
 	ptr->ctx = NULL;
 
+	const char *cmd = (const char *)session->inbound->conn->rbuf;
+	pgs_size_t cmd_len = session->inbound->conn->read_bytes;
+
+	int len = cmd_len - 2 - 4;
+	ptr->dest = pgs_malloc(sizeof(char) * (len + 1));
+	ptr->dest[len] = '\0';
+	pgs_memcpy(ptr->dest, cmd + 4, len);
+	ptr->port = cmd[cmd_len - 2] << 8 | cmd[cmd_len - 1];
+
 	if (strcmp(config->server_type, "trojan") == 0) {
 		pgs_trojanserver_config_t *trojanconf = config->extra;
-		ptr->ctx = pgs_trojansession_ctx_new(
-			config->password, 56,
-			(const char *)session->inbound->conn->rbuf,
-			session->inbound->conn->read_bytes);
+		ptr->ctx = pgs_trojansession_ctx_new(config->password, 56, cmd,
+						     cmd_len);
 
 		pgs_ssl_t *ssl = pgs_ssl_new(trojanconf->ssl_ctx,
 					     (void *)config->server_address);
@@ -215,8 +227,11 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 			pgs_trojansession_ctx_free(ptr->ctx);
 		}
 	}
+	if (ptr->dest)
+		pgs_free(ptr->dest);
 	ptr->bev = NULL;
 	ptr->ctx = NULL;
+	ptr->dest = NULL;
 	pgs_free(ptr);
 	ptr = NULL;
 }
@@ -243,7 +258,6 @@ static void on_local_event(pgs_bev_t *bev, short events, void *ctx)
 		pgs_session_error(session, "Error from bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		pgs_bev_free(bev);
-		pgs_session_error(session, "EOF from local, free session");
 		pgs_session_free(session);
 	}
 }
@@ -283,25 +297,21 @@ static void on_local_read(pgs_bev_t *bev, void *ctx)
 		// repsond to local socket
 		pgs_evbuffer_add(output, conn->wbuf, conn->write_bytes);
 		if (session->fsm_socks5.state == PROXY) {
-			int len = conn->read_bytes - 2 - 4;
-			char des[len + 1];
-			char *addr = des;
-			int port = conn->rbuf[conn->read_bytes - 2] << 8 |
-				   conn->rbuf[conn->read_bytes - 1];
-			pgs_memcpy(des, conn->rbuf + 4, len);
-			des[len] = '\0';
-			while (isspace(*addr))
-				addr++;
-			pgs_session_info(session, "--> %s:%d", addr, port);
-			// TODO: plugin here
 			pgs_server_config_t *config =
-				&session->local_server->config->servers[0];
+				pgs_server_manager_get_config(
+					session->local_server->sm);
 			// TODO: log destination and do metrics
 			// 1. local -> remote total/seconds
 			// 2. remote -> local total/seconds
 			// 3. avg connect time
 			session->outbound =
 				pgs_session_outbound_new(session, config);
+
+			const char *addr = session->outbound->dest;
+			LTRIM(addr);
+			pgs_session_info(session, "--> %s:%d", addr,
+					 session->outbound->port);
+
 			pgs_session_outbound_run(session);
 		}
 		return;
@@ -328,7 +338,7 @@ static void on_trojan_ws_remote_event(pgs_bev_t *bev, short events, void *ctx)
 		if (ssl)
 			pgs_ssl_close(ssl);
 		pgs_bev_free(bev);
-		pgs_session_error(session, "EOF from remote, free session");
+
 		pgs_session_free(session);
 	}
 }

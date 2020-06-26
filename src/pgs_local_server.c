@@ -48,6 +48,7 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 	ptr->dns_base = pgs_ev_dns_base_new(ptr->base,
 					    EVDNS_BASE_INITIALIZE_NAMESERVERS);
 	ptr->config = ctx->config;
+	ptr->sm = ctx->sm;
 	ptr->listener =
 		pgs_listener_new(ptr->base, accept_conn_cb, ptr,
 				 LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE, -1,

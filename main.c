@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include "pgs_local_server.h"
 #include "pgs_config.h"
+#include "pgs_server_manager.h"
 
 #define MAX_SERVER_THREADS 4
 #define MAX_LOG_MPSC_SIZE 64
@@ -85,7 +86,10 @@ int main(int argc, char **argv)
 	pgs_logger_t *logger =
 		pgs_logger_new(mpsc, config->log_level, config->log_isatty);
 
-	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config };
+	pgs_server_manager_t *sm =
+		pgs_server_manager_new(config->servers, config->servers_count);
+
+	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config, sm };
 
 	pgs_logger_server_t *logger_server =
 		pgs_logger_server_new(logger, config->log_file);

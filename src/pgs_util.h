@@ -4,6 +4,9 @@
 #include "pgs_core.h"
 
 #define SHA224_LEN 28
+#define LTRIM(addr)                                                            \
+	while (isspace(*addr))                                                 \
+		addr++;
 
 void sha224(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res,
 	    pgs_size_t *res_len);
@@ -11,4 +14,3 @@ void sha224(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res,
 pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size);
 
 #endif
-
