@@ -5,6 +5,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <assert.h>
+#include <ctype.h>
 
 #define htonll(x)                                                              \
 	((1 == htonl(1)) ?                                                     \
@@ -282,8 +283,23 @@ static void on_local_read(pgs_bev_t *bev, void *ctx)
 		// repsond to local socket
 		pgs_evbuffer_add(output, conn->wbuf, conn->write_bytes);
 		if (session->fsm_socks5.state == PROXY) {
+			int len = conn->read_bytes - 2 - 4;
+			char des[len + 1];
+			char *addr = des;
+			int port = conn->rbuf[conn->read_bytes - 2] << 8 |
+				   conn->rbuf[conn->read_bytes - 1];
+			pgs_memcpy(des, conn->rbuf + 4, len);
+			des[len] = '\0';
+			while (isspace(*addr))
+				addr++;
+			pgs_session_info(session, "--> %s:%d", addr, port);
+			// TODO: plugin here
 			pgs_server_config_t *config =
 				&session->local_server->config->servers[0];
+			// TODO: log destination and do metrics
+			// 1. local -> remote total/seconds
+			// 2. remote -> local total/seconds
+			// 3. avg connect time
 			session->outbound =
 				pgs_session_outbound_new(session, config);
 			pgs_session_outbound_run(session);
