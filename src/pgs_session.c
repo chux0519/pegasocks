@@ -446,7 +446,8 @@ static void do_trojan_ws_remote_request(pgs_bev_t *bev, void *ctx)
 
 	pgs_evbuffer_add_printf(out, "GET %s HTTP/1.1\r\n",
 				trojanconfig->websocket.path);
-	pgs_evbuffer_add_printf(out, "Host:%s:%d\r\n", config->server_address,
+	pgs_evbuffer_add_printf(out, "Host:%s:%d\r\n",
+				trojanconfig->websocket.hostname,
 				config->server_port);
 	pgs_evbuffer_add_printf(out, "Upgrade:websocket\r\n");
 	pgs_evbuffer_add_printf(out, "Connection:upgrade\r\n");
