@@ -42,6 +42,12 @@ static void on_trojan_gfw_local_read(pgs_bev_t *bev, void *ctx);
 static void do_trojan_gfw_remote_write(pgs_bev_t *bev, void *ctx);
 static void do_trojan_gfw_local_write(pgs_bev_t *bev, void *ctx);
 
+/*
+ * metrics
+ */
+static void on_session_metrics_recv(pgs_session_t *session, pgs_size_t len);
+static void on_session_metrics_send(pgs_session_t *session, pgs_size_t len);
+
 /**
  * Create New Sesson
  *
@@ -61,6 +67,13 @@ pgs_session_t *pgs_session_new(pgs_socket_t fd,
 	ptr->inbound = pgs_session_inbound_new(local_conn, bev);
 
 	ptr->outbound = NULL;
+
+	// init metrics
+	ptr->metrics = pgs_malloc(sizeof(pgs_server_session_stats_t));
+	ptr->metrics->start = time(NULL);
+	ptr->metrics->end = time(NULL);
+	ptr->metrics->recv = 0;
+	ptr->metrics->send = 0;
 
 	ptr->local_server = local_server;
 
@@ -91,16 +104,26 @@ void pgs_session_start(pgs_session_t *session)
 
 void pgs_session_free(pgs_session_t *session)
 {
-	if (session->inbound) {
+	if (session->inbound)
 		pgs_session_inbound_free(session->inbound);
-	}
+
 	if (session->outbound) {
+		session->metrics->end = time(NULL);
 		const char *addr = session->outbound->dest;
 		LTRIM(addr);
-		pgs_session_info(session, "connection to %s:%d closed", addr,
-				 session->outbound->port);
+		// TODO: emit metrics
+		// session->local_server->sm
+		pgs_session_info(
+			session,
+			"connection to %s:%d closed, send: %d, recv: %d", addr,
+			session->outbound->port, session->metrics->send,
+			session->metrics->recv);
 		pgs_session_outbound_free(session->outbound);
 	}
+
+	if (session->metrics)
+		pgs_free(session->metrics);
+
 	pgs_free(session);
 }
 
@@ -164,6 +187,13 @@ pgs_session_outbound_new(pgs_session_t *session,
 	pgs_session_outbound_t *ptr =
 		pgs_malloc(sizeof(pgs_session_outbound_t));
 	ptr->config = config;
+	ptr->config_idx = -1;
+	for (int i = 0; i < session->local_server->config->servers_count; i++) {
+		if (config == &session->local_server->config->servers[i]) {
+			ptr->config_idx = i;
+			break;
+		}
+	}
 	ptr->bev = NULL;
 	ptr->ctx = NULL;
 
@@ -498,6 +528,8 @@ static void do_trojan_ws_remote_write(pgs_bev_t *bev, void *ctx)
 	pgs_evbuffer_add(buf, msg, len - head_len);
 
 	pgs_evbuffer_drain(inboundr, len - head_len);
+
+	on_session_metrics_send(session, len);
 }
 
 /*
@@ -564,6 +596,8 @@ static void do_trojan_ws_local_write(pgs_bev_t *bev, void *ctx)
 		pgs_session_debug(session, "frame to be continue..");
 
 	pgs_evbuffer_drain(outboundr, header_len + payload_len);
+
+	on_session_metrics_recv(session, header_len + payload_len);
 
 	//next frame
 	do_trojan_ws_local_write(bev, ctx);
@@ -640,7 +674,6 @@ static void on_trojan_gfw_local_read(pgs_bev_t *bev, void *ctx)
 static void do_trojan_gfw_remote_write(pgs_bev_t *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "local -> remote");
 	pgs_bev_t *inbev = session->inbound->bev;
 	pgs_bev_t *outbev = session->outbound->bev;
 
@@ -666,6 +699,9 @@ static void do_trojan_gfw_remote_write(pgs_bev_t *bev, void *ctx)
 	pgs_evbuffer_add(buf, msg, len - head_len);
 
 	pgs_evbuffer_drain(inboundr, len - head_len);
+
+	pgs_session_debug(session, "local -> remote: %d", len);
+	on_session_metrics_send(session, len);
 }
 
 /*
@@ -676,7 +712,6 @@ static void do_trojan_gfw_remote_write(pgs_bev_t *bev, void *ctx)
 static void do_trojan_gfw_local_write(pgs_bev_t *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "remote -> local");
 	pgs_bev_t *inbev = session->inbound->bev;
 	pgs_bev_t *outbev = session->outbound->bev;
 
@@ -686,6 +721,22 @@ static void do_trojan_gfw_local_write(pgs_bev_t *bev, void *ctx)
 	pgs_size_t data_len = pgs_evbuffer_get_length(outboundr);
 	unsigned char *data = pgs_evbuffer_pullup(outboundr, data_len);
 
+	pgs_session_debug(session, "remote -> local: %d", data_len);
+	on_session_metrics_recv(session, data_len);
 	pgs_evbuffer_add(inboundw, data, data_len);
 	pgs_evbuffer_drain(outboundr, data_len);
+}
+
+static void on_session_metrics_recv(pgs_session_t *session, pgs_size_t len)
+{
+	if (!session->metrics)
+		return;
+	session->metrics->recv += len;
+}
+
+static void on_session_metrics_send(pgs_session_t *session, pgs_size_t len)
+{
+	if (!session->metrics)
+		return;
+	session->metrics->send += len;
 }

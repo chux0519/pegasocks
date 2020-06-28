@@ -12,6 +12,7 @@
 
 #define MAX_SERVER_THREADS 4
 #define MAX_LOG_MPSC_SIZE 64
+#define MAX_STATS_MPSC_SIZE 64
 
 int main(int argc, char **argv)
 {
@@ -82,12 +83,13 @@ int main(int argc, char **argv)
 	}
 	// mpsc with 64 message slots
 	pgs_mpsc_t *mpsc = pgs_mpsc_new(MAX_LOG_MPSC_SIZE);
+	pgs_mpsc_t *statsq = pgs_mpsc_new(MAX_STATS_MPSC_SIZE);
 	// logger for logger server
 	pgs_logger_t *logger =
 		pgs_logger_new(mpsc, config->log_level, config->log_isatty);
 
-	pgs_server_manager_t *sm =
-		pgs_server_manager_new(config->servers, config->servers_count);
+	pgs_server_manager_t *sm = pgs_server_manager_new(
+		statsq, config->servers, config->servers_count);
 
 	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config, sm };
 

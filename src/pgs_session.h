@@ -5,6 +5,7 @@
 #include "pgs_conn.h"
 #include "pgs_local_server.h"
 #include "pgs_socks5.h"
+#include "pgs_server_manager.h"
 
 #define pgs_session_debug(session, ...)                                        \
 	pgs_logger_debug(session->local_server->logger, __VA_ARGS__)
@@ -28,6 +29,7 @@ struct pgs_session_s {
 	pgs_local_server_t *local_server;
 	// socks5 state machine
 	pgs_socks5_t fsm_socks5;
+	pgs_server_session_stats_t *metrics;
 };
 
 struct pgs_session_inbound_s {
@@ -38,6 +40,7 @@ struct pgs_session_inbound_s {
 struct pgs_session_outbound_s {
 	pgs_bev_t *bev;
 	const pgs_server_config_t *config;
+	int config_idx;
 	char *dest;
 	int port;
 	void *ctx;
