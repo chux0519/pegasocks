@@ -11,6 +11,9 @@
 void sha224(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res,
 	    pgs_size_t *res_len);
 
+void shake128(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *out,
+	      pgs_size_t out_len);
+
 pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size);
 
 #endif

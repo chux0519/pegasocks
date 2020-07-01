@@ -1,4 +1,5 @@
 #include "pgs_util.h"
+#include "../3rd-party/sha3.h"
 #include <openssl/evp.h>
 
 void sha224(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res,
@@ -22,6 +23,17 @@ error:
 	if (ctx != NULL)
 		EVP_MD_CTX_free(ctx);
 	*res_len = 0;
+}
+
+void shake128(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *out,
+	    pgs_size_t out_len)
+{
+  sha3_ctx_t sha3;
+  shake128_init(&sha3);
+  shake_update(&sha3, input, input_len);
+  shake_xof(&sha3);
+	shake_out(&sha3, out, out_len);
+	return;
 }
 
 pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size)

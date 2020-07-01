@@ -1,12 +1,13 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(ram LANGUAGES C)
+project(pegasocks LANGUAGES C)
 
 set (CMAKE_C_STANDARD 11)
 
-file(GLOB SOURCES src/*.c)
+file(GLOB SOURCES src/*.c 3rd-party/*.c)
 
 include_directories(src)
+include_directories(3rd-party)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
