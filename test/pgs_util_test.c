@@ -55,10 +55,23 @@ void test_hmac_md5()
 	pgs_free(hexstring);
 }
 
+void test_md5()
+{
+	// md5("password") == "5f4dcc3b5aa765d61d8327deb882cf99"
+	char input[] = "password";
+	char result[] = "5f4dcc3b5aa765d61d8327deb882cf99";
+	char buf[MD5_LEN];
+	md5((const pgs_buf_t *)input, 8, (pgs_buf_t *)buf);
+	pgs_buf_t *hexstring = to_hexstring((const pgs_buf_t *)buf, MD5_LEN);
+	assert(strcmp(result, (const char *)hexstring) == 0);
+	pgs_free(hexstring);
+}
+
 int main()
 {
 	test_sha224();
 	test_shake128();
 	test_hmac_md5();
+	test_md5();
 	return 0;
 }

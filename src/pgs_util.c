@@ -1,6 +1,7 @@
 #include "pgs_util.h"
 #include "../3rd-party/sha3.h"
 #include <openssl/evp.h>
+#include <openssl/md5.h>
 #include <assert.h>
 
 void sha224(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res,
@@ -43,6 +44,11 @@ void hmac_md5(const pgs_buf_t *key, pgs_size_t key_len, const pgs_buf_t *data,
 	HMAC(EVP_md5(), key, key_len, data, data_len, out,
 	     (unsigned int *)out_len);
 	assert(*out_len == 16);
+}
+
+void md5(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res)
+{
+	MD5(input, input_len, res);
 }
 
 pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size)
