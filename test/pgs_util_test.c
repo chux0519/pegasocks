@@ -67,11 +67,23 @@ void test_md5()
 	pgs_free(hexstring);
 }
 
+void test_fnv1a()
+{
+	// fnv1a("password") == "5f4dcc3b5aa765d61d8327deb882cf99"
+	char input[] = "password";
+	char result[] = "364b5f18";
+	int res = fnv1a((void *)input, strlen(input));
+	char hexstring[4];
+	sprintf(hexstring, "%08x", res);
+	assert(strcmp(result, (const char *)hexstring) == 0);
+}
+
 int main()
 {
 	test_sha224();
 	test_shake128();
 	test_hmac_md5();
 	test_md5();
+	test_fnv1a();
 	return 0;
 }

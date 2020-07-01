@@ -1,5 +1,6 @@
 #include "pgs_util.h"
 #include "../3rd-party/sha3.h"
+#include "../3rd-party/fnv.h"
 #include <openssl/evp.h>
 #include <openssl/md5.h>
 #include <assert.h>
@@ -49,6 +50,11 @@ void hmac_md5(const pgs_buf_t *key, pgs_size_t key_len, const pgs_buf_t *data,
 void md5(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res)
 {
 	MD5(input, input_len, res);
+}
+
+int fnv1a(void *input, pgs_size_t input_len)
+{
+	return fnv_32a_buf(input, input_len, FNV1_32A_INIT);
 }
 
 pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size)
