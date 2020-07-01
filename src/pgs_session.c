@@ -1,3 +1,4 @@
+#include "pgs_codec.h"
 #include "pgs_session.h"
 #include "pgs_server_manager.h"
 #include "pgs_log.h"
@@ -7,15 +8,6 @@
 #include <openssl/err.h>
 #include <assert.h>
 #include <ctype.h>
-
-#define htonll(x)                                                              \
-	((1 == htonl(1)) ?                                                     \
-		 (x) :                                                         \
-		 ((uint64_t)htonl((x)&0xFFFFFFFF) << 32) | htonl((x) >> 32))
-#define ntohll(x) htonll(x)
-
-const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
-const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 
 /*
  * local handlers
@@ -330,10 +322,6 @@ static void on_local_read(pgs_bev_t *bev, void *ctx)
 			pgs_server_config_t *config =
 				pgs_server_manager_get_config(
 					session->local_server->sm);
-			// TODO: log destination and do metrics
-			// 1. local -> remote total/seconds
-			// 2. remote -> local total/seconds
-			// 3. avg connect time
 			session->outbound =
 				pgs_session_outbound_new(session, config);
 
@@ -395,9 +383,7 @@ static void on_trojan_ws_remote_read(pgs_bev_t *bev, void *ctx)
 		if (!strstr((const char *)data, "\r\n\r\n"))
 			return;
 
-		if (strncmp((const char *)data, "HTTP/1.1 101",
-			    strlen("HTTP/1.1 101")) != 0 ||
-		    !strstr((const char *)data, ws_accept)) {
+		if (pgs_ws_upgrade_check((const char *)data)) {
 			pgs_session_error(session, "websocket upgrade fail!");
 			on_trojan_ws_remote_event(bev, BEV_EVENT_ERROR, ctx);
 		} else {
@@ -440,23 +426,12 @@ static void do_trojan_ws_remote_request(pgs_bev_t *bev, void *ctx)
 	const pgs_server_config_t *config = session->outbound->config;
 	const pgs_trojanserver_config_t *trojanconfig = config->extra;
 
-	pgs_evbuffer_t *out = pgs_bev_get_output(session->outbound->bev);
-
 	pgs_session_debug(session, "do_trojan_ws_remote_request");
 
-	pgs_evbuffer_add_printf(out, "GET %s HTTP/1.1\r\n",
-				trojanconfig->websocket.path);
-	pgs_evbuffer_add_printf(out, "Host:%s:%d\r\n",
-				trojanconfig->websocket.hostname,
-				config->server_port);
-	pgs_evbuffer_add_printf(out, "Upgrade:websocket\r\n");
-	pgs_evbuffer_add_printf(out, "Connection:upgrade\r\n");
-	pgs_evbuffer_add_printf(out, "Sec-WebSocket-Key:%s\r\n", ws_key);
-	pgs_evbuffer_add_printf(out, "Sec-WebSocket-Version:13\r\n");
-	pgs_evbuffer_add_printf(
-		out, "Origin:https://%s:%d\r\n", config->server_address,
-		config->server_port); //missing this key will lead to 403 response.
-	pgs_evbuffer_add_printf(out, "\r\n");
+	pgs_ws_req(pgs_bev_get_output(session->outbound->bev),
+		   trojanconfig->websocket.hostname, config->server_address,
+		   config->server_port, trojanconfig->websocket.path);
+
 	pgs_session_debug(session, "do_trojan_ws_remote_request done");
 }
 
@@ -485,39 +460,7 @@ static void do_trojan_ws_remote_write(pgs_bev_t *bev, void *ctx)
 	if (head_len > 0)
 		len += head_len;
 
-	uint8_t a = 0;
-	a |= 1 << 7; //fin
-	a |= 1; //text frame
-
-	uint8_t b = 0;
-	b |= 1 << 7; //mask
-
-	uint16_t c = 0;
-	uint64_t d = 0;
-
-	//payload len
-	if (len < 126) {
-		b |= len;
-	} else if (len < (1 << 16)) {
-		b |= 126;
-		c = htons(len);
-	} else {
-		b |= 127;
-		d = htonll(len);
-	}
-
-	pgs_evbuffer_add(buf, &a, 1);
-	pgs_evbuffer_add(buf, &b, 1);
-
-	if (c)
-		pgs_evbuffer_add(buf, &c, sizeof(c));
-	else if (d)
-		pgs_evbuffer_add(buf, &d, sizeof(d));
-
-	// tls will protect data
-	// mask data makes nonsense
-	uint8_t mask_key[4] = { 0, 0, 0, 0 };
-	pgs_evbuffer_add(buf, &mask_key, 4);
+	pgs_ws_write_head(buf, len);
 
 	if (head_len > 0) {
 		pgs_evbuffer_add(buf, trojan_s_ctx->head, head_len);
@@ -554,51 +497,24 @@ static void do_trojan_ws_local_write(pgs_bev_t *bev, void *ctx)
 
 	unsigned char *data = pgs_evbuffer_pullup(outboundr, data_len);
 
-	int fin = !!(*data & 0x80);
-	int opcode = *data & 0x0F;
-	int mask = !!(*(data + 1) & 0x80);
-	uint64_t payload_len = *(data + 1) & 0x7F;
+	pgs_ws_meta_t ws_meta;
+	if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
+		// ignore opcode here
+		if (ws_meta.opcode == 0x01) {
+			// write to local
+			pgs_evbuffer_add(inboundw, data + ws_meta.header_len,
+					 ws_meta.payload_len);
+		}
 
-	size_t header_len = 2 + (mask ? 4 : 0);
+		if (!ws_meta.fin)
+			pgs_session_debug(session, "frame to be continue..");
 
-	if (payload_len < 126) {
-		if (header_len > data_len)
-			return;
+		pgs_evbuffer_drain(outboundr,
+				   ws_meta.header_len + ws_meta.payload_len);
 
-	} else if (payload_len == 126) {
-		header_len += 2;
-		if (header_len > data_len)
-			return;
-
-		payload_len = ntohs(*(uint16_t *)(data + 2));
-
-	} else if (payload_len == 127) {
-		header_len += 8;
-		if (header_len > data_len)
-			return;
-
-		payload_len = ntohll(*(uint64_t *)(data + 2));
+		on_session_metrics_recv(session, ws_meta.header_len +
+							 ws_meta.payload_len);
 	}
-
-	if (header_len + payload_len > data_len)
-		return;
-
-	const unsigned char *mask_key = data + header_len - 4;
-
-	for (int i = 0; mask && i < payload_len; i++)
-		data[header_len + i] ^= mask_key[i % 4];
-
-	if (opcode == 0x01) {
-		// write to local
-		pgs_evbuffer_add(inboundw, data + header_len, payload_len);
-	}
-
-	if (!fin)
-		pgs_session_debug(session, "frame to be continue..");
-
-	pgs_evbuffer_drain(outboundr, header_len + payload_len);
-
-	on_session_metrics_recv(session, header_len + payload_len);
 
 	//next frame
 	do_trojan_ws_local_write(bev, ctx);

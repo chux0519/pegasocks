@@ -53,6 +53,10 @@ struct pgs_trojansession_ctx_s {
 	bool connected;
 };
 
+struct pgs_vmess_ctx_s {
+	bool connected;
+};
+
 // trojan session context
 pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const char *encodepass,
 						   pgs_size_t passlen,
