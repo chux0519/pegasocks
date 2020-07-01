@@ -24,8 +24,33 @@ void test_shake128()
 		"f4202e3c5852f9182a0430fd8144f0a74b95e7417ecae17db0f8cfeed0e3e66e";
 	char buf[32];
 	pgs_size_t res_len = 32;
-	shake128((const pgs_buf_t *)input, strlen(input), (pgs_buf_t *)buf, res_len);
+	shake128((const pgs_buf_t *)input, strlen(input), (pgs_buf_t *)buf,
+		 res_len);
 	pgs_buf_t *hexstring = to_hexstring((const pgs_buf_t *)buf, res_len);
+	assert(strcmp(result, (const char *)hexstring) == 0);
+	pgs_free(hexstring);
+}
+
+void test_hmac_md5()
+{
+	// test_case =     1
+	// key =           0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b
+	// key_len =       16
+	// data =          "Hi There"
+	// data_len =      8
+	// digest =        0x9294727a3638bb1c13f48ef8158bfc9d
+	char key[16];
+	for (int i = 0; i < 16; i++) {
+		key[i] = 0x0b;
+	}
+	char data[] = "Hi There";
+	char result[] = "9294727a3638bb1c13f48ef8158bfc9d";
+	char buf[16];
+	pgs_size_t res_len = 0;
+	hmac_md5((const pgs_buf_t *)key, 16, (const pgs_buf_t *)data, 8,
+		 (pgs_buf_t *)buf, &res_len);
+	pgs_buf_t *hexstring = to_hexstring((const pgs_buf_t *)buf, res_len);
+	assert(res_len == 16);
 	assert(strcmp(result, (const char *)hexstring) == 0);
 	pgs_free(hexstring);
 }
@@ -33,6 +58,7 @@ void test_shake128()
 int main()
 {
 	test_sha224();
-  test_shake128();
+	test_shake128();
+	test_hmac_md5();
 	return 0;
 }

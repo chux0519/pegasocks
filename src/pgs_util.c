@@ -1,6 +1,7 @@
 #include "pgs_util.h"
 #include "../3rd-party/sha3.h"
 #include <openssl/evp.h>
+#include <assert.h>
 
 void sha224(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res,
 	    pgs_size_t *res_len)
@@ -26,14 +27,22 @@ error:
 }
 
 void shake128(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *out,
-	    pgs_size_t out_len)
+	      pgs_size_t out_len)
 {
-  sha3_ctx_t sha3;
-  shake128_init(&sha3);
-  shake_update(&sha3, input, input_len);
-  shake_xof(&sha3);
+	sha3_ctx_t sha3;
+	shake128_init(&sha3);
+	shake_update(&sha3, input, input_len);
+	shake_xof(&sha3);
 	shake_out(&sha3, out, out_len);
 	return;
+}
+
+void hmac_md5(const pgs_buf_t *key, pgs_size_t key_len, const pgs_buf_t *data,
+	      pgs_size_t data_len, pgs_buf_t *out, pgs_size_t *out_len)
+{
+	HMAC(EVP_md5(), key, key_len, data, data_len, out,
+	     (unsigned int *)out_len);
+	assert(*out_len == 16);
 }
 
 pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size)
