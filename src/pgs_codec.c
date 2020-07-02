@@ -1,4 +1,7 @@
 #include "pgs_codec.h"
+#include "pgs_util.h"
+#include <assert.h>
+#include <openssl/rand.h>
 
 #define htonll(x)                                                              \
 	((1 == htonl(1)) ?                                                     \
@@ -8,6 +11,9 @@
 
 const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
 const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
+const char vmess_key_suffix[16] = { 0xc4, 0x86, 0x19, 0xfe, 0x8f, 0x02,
+				    0x49, 0xe0, 0xb9, 0xe9, 0xed, 0xf7,
+				    0x63, 0xe1, 0x7e, 0x21 };
 
 void pgs_ws_req(pgs_evbuffer_t *out, const char *hostname,
 		const char *server_address, int server_port, const char *path)
@@ -115,4 +121,106 @@ bool pgs_ws_parse_head(pgs_buf_t *data, pgs_size_t data_len,
 
 	parsed = true;
 	return parsed;
+}
+
+void pgs_vmess_write(pgs_evbuffer_t *buf, const pgs_buf_t *uuid,
+		     const pgs_buf_t *socks5_cmd, pgs_size_t socks5_cmd_len,
+		     const pgs_buf_t *data, pgs_size_t data_len)
+{
+	time_t now = time(NULL);
+	unsigned long ts = htonll(now);
+	pgs_buf_t header_auth[16];
+	pgs_size_t header_auth_len = 0;
+	hmac_md5(uuid, 16, (const pgs_buf_t *)ts, 8, header_auth,
+		 &header_auth_len);
+	assert(header_auth_len == 16);
+	pgs_evbuffer_add(buf, header_auth, header_auth_len);
+
+	// socks5 cmd
+	// +----+-----+-------+------+----------+----------+
+	// |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
+	// +----+-----+-------+------+----------+----------+
+	// | 1  |  1  | X'00' |  1   | Variable |    2     |
+	// +----+-----+-------+------+----------+----------+
+	//
+	// vmess header
+	int n = socks5_cmd_len - 4 - 2;
+	int p = 0;
+	pgs_size_t header_cmd_len =
+		1 + 16 + 16 + 1 + 1 + 1 + 1 + 1 + 2 + 1 + n + p + 4;
+	pgs_buf_t header_cmd_raw[header_cmd_len];
+	pgs_buf_t header_cmd_encoded[header_cmd_len];
+	pgs_memzero(header_cmd_raw, header_cmd_len);
+	pgs_memzero(header_cmd_encoded, header_cmd_len);
+
+	int offset = 0;
+	// ver
+	header_cmd_raw[0] = 1;
+	offset += 1;
+	// data key
+	offset += RAND_bytes(header_cmd_raw + offset, 16);
+	// data iv
+	offset += RAND_bytes(header_cmd_raw + offset, 16);
+	// v
+	offset += RAND_bytes(header_cmd_raw + offset, 1);
+	// standard format data
+	header_cmd_raw[offset] = 0x01;
+	offset += 1;
+	// aes 126 cfb
+	header_cmd_raw[offset] = 0x00;
+	offset += 1;
+	// X
+	header_cmd_raw[offset] = 0x00;
+	offset += 1;
+	// tcp
+	header_cmd_raw[offset] = 0x01;
+	offset += 1;
+	// port
+	header_cmd_raw[offset] = socks5_cmd[socks5_cmd_len - 2];
+	header_cmd_raw[offset + 1] = socks5_cmd[socks5_cmd_len - 1];
+	offset += 2;
+	// atype
+	header_cmd_raw[offset] = socks5_cmd[3];
+	offset += 1;
+	// addr
+	pgs_memcpy(header_cmd_raw + offset, socks5_cmd + 4, n);
+	offset += n;
+
+	assert(offset + 4 == header_cmd_len);
+
+	int f = fnv1a(header_cmd_raw, header_cmd_len - 4);
+	header_cmd_raw[offset] = f >> 24;
+	header_cmd_raw[offset + 1] = f >> 16;
+	header_cmd_raw[offset + 2] = f >> 8;
+	header_cmd_raw[offset + 3] = f;
+
+	pgs_buf_t k_md5_input[32];
+	pgs_memcpy(k_md5_input, uuid, 16);
+	pgs_memcpy(k_md5_input + 16, vmess_key_suffix, 16);
+	pgs_buf_t cmd_k[16];
+	md5(k_md5_input, 32, cmd_k);
+
+	pgs_buf_t iv_md5_input[32];
+	now = time(NULL);
+	ts = htonll(now);
+	pgs_memcpy(iv_md5_input, (const unsigned char *)ts, 8);
+	pgs_memcpy(iv_md5_input + 8, (const unsigned char *)ts, 8);
+	pgs_memcpy(iv_md5_input + 16, (const unsigned char *)ts, 8);
+	pgs_memcpy(iv_md5_input + 24, (const unsigned char *)ts, 8);
+	pgs_buf_t cmd_iv[16];
+	md5(iv_md5_input, 32, cmd_iv);
+	aes_128_cfb(header_cmd_raw, header_cmd_len, cmd_k, cmd_iv,
+		    header_cmd_encoded);
+	pgs_evbuffer_add(buf, header_cmd_encoded, header_cmd_len);
+
+	// data section
+	f = fnv1a((void *)data, data_len);
+	pgs_buf_t data_encoded[data_len + 4];
+	data_encoded[0] = f >> 24;
+	data_encoded[1] = f >> 16;
+	data_encoded[2] = f >> 8;
+	data_encoded[3] = f;
+	aes_128_cfb(data, data_len, header_cmd_raw + 17, header_cmd_raw + 1,
+		    data_encoded + 4);
+	pgs_evbuffer_add(buf, data_encoded, data_len + 4);
 }
