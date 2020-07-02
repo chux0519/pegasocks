@@ -78,6 +78,25 @@ void test_fnv1a()
 	assert(strcmp(result, (const char *)hexstring) == 0);
 }
 
+void test_aes_128_cfb()
+{
+	// key: key, iv: iviviviviviviviv
+	// aes_128_cfb() == "960bb181638ddd77"
+	char key[] = { 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8 };
+	char iv[] = { 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8 };
+	char plaintext[] = "password";
+	char result[] = "960bb181638ddd77";
+	unsigned char output[8];
+
+	int output_len = aes_128_cfb((const pgs_buf_t *)plaintext, 8,
+				     (const pgs_buf_t *)key,
+				     (const pgs_buf_t *)iv, output);
+	pgs_buf_t *hexstring =
+		to_hexstring((const pgs_buf_t *)output, output_len);
+	assert(strcmp(result, (const char *)hexstring) == 0);
+	pgs_free(hexstring);
+}
+
 int main()
 {
 	test_sha224();
@@ -85,5 +104,6 @@ int main()
 	test_hmac_md5();
 	test_md5();
 	test_fnv1a();
+	test_aes_128_cfb();
 	return 0;
 }
