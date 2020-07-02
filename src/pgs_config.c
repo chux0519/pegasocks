@@ -135,6 +135,11 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 
 			ptr[i].password = (char *)hexpass;
 		}
+		if (strcmp(ptr[i].server_type, "v2ray") == 0) {
+			char *uuid = pgs_malloc(16 * sizeof(char));
+			// TODO: parse uuid
+			ptr[i].password = (char *)uuid;
+		}
 		// parse type specific data
 		ptr[i].extra = pgs_server_config_parse_extra(
 			config, ptr[i].server_type, jobj_server);
@@ -160,10 +165,71 @@ void *pgs_server_config_parse_extra(pgs_config_t *config,
 {
 	if (strcmp(server_type, "trojan") == 0) {
 		return pgs_trojanserver_config_parse(config, jobj);
+	} else if (strcmp(server_type, "v2ray") == 0) {
+		return pgs_v2rayserver_config_parse(config, jobj);
 	}
+
 	return NULL;
 }
 
+pgs_config_t *pgs_config_new()
+{
+	pgs_config_t *ptr = pgs_malloc(sizeof(pgs_config_t));
+	ptr->servers = NULL;
+	ptr->servers_count = 0;
+	ptr->local_address = NULL;
+	ptr->local_port = 0;
+	ptr->timeout = 0;
+	ptr->log_level = 0;
+	ptr->log_file = stderr;
+	return ptr;
+}
+
+pgs_server_config_t *pgs_servers_config_new(pgs_size_t len)
+{
+	pgs_server_config_t *ptr =
+		pgs_malloc(sizeof(pgs_server_config_t) * len);
+	for (int i = 0; i < len; i++) {
+		ptr[i].server_address = NULL;
+		ptr[i].server_port = 0;
+		ptr[i].server_type = NULL;
+		ptr[i].password = NULL;
+		ptr[i].extra = NULL;
+	}
+	return ptr;
+}
+
+void pgs_servers_config_free(pgs_server_config_t *ptr, pgs_size_t len)
+{
+	if (ptr == NULL || len == 0)
+		return;
+	for (int i = 0; i < len; i++) {
+		if (ptr[i].extra)
+			pgs_server_config_free_extra(ptr[i].server_type,
+						     ptr[i].extra);
+		if (ptr[i].server_type != NULL &&
+		    (strcmp(ptr[i].server_type, "trojan") == 0 ||
+		     strcmp(ptr[i].server_type, "v2ray") == 0) &&
+		    ptr[i].password != NULL)
+			pgs_free(ptr[i].password);
+	}
+	pgs_free(ptr);
+	ptr = NULL;
+}
+
+void pgs_config_free(pgs_config_t *config)
+{
+	if (config->log_file != stderr)
+		fclose(config->log_file);
+	if (config->servers)
+		pgs_servers_config_free(config->servers, config->servers_count);
+
+	pgs_free(config);
+
+	config = NULL;
+}
+
+/* trojan config */
 pgs_trojanserver_config_t *pgs_trojanserver_config_parse(pgs_config_t *config,
 							 json_object *jobj)
 {
@@ -220,8 +286,8 @@ pgs_trojanserver_config_t *pgs_trojanserver_config_new()
 {
 	pgs_trojanserver_config_t *ptr =
 		pgs_malloc(sizeof(pgs_trojanserver_config_t));
+	ptr->ssl.enabled = true;
 	ptr->ssl.cert = NULL;
-	ptr->websocket.double_tls = false;
 	ptr->websocket.enabled = false;
 	ptr->websocket.hostname = NULL;
 	ptr->websocket.path = NULL;
@@ -238,58 +304,67 @@ void pgs_trojanserver_config_free(pgs_trojanserver_config_t *ptr)
 	ptr = NULL;
 }
 
-pgs_config_t *pgs_config_new()
+/* v2ray */
+pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
+						       json_object *jobj)
 {
-	pgs_config_t *ptr = pgs_malloc(sizeof(pgs_config_t));
-	ptr->servers = NULL;
-	ptr->servers_count = 0;
-	ptr->local_address = NULL;
-	ptr->local_port = 0;
-	ptr->timeout = 0;
-	ptr->log_level = 0;
-	ptr->log_file = stderr;
+	pgs_v2rayserver_config_t *ptr = pgs_v2rayserver_config_new();
+
+	json_object *ssl_obj = json_object_object_get(jobj, "ssl");
+	json_object *ws_obj = json_object_object_get(jobj, "websocket");
+
+	if (!(ssl_obj && ws_obj)) {
+		pgs_config_error(config, "Error: ssl and ws are required");
+		goto error;
+	}
+
+	ptr->ssl.enabled = true;
+	ptr->ssl_ctx = pgs_ssl_ctx_new();
+	if (ptr->ssl_ctx == NULL) {
+		pgs_config_error(config, "Error: pgs_ssl_ctx_new");
+		goto error;
+	}
+
+	// parse websocket config
+	ptr->websocket.enabled = true;
+	json_object_object_foreach(ws_obj, k, v)
+	{
+		if (strcmp(k, "path") == 0) {
+			ptr->websocket.path = json_object_get_string(v);
+		} else if (strcmp(k, "hostname") == 0) {
+			ptr->websocket.hostname = json_object_get_string(v);
+		}
+	}
+
+	if (ptr->websocket.enabled &&
+	    (ptr->websocket.path == NULL || ptr->websocket.hostname == NULL))
+		goto error;
+
 	return ptr;
+
+error:
+	pgs_config_error(config, "Error: pgs_v2rayserver_config_parse");
+	pgs_v2rayserver_config_free(ptr);
+	return NULL;
 }
 
-pgs_server_config_t *pgs_servers_config_new(pgs_size_t len)
+pgs_v2rayserver_config_t *pgs_v2rayserver_config_new()
 {
-	pgs_server_config_t *ptr =
-		pgs_malloc(sizeof(pgs_server_config_t) * len);
-	for (int i = 0; i < len; i++) {
-		ptr[i].server_address = NULL;
-		ptr[i].server_port = 0;
-		ptr[i].server_type = NULL;
-		ptr[i].password = NULL;
-		ptr[i].extra = NULL;
-	}
+	pgs_v2rayserver_config_t *ptr =
+		pgs_malloc(sizeof(pgs_trojanserver_config_t));
+	ptr->ssl.enabled = true;
+	ptr->ssl.cert = NULL;
+	ptr->websocket.enabled = false;
+	ptr->websocket.hostname = NULL;
+	ptr->websocket.path = NULL;
+	ptr->ssl_ctx = NULL;
+
 	return ptr;
 }
-
-void pgs_servers_config_free(pgs_server_config_t *ptr, pgs_size_t len)
+void pgs_v2rayserver_config_free(pgs_v2rayserver_config_t *ptr)
 {
-	if (ptr == NULL || len == 0)
-		return;
-	for (int i = 0; i < len; i++) {
-		if (ptr[i].extra)
-			pgs_server_config_free_extra(ptr[i].server_type,
-						     ptr[i].extra);
-		if (ptr[i].server_type != NULL &&
-		    strcmp(ptr[i].server_type, "trojan") == 0 &&
-		    ptr[i].password != NULL)
-			pgs_free(ptr[i].password);
-	}
+	if (ptr->ssl_ctx != NULL)
+		SSL_CTX_free(ptr->ssl_ctx);
 	pgs_free(ptr);
 	ptr = NULL;
-}
-
-void pgs_config_free(pgs_config_t *config)
-{
-	if (config->log_file != stderr)
-		fclose(config->log_file);
-	if (config->servers)
-		pgs_servers_config_free(config->servers, config->servers_count);
-
-	pgs_free(config);
-
-	config = NULL;
 }
