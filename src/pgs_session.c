@@ -172,6 +172,19 @@ void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx)
 	ctx = NULL;
 }
 
+pgs_vmess_ctx_t *pgs_vmess_ctx_new()
+{
+	pgs_vmess_ctx_t *ptr = pgs_malloc(sizeof(pgs_vmess_ctx_t));
+	ptr->connected = false;
+	return ptr;
+}
+void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr)
+{
+	if (ptr)
+		pgs_free(ptr);
+	ptr = NULL;
+}
+
 pgs_session_outbound_t *
 pgs_session_outbound_new(pgs_session_t *session,
 			 const pgs_server_config_t *config)
@@ -232,6 +245,8 @@ pgs_session_outbound_new(pgs_session_t *session,
 				      on_local_event, session);
 			pgs_bev_enable(ptr->bev, EV_READ);
 		}
+	} else if (strcmp(config->server_type, "v2ray") == 0) {
+		// TODO:
 	}
 
 	return ptr;
@@ -247,6 +262,9 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 	if (ptr->ctx) {
 		if (strcmp(ptr->config->server_type, "trojan") == 0) {
 			pgs_trojansession_ctx_free(ptr->ctx);
+		}
+		if (strcmp(ptr->config->server_type, "v2ray") == 0) {
+			pgs_vmess_ctx_free(ptr->ctx);
 		}
 	}
 	if (ptr->dest)

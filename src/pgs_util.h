@@ -5,6 +5,8 @@
 
 #define SHA224_LEN 28
 #define MD5_LEN 16
+#define AES_128_CFB_KEY_LEN 16
+#define AES_128_CFB_IV_LEN 16
 #define LTRIM(addr)                                                            \
 	while (isspace(*addr))                                                 \
 		addr++;

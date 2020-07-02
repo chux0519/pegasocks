@@ -1,6 +1,7 @@
 #ifndef _PGS_SESSION
 #define _PGS_SESSION
 
+#include "pgs_util.h"
 #include "pgs_core.h"
 #include "pgs_conn.h"
 #include "pgs_local_server.h"
@@ -22,6 +23,7 @@ typedef struct pgs_session_s pgs_session_t;
 typedef struct pgs_session_inbound_s pgs_session_inbound_t;
 typedef struct pgs_session_outbound_s pgs_session_outbound_t;
 typedef struct pgs_trojansession_ctx_s pgs_trojansession_ctx_t;
+typedef struct pgs_vmess_ctx_s pgs_vmess_ctx_t;
 
 struct pgs_session_s {
 	pgs_session_inbound_t *inbound;
@@ -54,6 +56,8 @@ struct pgs_trojansession_ctx_s {
 };
 
 struct pgs_vmess_ctx_s {
+	char iv[AES_128_CFB_IV_LEN];
+	char key[AES_128_CFB_KEY_LEN];
 	bool connected;
 };
 
@@ -63,6 +67,10 @@ pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const char *encodepass,
 						   const char *cmd,
 						   pgs_size_t cmdlen);
 void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx);
+
+// vmess context
+pgs_vmess_ctx_t *pgs_vmess_ctx_new();
+void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr);
 
 // inbound
 pgs_session_inbound_t *pgs_session_inbound_new(pgs_conn_t *conn,
