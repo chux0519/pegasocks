@@ -136,8 +136,15 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 			ptr[i].password = (char *)hexpass;
 		}
 		if (strcmp(ptr[i].server_type, "v2ray") == 0) {
-			char *uuid = pgs_malloc(16 * sizeof(char));
-			// TODO: parse uuid
+			char uuid_hex[32];
+			for (int j = 0, k = 0; j < 36 && k < 32;) {
+				if (ptr[i].password[j] != '-')
+					uuid_hex[k++] = ptr[i].password[j++];
+				else
+					j++;
+			}
+			uint8_t *uuid = pgs_malloc(16 * sizeof(char));
+			hextobin(uuid_hex, uuid, 16);
 			ptr[i].password = (char *)uuid;
 		}
 		// parse type specific data

@@ -30,4 +30,6 @@ int aes_128_cfb(const pgs_buf_t *plaintext, int plaintext_len,
 
 pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size);
 
+void hextobin(const char *str, uint8_t *bytes, size_t blen);
+
 #endif
