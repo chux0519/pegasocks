@@ -67,9 +67,9 @@ pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size)
 	return hexbuf;
 }
 
-int aes_128_cfb(const pgs_buf_t *plaintext, int plaintext_len,
-		const pgs_buf_t *key, const pgs_buf_t *iv,
-		pgs_buf_t *ciphertext)
+int aes_128_cfb_encrypt(const pgs_buf_t *plaintext, int plaintext_len,
+			const pgs_buf_t *key, const pgs_buf_t *iv,
+			pgs_buf_t *ciphertext)
 {
 	EVP_CIPHER_CTX *ctx;
 
@@ -114,7 +114,43 @@ int aes_128_cfb(const pgs_buf_t *plaintext, int plaintext_len,
 	return ciphertext_len;
 
 error:
-	perror("aes_128_cfb");
+	perror("aes_128_cfb_encrypt");
+	return -1;
+}
+
+int aes_128_cfb_decrypt(const pgs_buf_t *ciphertext, int ciphertext_len,
+			const pgs_buf_t *key, const pgs_buf_t *iv,
+			pgs_buf_t *plaintext)
+{
+	EVP_CIPHER_CTX *ctx;
+
+	int len;
+
+	int plaintext_len;
+
+	/* Create and initialise the context */
+	if (!(ctx = EVP_CIPHER_CTX_new()))
+		goto error;
+
+	if (1 != EVP_DecryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv))
+		goto error;
+
+	if (1 !=
+	    EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len))
+		goto error;
+	plaintext_len = len;
+
+	if (1 != EVP_DecryptFinal_ex(ctx, plaintext + len, &len))
+		goto error;
+	plaintext_len += len;
+
+	/* Clean up */
+	EVP_CIPHER_CTX_free(ctx);
+
+	return plaintext_len;
+
+error:
+	perror("aes_128_cfb_decrypt");
 	return -1;
 }
 

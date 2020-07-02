@@ -515,7 +515,7 @@ static void do_trojan_ws_local_write(pgs_bev_t *bev, void *ctx)
 
 	unsigned char *data = pgs_evbuffer_pullup(outboundr, data_len);
 
-	pgs_ws_meta_t ws_meta;
+	pgs_ws_resp_t ws_meta;
 	if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
 		// ignore opcode here
 		if (ws_meta.opcode == 0x01) {

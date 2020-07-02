@@ -24,9 +24,13 @@ void hmac_md5(const pgs_buf_t *key, pgs_size_t key_len, const pgs_buf_t *data,
 
 int fnv1a(void *input, pgs_size_t input_len);
 
-int aes_128_cfb(const pgs_buf_t *plaintext, int plaintext_len,
-		const pgs_buf_t *key, const pgs_buf_t *iv,
-		pgs_buf_t *ciphertext);
+int aes_128_cfb_encrypt(const pgs_buf_t *plaintext, int plaintext_len,
+			const pgs_buf_t *key, const pgs_buf_t *iv,
+			pgs_buf_t *ciphertext);
+
+int aes_128_cfb_decrypt(const pgs_buf_t *ciphertext, int ciphertext_len,
+			const pgs_buf_t *key, const pgs_buf_t *iv,
+			pgs_buf_t *plaintext);
 
 pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size);
 

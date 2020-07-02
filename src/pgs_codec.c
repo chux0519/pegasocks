@@ -82,7 +82,7 @@ void pgs_ws_write_head(pgs_evbuffer_t *buf, pgs_size_t len)
 }
 
 bool pgs_ws_parse_head(pgs_buf_t *data, pgs_size_t data_len,
-		       pgs_ws_meta_t *meta)
+		       pgs_ws_resp_t *meta)
 {
 	bool parsed = false;
 
@@ -125,7 +125,8 @@ bool pgs_ws_parse_head(pgs_buf_t *data, pgs_size_t data_len,
 
 void pgs_vmess_write(pgs_evbuffer_t *buf, const pgs_buf_t *uuid,
 		     const pgs_buf_t *socks5_cmd, pgs_size_t socks5_cmd_len,
-		     const pgs_buf_t *data, pgs_size_t data_len)
+		     const pgs_buf_t *data, pgs_size_t data_len,
+		     pgs_vmess_ctx_t *ctx)
 {
 	time_t now = time(NULL);
 	unsigned long ts = htonll(now);
@@ -158,9 +159,13 @@ void pgs_vmess_write(pgs_evbuffer_t *buf, const pgs_buf_t *uuid,
 	header_cmd_raw[0] = 1;
 	offset += 1;
 	// data key
-	offset += RAND_bytes(header_cmd_raw + offset, 16);
+	RAND_bytes(header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
+	pgs_memcpy(ctx->key, header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
+	offset += AES_128_CFB_KEY_LEN;
 	// data iv
-	offset += RAND_bytes(header_cmd_raw + offset, 16);
+	RAND_bytes(header_cmd_raw + offset, AES_128_CFB_IV_LEN);
+	pgs_memcpy(ctx->iv, header_cmd_raw + offset, AES_128_CFB_IV_LEN);
+	offset += AES_128_CFB_IV_LEN;
 	// v
 	offset += RAND_bytes(header_cmd_raw + offset, 1);
 	// standard format data
@@ -197,7 +202,7 @@ void pgs_vmess_write(pgs_evbuffer_t *buf, const pgs_buf_t *uuid,
 	pgs_buf_t k_md5_input[32];
 	pgs_memcpy(k_md5_input, uuid, 16);
 	pgs_memcpy(k_md5_input + 16, vmess_key_suffix, 16);
-	pgs_buf_t cmd_k[16];
+	pgs_buf_t cmd_k[AES_128_CFB_KEY_LEN];
 	md5(k_md5_input, 32, cmd_k);
 
 	pgs_buf_t iv_md5_input[32];
@@ -207,10 +212,10 @@ void pgs_vmess_write(pgs_evbuffer_t *buf, const pgs_buf_t *uuid,
 	pgs_memcpy(iv_md5_input + 8, (const unsigned char *)ts, 8);
 	pgs_memcpy(iv_md5_input + 16, (const unsigned char *)ts, 8);
 	pgs_memcpy(iv_md5_input + 24, (const unsigned char *)ts, 8);
-	pgs_buf_t cmd_iv[16];
+	pgs_buf_t cmd_iv[AES_128_CFB_IV_LEN];
 	md5(iv_md5_input, 32, cmd_iv);
-	aes_128_cfb(header_cmd_raw, header_cmd_len, cmd_k, cmd_iv,
-		    header_cmd_encoded);
+	aes_128_cfb_encrypt(header_cmd_raw, header_cmd_len, cmd_k, cmd_iv,
+			    header_cmd_encoded);
 	pgs_evbuffer_add(buf, header_cmd_encoded, header_cmd_len);
 
 	// data section
@@ -220,7 +225,33 @@ void pgs_vmess_write(pgs_evbuffer_t *buf, const pgs_buf_t *uuid,
 	data_encoded[1] = f >> 16;
 	data_encoded[2] = f >> 8;
 	data_encoded[3] = f;
-	aes_128_cfb(data, data_len, header_cmd_raw + 17, header_cmd_raw + 1,
-		    data_encoded + 4);
+	aes_128_cfb_encrypt(data, data_len, (const unsigned char *)ctx->key,
+			    (const unsigned char *)ctx->iv, data_encoded + 4);
 	pgs_evbuffer_add(buf, data_encoded, data_len + 4);
+}
+
+bool pgs_vmess_parse_head(pgs_buf_t *data, pgs_size_t data_len,
+			  const pgs_vmess_ctx_t *ctx, pgs_vmess_resp_t *meta)
+{
+	if (data_len < 4)
+		return false;
+
+	pgs_buf_t iv[AES_128_CFB_IV_LEN];
+	pgs_buf_t key[AES_128_CFB_KEY_LEN];
+	md5((const pgs_buf_t *)ctx->iv, AES_128_CFB_IV_LEN, iv);
+	md5((const pgs_buf_t *)ctx->key, AES_128_CFB_KEY_LEN, key);
+	char header[4];
+	aes_128_cfb_decrypt(data, 4, key, iv, (pgs_buf_t *)header);
+
+	meta->v = header[0];
+	meta->opt = header[1];
+	meta->cmd = header[2];
+	meta->m = header[3];
+
+	if (data_len < meta->m + 4)
+		return false;
+
+	// FIXME: ignore header for now
+
+	return true;
 }

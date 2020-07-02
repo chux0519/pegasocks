@@ -78,7 +78,7 @@ void test_fnv1a()
 	assert(strcmp(result, (const char *)hexstring) == 0);
 }
 
-void test_aes_128_cfb()
+void test_aes_128_cfb_encrypt()
 {
 	// key: key, iv: iviviviviviviviv
 	// aes_128_cfb() == "960bb181638ddd77"
@@ -88,13 +88,33 @@ void test_aes_128_cfb()
 	char result[] = "960bb181638ddd77";
 	unsigned char output[8];
 
-	int output_len = aes_128_cfb((const pgs_buf_t *)plaintext, 8,
-				     (const pgs_buf_t *)key,
-				     (const pgs_buf_t *)iv, output);
+	int output_len = aes_128_cfb_encrypt((const pgs_buf_t *)plaintext, 8,
+					     (const pgs_buf_t *)key,
+					     (const pgs_buf_t *)iv, output);
 	pgs_buf_t *hexstring =
 		to_hexstring((const pgs_buf_t *)output, output_len);
 	assert(strcmp(result, (const char *)hexstring) == 0);
 	pgs_free(hexstring);
+}
+
+void test_aes_128_cfb_decrypt()
+{
+	// key: key, iv: iviviviviviviviv
+	// aes_128_cfb() == "960bb181638ddd77"
+	char key[] = { 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8 };
+	char iv[] = { 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8 };
+	char ciphertext_hex[] = "960bb181638ddd77";
+	char ciphertext[8];
+	hextobin(ciphertext_hex, (uint8_t *)ciphertext, 8);
+	char result[] = "password";
+	unsigned char output[9];
+
+	int output_len = aes_128_cfb_decrypt((const pgs_buf_t *)ciphertext, 8,
+					     (const pgs_buf_t *)key,
+					     (const pgs_buf_t *)iv, output);
+	assert(output_len == 8);
+	output[8] = '\0';
+	assert(strcmp(result, (const char *)output) == 0);
 }
 
 int main()
@@ -104,6 +124,7 @@ int main()
 	test_hmac_md5();
 	test_md5();
 	test_fnv1a();
-	test_aes_128_cfb();
+	test_aes_128_cfb_encrypt();
+	test_aes_128_cfb_decrypt();
 	return 0;
 }
