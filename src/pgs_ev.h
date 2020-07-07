@@ -40,9 +40,12 @@ typedef struct evbuffer pgs_evbuffer_t;
 #define pgs_ev_base_dispatch event_base_dispatch
 #define pgs_evbuffer_get_length evbuffer_get_length
 #define pgs_evbuffer_pullup evbuffer_pullup
+#define pgs_evbuffer_expand evbuffer_expand
 #define pgs_evbuffer_add evbuffer_add
 #define pgs_evbuffer_add_printf evbuffer_add_printf
 #define pgs_evbuffer_drain evbuffer_drain
 #define pgs_evbuffer_remove evbuffer_remove
+#define pgs_evbuffer_new evbuffer_new
+#define pgs_evbuffer_free evbuffer_free
 
 #endif

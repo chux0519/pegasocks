@@ -11,9 +11,7 @@
 
 const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
 const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
-const char vmess_key_suffix[16] = { 0xc4, 0x86, 0x19, 0xfe, 0x8f, 0x02,
-				    0x49, 0xe0, 0xb9, 0xe9, 0xed, 0xf7,
-				    0x63, 0xe1, 0x7e, 0x21 };
+const char vmess_key_suffix[36] = "c48619fe-8f02-49e0-b9e9-edf763e17e21";
 
 void pgs_ws_req(pgs_evbuffer_t *out, const char *hostname,
 		const char *server_address, int server_port, const char *path)
@@ -37,18 +35,19 @@ bool pgs_ws_upgrade_check(const char *data)
 	       !strstr(data, ws_accept);
 }
 
-void pgs_ws_write(pgs_evbuffer_t *buf, pgs_buf_t *msg, pgs_size_t len)
+void pgs_ws_write(pgs_evbuffer_t *buf, pgs_buf_t *msg, pgs_size_t len,
+		  int opcode)
 {
-	pgs_ws_write_head(buf, len);
+	pgs_ws_write_head(buf, len, opcode);
 	// x ^ 0 = x
 	pgs_evbuffer_add(buf, msg, len);
 }
 
-void pgs_ws_write_head(pgs_evbuffer_t *buf, pgs_size_t len)
+void pgs_ws_write_head(pgs_evbuffer_t *buf, pgs_size_t len, int opcode)
 {
 	uint8_t a = 0;
 	a |= 1 << 7; //fin
-	a |= 1; //text frame
+	a |= opcode;
 
 	uint8_t b = 0;
 	b |= 1 << 7; //mask
@@ -123,19 +122,19 @@ bool pgs_ws_parse_head(pgs_buf_t *data, pgs_size_t data_len,
 	return parsed;
 }
 
-void pgs_vmess_write(pgs_evbuffer_t *buf, const pgs_buf_t *uuid,
-		     const pgs_buf_t *socks5_cmd, pgs_size_t socks5_cmd_len,
-		     const pgs_buf_t *data, pgs_size_t data_len,
-		     pgs_vmess_ctx_t *ctx)
+pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 {
+	pgs_buf_t *buf = ctx->remote_wbuf;
+	pgs_buf_t *socks5_cmd = (pgs_buf_t *)ctx->cmd;
+	pgs_size_t socks5_cmd_len = ctx->cmdlen;
 	time_t now = time(NULL);
 	unsigned long ts = htonll(now);
 	pgs_buf_t header_auth[16];
 	pgs_size_t header_auth_len = 0;
-	hmac_md5(uuid, 16, (const pgs_buf_t *)ts, 8, header_auth,
+	hmac_md5(uuid, 16, (const pgs_buf_t *)&ts, 8, header_auth,
 		 &header_auth_len);
 	assert(header_auth_len == 16);
-	pgs_evbuffer_add(buf, header_auth, header_auth_len);
+	pgs_memcpy(buf, header_auth, header_auth_len);
 
 	// socks5 cmd
 	// +----+-----+-------+------+----------+----------+
@@ -158,13 +157,13 @@ void pgs_vmess_write(pgs_evbuffer_t *buf, const pgs_buf_t *uuid,
 	// ver
 	header_cmd_raw[0] = 1;
 	offset += 1;
-	// data key
-	RAND_bytes(header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
-	pgs_memcpy(ctx->key, header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
-	offset += AES_128_CFB_KEY_LEN;
 	// data iv
 	RAND_bytes(header_cmd_raw + offset, AES_128_CFB_IV_LEN);
 	pgs_memcpy(ctx->iv, header_cmd_raw + offset, AES_128_CFB_IV_LEN);
+	offset += AES_128_CFB_KEY_LEN;
+	// data key
+	RAND_bytes(header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
+	pgs_memcpy(ctx->key, header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
 	offset += AES_128_CFB_IV_LEN;
 	// v
 	offset += RAND_bytes(header_cmd_raw + offset, 1);
@@ -185,7 +184,11 @@ void pgs_vmess_write(pgs_evbuffer_t *buf, const pgs_buf_t *uuid,
 	header_cmd_raw[offset + 1] = socks5_cmd[socks5_cmd_len - 1];
 	offset += 2;
 	// atype
-	header_cmd_raw[offset] = socks5_cmd[3];
+	if (socks5_cmd[3] == 0x01) {
+		header_cmd_raw[offset] = 0x01;
+	} else {
+		header_cmd_raw[offset] = socks5_cmd[3] - 1;
+	}
 	offset += 1;
 	// addr
 	pgs_memcpy(header_cmd_raw + offset, socks5_cmd + 4, n);
@@ -193,65 +196,149 @@ void pgs_vmess_write(pgs_evbuffer_t *buf, const pgs_buf_t *uuid,
 
 	assert(offset + 4 == header_cmd_len);
 
-	int f = fnv1a(header_cmd_raw, header_cmd_len - 4);
+	unsigned int f = fnv1a(header_cmd_raw, header_cmd_len - 4);
+
 	header_cmd_raw[offset] = f >> 24;
 	header_cmd_raw[offset + 1] = f >> 16;
 	header_cmd_raw[offset + 2] = f >> 8;
 	header_cmd_raw[offset + 3] = f;
 
-	pgs_buf_t k_md5_input[32];
+	pgs_buf_t k_md5_input[16 + 36];
 	pgs_memcpy(k_md5_input, uuid, 16);
-	pgs_memcpy(k_md5_input + 16, vmess_key_suffix, 16);
+	pgs_memcpy(k_md5_input + 16, vmess_key_suffix, 36);
 	pgs_buf_t cmd_k[AES_128_CFB_KEY_LEN];
-	md5(k_md5_input, 32, cmd_k);
+	md5(k_md5_input, 16 + 36, cmd_k);
 
 	pgs_buf_t iv_md5_input[32];
 	now = time(NULL);
 	ts = htonll(now);
-	pgs_memcpy(iv_md5_input, (const unsigned char *)ts, 8);
-	pgs_memcpy(iv_md5_input + 8, (const unsigned char *)ts, 8);
-	pgs_memcpy(iv_md5_input + 16, (const unsigned char *)ts, 8);
-	pgs_memcpy(iv_md5_input + 24, (const unsigned char *)ts, 8);
+	pgs_memcpy(iv_md5_input, (const unsigned char *)&ts, 8);
+	pgs_memcpy(iv_md5_input + 8, (const unsigned char *)&ts, 8);
+	pgs_memcpy(iv_md5_input + 16, (const unsigned char *)&ts, 8);
+	pgs_memcpy(iv_md5_input + 24, (const unsigned char *)&ts, 8);
 	pgs_buf_t cmd_iv[AES_128_CFB_IV_LEN];
 	md5(iv_md5_input, 32, cmd_iv);
+
 	aes_128_cfb_encrypt(header_cmd_raw, header_cmd_len, cmd_k, cmd_iv,
 			    header_cmd_encoded);
-	pgs_evbuffer_add(buf, header_cmd_encoded, header_cmd_len);
+	pgs_memcpy(buf + header_auth_len, header_cmd_encoded, header_cmd_len);
 
-	// data section
-	f = fnv1a((void *)data, data_len);
-	pgs_buf_t data_encoded[data_len + 4];
-	data_encoded[0] = f >> 24;
-	data_encoded[1] = f >> 16;
-	data_encoded[2] = f >> 8;
-	data_encoded[3] = f;
-	aes_128_cfb_encrypt(data, data_len, (const unsigned char *)ctx->key,
-			    (const unsigned char *)ctx->iv, data_encoded + 4);
-	pgs_evbuffer_add(buf, data_encoded, data_len + 4);
+	return header_auth_len + header_cmd_len;
 }
 
-bool pgs_vmess_parse_head(pgs_buf_t *data, pgs_size_t data_len,
-			  const pgs_vmess_ctx_t *ctx, pgs_vmess_resp_t *meta)
+pgs_size_t pgs_vmess_write_body(pgs_buf_t *buf, pgs_evbuffer_t *inboundr,
+				pgs_vmess_ctx_t *ctx)
 {
-	if (data_len < 4)
-		return false;
+	pgs_size_t data_len = pgs_evbuffer_get_length(inboundr);
+	unsigned char *data = pgs_evbuffer_pullup(inboundr, data_len);
+
+	pgs_buf_t *localr = ctx->local_rbuf;
+
+	// data section
+	assert(data_len + 6 <= _PGS_BUFSIZE);
+	localr[0] = (data_len + 4) >> 8;
+	localr[1] = (data_len + 4);
+
+	unsigned int f = fnv1a((void *)data, data_len);
+	localr[2] = f >> 24;
+	localr[3] = f >> 16;
+	localr[4] = f >> 8;
+	localr[5] = f;
+
+	pgs_memcpy(localr + 6, data, data_len);
+	pgs_evbuffer_drain(inboundr, data_len);
+
+	aes_128_cfb_encrypt(localr, data_len + 6,
+			    (const unsigned char *)ctx->key,
+			    (const unsigned char *)ctx->iv, buf);
+	return data_len + 6;
+}
+
+bool pgs_vmess_parse(pgs_buf_t *data, pgs_size_t data_len, pgs_vmess_ctx_t *ctx,
+		     pgs_evbuffer_t *writer)
+{
+	pgs_vmess_resp_t *meta = &ctx->resp_meta;
 
 	pgs_buf_t iv[AES_128_CFB_IV_LEN];
 	pgs_buf_t key[AES_128_CFB_KEY_LEN];
 	md5((const pgs_buf_t *)ctx->iv, AES_128_CFB_IV_LEN, iv);
 	md5((const pgs_buf_t *)ctx->key, AES_128_CFB_KEY_LEN, key);
-	char header[4];
-	aes_128_cfb_decrypt(data, 4, key, iv, (pgs_buf_t *)header);
 
-	meta->v = header[0];
-	meta->opt = header[1];
-	meta->cmd = header[2];
-	meta->m = header[3];
+	if (!ctx->header_recved) {
+		if (ctx->remote_rbuf_pos == 0) {
+			// first package
+			if (data_len < 10)
+				return false;
+			aes_128_cfb_decrypt(data, data_len, key, iv,
+					    ctx->remote_rbuf);
 
-	if (data_len < meta->m + 4)
-		return false;
+			meta->v = ctx->remote_rbuf[0];
+			meta->opt = ctx->remote_rbuf[1];
+			meta->cmd = ctx->remote_rbuf[2];
+			meta->m = ctx->remote_rbuf[3];
 
-	// FIXME: ignore header for now
+			if (meta->cmd == 0x01 || meta->m != 0)
+				return false;
 
+			ctx->resp_len = ((ctx->remote_rbuf[4] << 8) |
+					 ctx->remote_rbuf[5]) -
+					4;
+			ctx->resp_hash = ctx->remote_rbuf[6] << 24 |
+					 ctx->remote_rbuf[7] << 16 |
+					 ctx->remote_rbuf[8] |
+					 ctx->remote_rbuf[9];
+
+			// len: 2042, data_len: 2048, head: 4 + m(0) + 6 = 10, remains: 2042 - (2048 - 10) = 4
+			pgs_size_t remains_data_len = data_len - 10;
+			if (remains_data_len >= ctx->resp_len) {
+				// payload is long enough
+				aes_128_cfb_decrypt(data, 10 + ctx->resp_len,
+						    key, iv, ctx->remote_rbuf);
+				pgs_evbuffer_add(writer, ctx->remote_rbuf + 10,
+						 ctx->resp_len);
+				pgs_memcpy(ctx->remote_rbuf,
+					   data + 10 + ctx->resp_len,
+					   remains_data_len - ctx->resp_len);
+				ctx->remote_rbuf_pos = 0;
+			} else {
+				// copy to buffer read next time
+				pgs_memcpy(ctx->remote_rbuf, data, data_len);
+				ctx->remote_rbuf_pos = data_len;
+			}
+
+		} else {
+			// have remains package
+			if (ctx->remote_rbuf_pos + data_len >=
+			    ctx->resp_len + 10) {
+				pgs_size_t data_to_read = ctx->resp_len + 10 -
+							  ctx->remote_rbuf_pos;
+				pgs_memcpy(ctx->remote_rbuf +
+						   ctx->remote_rbuf_pos,
+					   data, data_to_read);
+				// enough data
+				aes_128_cfb_decrypt(ctx->remote_rbuf,
+						    10 + ctx->resp_len, key, iv,
+						    ctx->local_wbuf);
+				pgs_evbuffer_add(writer, ctx->local_wbuf + 10,
+						 ctx->resp_len);
+				pgs_memcpy(ctx->remote_rbuf,
+					   data + data_to_read,
+					   data_len - data_to_read);
+				ctx->remote_rbuf_pos = data_len - data_to_read;
+				ctx->header_recved = true;
+			} else {
+				// needs more
+				pgs_memcpy(ctx->remote_rbuf +
+						   ctx->remote_rbuf_pos,
+					   data, data_len);
+				ctx->remote_rbuf_pos += data_len;
+			}
+		}
+		return true;
+
+	} else {
+		// remains block
+		// TODO:
+	}
 	return true;
 }

@@ -24,6 +24,7 @@ typedef struct pgs_session_inbound_s pgs_session_inbound_t;
 typedef struct pgs_session_outbound_s pgs_session_outbound_t;
 typedef struct pgs_trojansession_ctx_s pgs_trojansession_ctx_t;
 typedef struct pgs_vmess_ctx_s pgs_vmess_ctx_t;
+typedef struct pgs_vmess_resp_s pgs_vmess_resp_t;
 
 struct pgs_session_s {
 	pgs_session_inbound_t *inbound;
@@ -56,9 +57,32 @@ struct pgs_trojansession_ctx_s {
 };
 
 struct pgs_vmess_ctx_s {
+	// for aes codec
 	char iv[AES_128_CFB_IV_LEN];
 	char key[AES_128_CFB_KEY_LEN];
+	pgs_buf_t local_rbuf[_PGS_BUFSIZE];
+	pgs_buf_t local_wbuf[_PGS_BUFSIZE];
+	pgs_buf_t remote_rbuf[_PGS_BUFSIZE];
+	pgs_buf_t remote_wbuf[_PGS_BUFSIZE];
+	// for ws state
 	bool connected;
+	// for request header
+	char *cmd;
+	pgs_size_t cmdlen;
+	bool header_sent;
+	// for resp header
+	bool header_recved;
+	struct pgs_vmess_resp_s {
+		uint8_t v;
+		uint8_t opt;
+		uint8_t cmd;
+		uint8_t m;
+	} resp_meta;
+	bool body_recved;
+	pgs_size_t resp_len;
+	pgs_size_t chunk_len;
+	pgs_size_t remote_rbuf_pos;
+	uint32_t resp_hash;
 };
 
 // trojan session context
@@ -69,7 +93,7 @@ pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const char *encodepass,
 void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx);
 
 // vmess context
-pgs_vmess_ctx_t *pgs_vmess_ctx_new();
+pgs_vmess_ctx_t *pgs_vmess_ctx_new(const char *cmd, pgs_size_t cmdlen);
 void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr);
 
 // inbound
