@@ -69,13 +69,10 @@ void test_md5()
 
 void test_fnv1a()
 {
-	// fnv1a("password") == "5f4dcc3b5aa765d61d8327deb882cf99"
+	// fnv1a32("password") = 0x364b5f18
 	char input[] = "password";
-	char result[] = "364b5f18";
 	int res = fnv1a((void *)input, strlen(input));
-	char hexstring[4];
-	sprintf(hexstring, "%08x", res);
-	assert(strcmp(result, (const char *)hexstring) == 0);
+	assert(res == 0x364b5f18);
 }
 
 void test_aes_128_cfb_encrypt()
