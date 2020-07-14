@@ -317,20 +317,16 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
 {
 	pgs_v2rayserver_config_t *ptr = pgs_v2rayserver_config_new();
 
-	json_object *ssl_obj = json_object_object_get(jobj, "ssl");
-	json_object *ws_obj = json_object_object_get(jobj, "websocket");
-
-	if (!(ssl_obj && ws_obj)) {
-		pgs_config_error(config, "Error: ssl and ws are required");
-		goto error;
-	}
-
-	ptr->ssl.enabled = true;
 	ptr->ssl_ctx = pgs_ssl_ctx_new();
 	if (ptr->ssl_ctx == NULL) {
 		pgs_config_error(config, "Error: pgs_ssl_ctx_new");
 		goto error;
 	}
+
+	json_object *ws_obj = json_object_object_get(jobj, "websocket");
+
+	if (!ws_obj)
+		goto error;
 
 	// parse websocket config
 	ptr->websocket.enabled = true;

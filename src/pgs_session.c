@@ -1,4 +1,5 @@
 #include "pgs_codec.h"
+#include "pgs_crypto.h"
 #include "pgs_session.h"
 #include "pgs_server_manager.h"
 #include "pgs_log.h"
@@ -33,6 +34,16 @@ static void on_trojan_gfw_remote_read(pgs_bev_t *bev, void *ctx);
 static void on_trojan_gfw_local_read(pgs_bev_t *bev, void *ctx);
 static void do_trojan_gfw_remote_write(pgs_bev_t *bev, void *ctx);
 static void do_trojan_gfw_local_write(pgs_bev_t *bev, void *ctx);
+
+/*
+ * v2ray wss session handler
+ */
+static void on_v2ray_ws_remote_event(pgs_bev_t *bev, short events, void *ctx);
+static void on_v2ray_ws_remote_read(pgs_bev_t *bev, void *ctx);
+static void on_v2ray_ws_local_read(pgs_bev_t *bev, void *ctx);
+static void do_v2ray_ws_remote_request(pgs_bev_t *bev, void *ctx);
+static void do_v2ray_ws_remote_write(pgs_bev_t *bev, void *ctx);
+static void do_v2ray_ws_local_write(pgs_bev_t *bev, void *ctx);
 
 /*
  * metrics
@@ -172,16 +183,41 @@ void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx)
 	ctx = NULL;
 }
 
-pgs_vmess_ctx_t *pgs_vmess_ctx_new()
+pgs_vmess_ctx_t *pgs_vmess_ctx_new(const char *cmd, pgs_size_t cmdlen)
 {
 	pgs_vmess_ctx_t *ptr = pgs_malloc(sizeof(pgs_vmess_ctx_t));
 	ptr->connected = false;
+
+	pgs_memzero(ptr->local_rbuf, _PGS_BUFSIZE);
+	pgs_memzero(ptr->local_wbuf, _PGS_BUFSIZE);
+	pgs_memzero(ptr->remote_rbuf, _PGS_BUFSIZE);
+	pgs_memzero(ptr->remote_wbuf, _PGS_BUFSIZE);
+	ptr->cmd = pgs_malloc(sizeof(char) * cmdlen);
+	pgs_memcpy(ptr->cmd, cmd, cmdlen);
+	ptr->cmdlen = cmdlen;
+	ptr->header_sent = false;
+	ptr->header_recved = false;
+	pgs_memzero(&ptr->resp_meta, sizeof(pgs_vmess_resp_t));
+	ptr->body_recved = false;
+	ptr->resp_len = 0;
+	ptr->chunk_len = 0;
+	ptr->remote_rbuf_pos = 0;
+	ptr->resp_hash = 0;
+	ptr->encryptor = NULL;
+	ptr->decryptor = NULL;
+
 	return ptr;
 }
 void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr)
 {
+	if (ptr->encryptor)
+		pgs_aes_cryptor_free(ptr->encryptor);
+	if (ptr->decryptor)
+		pgs_aes_cryptor_free(ptr->decryptor);
 	if (ptr)
 		pgs_free(ptr);
+	ptr->encryptor = NULL;
+	ptr->decryptor = NULL;
 	ptr = NULL;
 }
 
@@ -219,7 +255,7 @@ pgs_session_outbound_new(pgs_session_t *session,
 		pgs_ssl_t *ssl = pgs_ssl_new(trojanconf->ssl_ctx,
 					     (void *)config->server_address);
 		if (ssl == NULL) {
-			fprintf(stderr, "SSL_new");
+			pgs_session_error(session, "SSL_new");
 			goto error;
 		}
 		ptr->bev = pgs_bev_openssl_socket_new(
@@ -246,7 +282,34 @@ pgs_session_outbound_new(pgs_session_t *session,
 			pgs_bev_enable(ptr->bev, EV_READ);
 		}
 	} else if (strcmp(config->server_type, "v2ray") == 0) {
-		// TODO:
+		pgs_v2rayserver_config_t *vconf = config->extra;
+		if (!vconf->websocket.enabled) {
+			pgs_session_error(session,
+					  "v2ray only support wss for now");
+			goto error;
+		}
+		ptr->ctx = pgs_vmess_ctx_new(cmd, cmd_len);
+
+		pgs_ssl_t *ssl = pgs_ssl_new(vconf->ssl_ctx,
+					     (void *)config->server_address);
+		if (ssl == NULL) {
+			pgs_session_error(session, "SSL_new");
+			goto error;
+		}
+		ptr->bev = pgs_bev_openssl_socket_new(
+			session->local_server->base, -1, ssl,
+			BUFFEREVENT_SSL_CONNECTING,
+			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+		pgs_bev_openssl_set_allow_dirty_shutdown(ptr->bev, 1);
+		//ptr->bev = bufferevent_socket_new(
+		//	session->local_server->base, -1,
+		//	BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+
+		pgs_bev_setcb(ptr->bev, on_v2ray_ws_remote_read, NULL,
+			      on_v2ray_ws_remote_event, session);
+		pgs_bev_setcb(session->inbound->bev, on_v2ray_ws_local_read,
+			      NULL, on_local_event, session);
+		pgs_bev_enable(ptr->bev, EV_READ);
 	}
 
 	return ptr;
@@ -478,7 +541,7 @@ static void do_trojan_ws_remote_write(pgs_bev_t *bev, void *ctx)
 	if (head_len > 0)
 		len += head_len;
 
-	pgs_ws_write_head(buf, len);
+	pgs_ws_write_head_text(buf, len);
 
 	if (head_len > 0) {
 		pgs_evbuffer_add(buf, trojan_s_ctx->head, head_len);
@@ -660,6 +723,186 @@ static void do_trojan_gfw_local_write(pgs_bev_t *bev, void *ctx)
 	on_session_metrics_recv(session, data_len);
 	pgs_evbuffer_add(inboundw, data, data_len);
 	pgs_evbuffer_drain(outboundr, data_len);
+}
+
+/*
+ * v2ray wss session handlers
+ */
+static void on_v2ray_ws_remote_event(pgs_bev_t *bev, short events, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+
+	if (events & BEV_EVENT_CONNECTED)
+		do_v2ray_ws_remote_request(bev, ctx);
+	if (events & BEV_EVENT_ERROR)
+		pgs_session_error(session, "Error from bufferevent");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		pgs_ssl_t *ssl = pgs_bev_openssl_get_ssl(bev);
+		if (ssl)
+			pgs_ssl_close(ssl);
+		pgs_bev_free(bev);
+
+		pgs_session_free(session);
+	}
+}
+static void on_v2ray_ws_remote_read(pgs_bev_t *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "remote read triggered");
+	pgs_evbuffer_t *output = pgs_bev_get_output(bev);
+	pgs_evbuffer_t *input = pgs_bev_get_input(bev);
+
+	pgs_size_t data_len = pgs_evbuffer_get_length(input);
+	unsigned char *data = pgs_evbuffer_pullup(input, data_len);
+
+	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
+	if (!v2ray_s_ctx->connected) {
+		if (!strstr((const char *)data, "\r\n\r\n"))
+			return;
+
+		if (pgs_ws_upgrade_check((const char *)data)) {
+			pgs_session_error(session, "websocket upgrade fail!");
+			on_v2ray_ws_remote_event(bev, BEV_EVENT_ERROR, ctx);
+		} else {
+			//drain
+			pgs_evbuffer_drain(input, data_len);
+			v2ray_s_ctx->connected = true;
+			// local buffer should have data already
+			do_v2ray_ws_remote_write(bev, ctx);
+		}
+	} else {
+		do_v2ray_ws_local_write(bev, ctx);
+	}
+}
+static void on_v2ray_ws_local_read(pgs_bev_t *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "local read triggered");
+
+	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
+	if (!v2ray_s_ctx->connected)
+		return;
+
+	pgs_session_debug(session, "write to remote");
+	do_v2ray_ws_remote_write(bev, ctx);
+}
+static void do_v2ray_ws_remote_request(pgs_bev_t *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	const pgs_server_config_t *config = session->outbound->config;
+	const pgs_v2rayserver_config_t *vconfig = config->extra;
+
+	pgs_session_debug(session, "do_v2ray_ws_remote_request");
+
+	pgs_ws_req(pgs_bev_get_output(session->outbound->bev),
+		   vconfig->websocket.hostname, config->server_address,
+		   config->server_port, vconfig->websocket.path);
+
+	pgs_session_debug(session, "do_v2ray_ws_remote_request done");
+}
+static void do_v2ray_ws_remote_write(pgs_bev_t *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "local -> encode -> remote");
+	pgs_bev_t *inbev = session->inbound->bev;
+	pgs_bev_t *outbev = session->outbound->bev;
+
+	pgs_evbuffer_t *outboundw = pgs_bev_get_output(outbev);
+	pgs_evbuffer_t *inboundr = pgs_bev_get_input(inbev);
+
+	pgs_evbuffer_t *buf = outboundw;
+	pgs_size_t len = pgs_evbuffer_get_length(inboundr);
+	unsigned char *msg = pgs_evbuffer_pullup(inboundr, len);
+	pgs_session_debug_buffer(session, msg, len);
+
+	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
+
+	// vmess encode
+	pgs_size_t wbuf_offset = 0;
+	if (!v2ray_s_ctx->header_sent) {
+		// will init cryptor
+		wbuf_offset = pgs_vmess_write_head(
+			(const pgs_buf_t *)session->outbound->config->password,
+			v2ray_s_ctx);
+		v2ray_s_ctx->header_sent = true;
+	}
+	pgs_size_t data_section_len = pgs_vmess_write_body(
+		v2ray_s_ctx->remote_wbuf + wbuf_offset, inboundr, v2ray_s_ctx);
+	pgs_size_t total_len = wbuf_offset + data_section_len;
+
+	// ws encode
+	pgs_ws_write_bin(outboundw, v2ray_s_ctx->remote_wbuf, total_len);
+
+	// empty package indicated request end
+	pgs_session_debug_buffer(session,
+				 v2ray_s_ctx->remote_wbuf + wbuf_offset,
+				 total_len - wbuf_offset);
+
+	on_session_metrics_send(session, total_len);
+}
+
+static void do_v2ray_ws_local_write(pgs_bev_t *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session,
+			  "do_v2ray_ws_local_write remote -> decode -> local");
+	pgs_bev_t *inbev = session->inbound->bev;
+	pgs_bev_t *outbev = session->outbound->bev;
+
+	pgs_evbuffer_t *outboundr = pgs_bev_get_input(outbev);
+	pgs_evbuffer_t *inboundw = pgs_bev_get_output(inbev);
+
+	pgs_size_t data_len = pgs_evbuffer_get_length(outboundr);
+	if (data_len < 2)
+		return;
+
+	unsigned char *data = pgs_evbuffer_pullup(outboundr, data_len);
+
+	while (data_len > 2) {
+		pgs_ws_resp_t ws_meta;
+		if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
+			pgs_session_debug(
+				session,
+				"ws_meta.header_len: %d, ws_meta.payload_len: %d, opcode: %d",
+				ws_meta.header_len, ws_meta.payload_len,
+				ws_meta.opcode);
+			// ignore opcode here
+			if (ws_meta.opcode == 0x02) {
+				// decode vmess protocol then write
+				// mount to ctx
+				pgs_vmess_ctx_t *v2ray_s_ctx =
+					session->outbound->ctx;
+				if (!pgs_vmess_parse(data + ws_meta.header_len,
+						     ws_meta.payload_len,
+						     v2ray_s_ctx, inboundw)) {
+					pgs_session_error(
+						session,
+						"failed to decode vmess payload");
+					on_v2ray_ws_remote_event(
+						bev, BEV_EVENT_ERROR, ctx);
+				}
+			}
+
+			if (!ws_meta.fin)
+				pgs_session_debug(session,
+						  "frame to be continue..");
+
+			pgs_evbuffer_drain(outboundr,
+					   ws_meta.header_len +
+						   ws_meta.payload_len);
+
+			on_session_metrics_recv(session,
+						ws_meta.header_len +
+							ws_meta.payload_len);
+
+			data_len -= (ws_meta.header_len + ws_meta.payload_len);
+			data += (ws_meta.header_len + ws_meta.payload_len);
+
+		} else {
+			// error parsing websocket data
+			return;
+		}
+	}
 }
 
 static void on_session_metrics_recv(pgs_session_t *session, pgs_size_t len)
