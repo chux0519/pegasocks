@@ -7,6 +7,7 @@
 #include "pgs_local_server.h"
 #include "pgs_socks5.h"
 #include "pgs_server_manager.h"
+#include "pgs_crypto.h"
 
 #define pgs_session_debug(session, ...)                                        \
 	pgs_logger_debug(session->local_server->logger, __VA_ARGS__)
@@ -60,6 +61,8 @@ struct pgs_vmess_ctx_s {
 	// for aes codec
 	char iv[AES_128_CFB_IV_LEN];
 	char key[AES_128_CFB_KEY_LEN];
+	char riv[AES_128_CFB_IV_LEN];
+	char rkey[AES_128_CFB_KEY_LEN];
 	pgs_buf_t local_rbuf[_PGS_BUFSIZE];
 	pgs_buf_t local_wbuf[_PGS_BUFSIZE];
 	pgs_buf_t remote_rbuf[_PGS_BUFSIZE];
@@ -83,6 +86,8 @@ struct pgs_vmess_ctx_s {
 	pgs_size_t chunk_len;
 	pgs_size_t remote_rbuf_pos;
 	uint32_t resp_hash;
+	pgs_aes_cryptor_t *encryptor;
+	pgs_aes_cryptor_t *decryptor;
 };
 
 // trojan session context

@@ -1,4 +1,5 @@
 #include "pgs_codec.h"
+#include "pgs_crypto.h"
 #include "pgs_session.h"
 #include "pgs_server_manager.h"
 #include "pgs_log.h"
@@ -202,13 +203,21 @@ pgs_vmess_ctx_t *pgs_vmess_ctx_new(const char *cmd, pgs_size_t cmdlen)
 	ptr->chunk_len = 0;
 	ptr->remote_rbuf_pos = 0;
 	ptr->resp_hash = 0;
+	ptr->encryptor = NULL;
+	ptr->decryptor = NULL;
 
 	return ptr;
 }
 void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr)
 {
+	if (ptr->encryptor)
+		pgs_aes_cryptor_free(ptr->encryptor);
+	if (ptr->decryptor)
+		pgs_aes_cryptor_free(ptr->decryptor);
 	if (ptr)
 		pgs_free(ptr);
+	ptr->encryptor = NULL;
+	ptr->decryptor = NULL;
 	ptr = NULL;
 }
 
@@ -287,14 +296,14 @@ pgs_session_outbound_new(pgs_session_t *session,
 			pgs_session_error(session, "SSL_new");
 			goto error;
 		}
-		// ptr->bev = pgs_bev_openssl_socket_new(
-		// 	session->local_server->base, -1, ssl,
-		// 	BUFFEREVENT_SSL_CONNECTING,
-		// 	BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-		// pgs_bev_openssl_set_allow_dirty_shutdown(ptr->bev, 1);
-		ptr->bev = bufferevent_socket_new(
-			session->local_server->base, -1,
+		ptr->bev = pgs_bev_openssl_socket_new(
+			session->local_server->base, -1, ssl,
+			BUFFEREVENT_SSL_CONNECTING,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+		pgs_bev_openssl_set_allow_dirty_shutdown(ptr->bev, 1);
+		//ptr->bev = bufferevent_socket_new(
+		//	session->local_server->base, -1,
+		//	BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 
 		pgs_bev_setcb(ptr->bev, on_v2ray_ws_remote_read, NULL,
 			      on_v2ray_ws_remote_event, session);
@@ -762,7 +771,6 @@ static void on_v2ray_ws_remote_read(pgs_bev_t *bev, void *ctx)
 			do_v2ray_ws_remote_write(bev, ctx);
 		}
 	} else {
-		// upgraded, decode it and write to local
 		do_v2ray_ws_local_write(bev, ctx);
 	}
 }
@@ -812,6 +820,7 @@ static void do_v2ray_ws_remote_write(pgs_bev_t *bev, void *ctx)
 	// vmess encode
 	pgs_size_t wbuf_offset = 0;
 	if (!v2ray_s_ctx->header_sent) {
+		// will init cryptor
 		wbuf_offset = pgs_vmess_write_head(
 			(const pgs_buf_t *)session->outbound->config->password,
 			v2ray_s_ctx);
@@ -823,6 +832,8 @@ static void do_v2ray_ws_remote_write(pgs_bev_t *bev, void *ctx)
 
 	// ws encode
 	pgs_ws_write_bin(outboundw, v2ray_s_ctx->remote_wbuf, total_len);
+
+	// empty package indicated request end
 	pgs_session_debug_buffer(session,
 				 v2ray_s_ctx->remote_wbuf + wbuf_offset,
 				 total_len - wbuf_offset);
@@ -847,43 +858,51 @@ static void do_v2ray_ws_local_write(pgs_bev_t *bev, void *ctx)
 
 	unsigned char *data = pgs_evbuffer_pullup(outboundr, data_len);
 
-	pgs_ws_resp_t ws_meta;
-	if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
-		pgs_session_debug(
-			session,
-			"ws_meta.header_len: %d, ws_meta.payload_len: %d, opcode: %d",
-			ws_meta.header_len, ws_meta.payload_len,
-			ws_meta.opcode);
-		// ignore opcode here
-		if (ws_meta.opcode == 0x02) {
-			// decode vmess protocol then write
-			// mount to ctx
-			pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
-			pgs_size_t offset = 0;
-			int len = ws_meta.payload_len;
-			if (!pgs_vmess_parse(data + ws_meta.header_len,
-					     ws_meta.payload_len, v2ray_s_ctx,
-					     inboundw)) {
-				pgs_session_error(
-					session,
-					"failed to decode vmess payload");
-				goto error;
+	while (data_len > 2) {
+		pgs_ws_resp_t ws_meta;
+		if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
+			pgs_session_debug(
+				session,
+				"ws_meta.header_len: %d, ws_meta.payload_len: %d, opcode: %d",
+				ws_meta.header_len, ws_meta.payload_len,
+				ws_meta.opcode);
+			// ignore opcode here
+			if (ws_meta.opcode == 0x02) {
+				// decode vmess protocol then write
+				// mount to ctx
+				pgs_vmess_ctx_t *v2ray_s_ctx =
+					session->outbound->ctx;
+				if (!pgs_vmess_parse(data + ws_meta.header_len,
+						     ws_meta.payload_len,
+						     v2ray_s_ctx, inboundw)) {
+					pgs_session_error(
+						session,
+						"failed to decode vmess payload");
+					on_v2ray_ws_remote_event(
+						bev, BEV_EVENT_ERROR, ctx);
+				}
 			}
+
+			if (!ws_meta.fin)
+				pgs_session_debug(session,
+						  "frame to be continue..");
+
+			pgs_evbuffer_drain(outboundr,
+					   ws_meta.header_len +
+						   ws_meta.payload_len);
+
+			on_session_metrics_recv(session,
+						ws_meta.header_len +
+							ws_meta.payload_len);
+
+			data_len -= (ws_meta.header_len + ws_meta.payload_len);
+			data += (ws_meta.header_len + ws_meta.payload_len);
+
+		} else {
+			// error parsing websocket data
+			return;
 		}
-
-		if (!ws_meta.fin)
-			pgs_session_debug(session, "frame to be continue..");
-
-		pgs_evbuffer_drain(outboundr,
-				   ws_meta.header_len + ws_meta.payload_len);
-
-		on_session_metrics_recv(session, ws_meta.header_len +
-							 ws_meta.payload_len);
 	}
-	return;
-
-error:
-	on_v2ray_ws_remote_event(bev, BEV_EVENT_ERROR, ctx);
 }
 
 static void on_session_metrics_recv(pgs_session_t *session, pgs_size_t len)

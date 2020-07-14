@@ -1,5 +1,6 @@
 #include "pgs_codec.h"
 #include "pgs_util.h"
+#include "pgs_crypto.h"
 #include <assert.h>
 #include <openssl/rand.h>
 
@@ -164,6 +165,21 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 	// data key
 	RAND_bytes(header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
 	pgs_memcpy(ctx->key, header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
+	if (!ctx->encryptor)
+		ctx->encryptor =
+			pgs_aes_cryptor_new(EVP_aes_128_cfb(),
+					    (const pgs_buf_t *)ctx->key,
+					    (const pgs_buf_t *)ctx->iv);
+	if (!ctx->decryptor) {
+		md5((const pgs_buf_t *)ctx->iv, AES_128_CFB_IV_LEN,
+		    (pgs_buf_t *)ctx->riv);
+		md5((const pgs_buf_t *)ctx->key, AES_128_CFB_KEY_LEN,
+		    (pgs_buf_t *)ctx->rkey);
+		ctx->decryptor =
+			pgs_aes_cryptor_new(EVP_aes_128_cfb(),
+					    (const pgs_buf_t *)ctx->rkey,
+					    (const pgs_buf_t *)ctx->riv);
+	}
 	offset += AES_128_CFB_IV_LEN;
 	// v
 	offset += RAND_bytes(header_cmd_raw + offset, 1);
@@ -248,9 +264,11 @@ pgs_size_t pgs_vmess_write_body(pgs_buf_t *buf, pgs_evbuffer_t *inboundr,
 	pgs_memcpy(localr + 6, data, data_len);
 	pgs_evbuffer_drain(inboundr, data_len);
 
-	aes_128_cfb_encrypt(localr, data_len + 6,
-			    (const unsigned char *)ctx->key,
-			    (const unsigned char *)ctx->iv, buf);
+	assert(ctx->encryptor != NULL);
+	pgs_aes_cryptor_encrypt(ctx->encryptor, localr, data_len + 6, buf);
+	// aes_128_cfb_encrypt(localr, data_len + 6,
+	// 		    (const unsigned char *)ctx->key,
+	// 		    (const unsigned char *)ctx->iv, buf);
 	return data_len + 6;
 }
 
@@ -258,87 +276,68 @@ bool pgs_vmess_parse(pgs_buf_t *data, pgs_size_t data_len, pgs_vmess_ctx_t *ctx,
 		     pgs_evbuffer_t *writer)
 {
 	pgs_vmess_resp_t *meta = &ctx->resp_meta;
+	pgs_buf_t *rrbuf = ctx->remote_rbuf;
+	pgs_buf_t *lwbuf = ctx->local_wbuf;
+	pgs_aes_cryptor_t *decryptor = ctx->decryptor;
 
-	pgs_buf_t iv[AES_128_CFB_IV_LEN];
-	pgs_buf_t key[AES_128_CFB_KEY_LEN];
-	md5((const pgs_buf_t *)ctx->iv, AES_128_CFB_IV_LEN, iv);
-	md5((const pgs_buf_t *)ctx->key, AES_128_CFB_KEY_LEN, key);
+	const pgs_buf_t *key = (const pgs_buf_t *)ctx->rkey;
+	const pgs_buf_t *iv = (const pgs_buf_t *)ctx->riv;
 
 	if (!ctx->header_recved) {
-		if (ctx->remote_rbuf_pos == 0) {
-			// first package
-			if (data_len < 10)
-				return false;
-			aes_128_cfb_decrypt(data, data_len, key, iv,
-					    ctx->remote_rbuf);
+		if (data_len < 4)
+			return false;
+		if (!pgs_aes_cryptor_decrypt(decryptor, data, 4, rrbuf))
+			return false;
+		ctx->remote_rbuf_pos = 4;
+		meta->v = rrbuf[0];
+		meta->opt = rrbuf[1];
+		meta->cmd = rrbuf[2];
+		meta->m = rrbuf[3];
+		if (meta->m != 0) // support no cmd
+			return false;
+		ctx->header_recved = true;
+		ctx->resp_len = 0;
+		return pgs_vmess_parse(data + 4, data_len - 4, ctx, writer);
+	}
+	if (ctx->resp_len == 0) {
+		if (data_len == 0) // may called by itself, wait for more data
+			return true;
+		if (data_len < 2) // illegal data
+			return false;
+		if (!pgs_aes_cryptor_decrypt(decryptor, data, 2, rrbuf))
+			return false;
+		int l = rrbuf[0] << 8 | rrbuf[1];
+		if (l == 0) // end
+			return true;
+		if (l < 4)
+			return false;
+		ctx->resp_len = l - 4;
+		ctx->resp_hash = 0;
+		// skip fnv1a hash
+		return pgs_vmess_parse(data + 2, data_len - 2, ctx, writer);
+	}
 
-			meta->v = ctx->remote_rbuf[0];
-			meta->opt = ctx->remote_rbuf[1];
-			meta->cmd = ctx->remote_rbuf[2];
-			meta->m = ctx->remote_rbuf[3];
+	if (ctx->resp_hash == 0) {
+		if (data_len < 4) // need more data
+			return false;
+		if (!pgs_aes_cryptor_decrypt(decryptor, data, 4, rrbuf))
+			return false;
+		ctx->resp_hash = rrbuf[0] << 24 | rrbuf[1] << 16 |
+				 rrbuf[2] << 8 | rrbuf[3];
+		return pgs_vmess_parse(data + 4, data_len - 4, ctx, writer);
+	}
 
-			if (meta->cmd == 0x01 || meta->m != 0)
-				return false;
-
-			ctx->resp_len = ((ctx->remote_rbuf[4] << 8) |
-					 ctx->remote_rbuf[5]) -
-					4;
-			ctx->resp_hash = ctx->remote_rbuf[6] << 24 |
-					 ctx->remote_rbuf[7] << 16 |
-					 ctx->remote_rbuf[8] |
-					 ctx->remote_rbuf[9];
-
-			// len: 2042, data_len: 2048, head: 4 + m(0) + 6 = 10, remains: 2042 - (2048 - 10) = 4
-			pgs_size_t remains_data_len = data_len - 10;
-			if (remains_data_len >= ctx->resp_len) {
-				// payload is long enough
-				aes_128_cfb_decrypt(data, 10 + ctx->resp_len,
-						    key, iv, ctx->remote_rbuf);
-				pgs_evbuffer_add(writer, ctx->remote_rbuf + 10,
-						 ctx->resp_len);
-				pgs_memcpy(ctx->remote_rbuf,
-					   data + 10 + ctx->resp_len,
-					   remains_data_len - ctx->resp_len);
-				ctx->remote_rbuf_pos = 0;
-			} else {
-				// copy to buffer read next time
-				pgs_memcpy(ctx->remote_rbuf, data, data_len);
-				ctx->remote_rbuf_pos = data_len;
-			}
-
-		} else {
-			// have remains package
-			if (ctx->remote_rbuf_pos + data_len >=
-			    ctx->resp_len + 10) {
-				pgs_size_t data_to_read = ctx->resp_len + 10 -
-							  ctx->remote_rbuf_pos;
-				pgs_memcpy(ctx->remote_rbuf +
-						   ctx->remote_rbuf_pos,
-					   data, data_to_read);
-				// enough data
-				aes_128_cfb_decrypt(ctx->remote_rbuf,
-						    10 + ctx->resp_len, key, iv,
-						    ctx->local_wbuf);
-				pgs_evbuffer_add(writer, ctx->local_wbuf + 10,
-						 ctx->resp_len);
-				pgs_memcpy(ctx->remote_rbuf,
-					   data + data_to_read,
-					   data_len - data_to_read);
-				ctx->remote_rbuf_pos = data_len - data_to_read;
-				ctx->header_recved = true;
-			} else {
-				// needs more
-				pgs_memcpy(ctx->remote_rbuf +
-						   ctx->remote_rbuf_pos,
-					   data, data_len);
-				ctx->remote_rbuf_pos += data_len;
-			}
-		}
+	if (data_len <= 0) // need more data
 		return true;
 
-	} else {
-		// remains block
-		// TODO:
-	}
-	return true;
+	pgs_size_t data_to_decrypt =
+		ctx->resp_len < data_len ? ctx->resp_len : data_len;
+	if (!pgs_aes_cryptor_decrypt(decryptor, data, data_to_decrypt, lwbuf))
+		return false;
+
+	pgs_evbuffer_add(writer, lwbuf, data_to_decrypt);
+	ctx->resp_len -= data_to_decrypt;
+
+	return pgs_vmess_parse(data + data_to_decrypt,
+			       data_len - data_to_decrypt, ctx, writer);
 }
