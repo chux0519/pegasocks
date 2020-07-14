@@ -47,34 +47,35 @@ C 语言编写，轻量，支持类 unix 系统。
 
 从最外层开始解释
 
-- `local\_address` 必填，本地服务(socks5)监听地址
-- `local\_port` 必填，本地服务(socks5)监听端口
-- `log\_level` 可选，为 0 到 3，等级依次是：debug、info、warn 和 error，默认为 1
-- `log\_file` 可选，日志输出位置，不填时，写到 stderr
+- `local_address` 必填，本地服务(socks5)监听地址
+- `local_port` 必填，本地服务(socks5)监听端口
+- `log_level` 可选，为 0 到 3，等级依次是：debug、info、warn 和 error，默认为 1
+- `log_file` 可选，日志输出位置，不填时，写到 stderr
 
 ### Servers 字段
 
 是一个数组，每个成员的字段如下
 
-- `server\_address` 必填，服务器地址
-- `server\_port` 必填，服务器端口
-- `server\_type` 必填，服务器类型，目前仅支持一种 `trojan`
+- `server_address` 必填，服务器地址
+- `server_port` 必填，服务器端口
+- `server_type` 必填，服务器类型，目前仅支持一种 `trojan`
 - `password` 必填，密码
 
-当 `server\_type` 为 `trojan` 时，支持
+当 `server_type` 为 `trojan` 时，支持
 
 - `websocket` 可选，内容为对象，不存在时，走直连(trojan-gfw)，填写后可以走 websocket(wss) 并利用 CDN 转发(trojan-go)
   - `path` websocket 的路径
 
-trojan 的传输层由 ssl/tls 保护，因此 `server\_port` 为 443，同时，服务器还需要绑定域名并申请 https 证书。
+trojan 的传输层由 ssl/tls 保护，因此 `server_port` 为 443，同时，服务器还需要绑定域名并申请 https 证书。
 
 ## 开发计划
 
 - 多种协议支持
-  - [x] trojan (wss)
-  - [x] trojan (直连)
-  - [ ] v2ray (wss)
+  - [x] trojan (tls + websocket)
+  - [x] trojan (tls)
+  - [x] v2ray (tls + websocket + vmess)
 - 多类型服务端负载均衡
 - 平台适配
-  - [ ] osx 适配（应该可以直接用，暂未测试）
-  - [ ] windows 适配
+  - [x] linux
+  - [x] osx
+  - [ ] windows
