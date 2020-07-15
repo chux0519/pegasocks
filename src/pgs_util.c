@@ -197,7 +197,7 @@ void hextobin(const char *str, uint8_t *bytes, size_t blen)
 	};
 
 	pgs_memzero(bytes, blen);
-	for (pos = 0; ((pos < (blen * 2)) && (pos < strlen(str))); pos += 2) {
+	for (pos = 0; (pos < (blen * 2)); pos += 2) {
 		idx0 = (uint8_t)str[pos + 0];
 		idx1 = (uint8_t)str[pos + 1];
 		bytes[pos / 2] = (uint8_t)(hashmap[idx0] << 4) | hashmap[idx1];

@@ -27,8 +27,9 @@ pgs_config_t *pgs_config_load(const char *config)
 	fseek(fp, 0, SEEK_END);
 	int fsize = ftell(fp);
 	rewind(fp);
-	char *fcontent = (char *)malloc(sizeof(char) * fsize);
+	char *fcontent = (char *)malloc(sizeof(char) * (fsize + 1));
 	fread(fcontent, 1, fsize, fp);
+	fcontent[fsize] = '\0';
 
 	// Parse json file
 	json_object *jobj = json_tokener_parse(fcontent);
