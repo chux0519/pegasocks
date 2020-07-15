@@ -317,10 +317,17 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
 {
 	pgs_v2rayserver_config_t *ptr = pgs_v2rayserver_config_new();
 
-	ptr->ssl_ctx = pgs_ssl_ctx_new();
-	if (ptr->ssl_ctx == NULL) {
-		pgs_config_error(config, "Error: pgs_ssl_ctx_new");
-		goto error;
+	json_object *ssl_obj = json_object_object_get(jobj, "ssl");
+	if (ssl_obj) {
+		ptr->ssl.enabled = true;
+		ptr->ssl_ctx = pgs_ssl_ctx_new();
+		if (ptr->ssl_ctx == NULL) {
+			pgs_config_error(config, "Error: pgs_ssl_ctx_new");
+			goto error;
+		}
+	} else {
+		ptr->ssl.enabled = false;
+		ptr->ssl_ctx = NULL;
 	}
 
 	json_object *ws_obj = json_object_object_get(jobj, "websocket");

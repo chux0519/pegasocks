@@ -214,10 +214,10 @@ void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr)
 		pgs_aes_cryptor_free(ptr->encryptor);
 	if (ptr->decryptor)
 		pgs_aes_cryptor_free(ptr->decryptor);
-	if (ptr)
-		pgs_free(ptr);
 	ptr->encryptor = NULL;
 	ptr->decryptor = NULL;
+	if (ptr)
+		pgs_free(ptr);
 	ptr = NULL;
 }
 
@@ -288,22 +288,28 @@ pgs_session_outbound_new(pgs_session_t *session,
 					  "v2ray only support wss for now");
 			goto error;
 		}
-		ptr->ctx = pgs_vmess_ctx_new(cmd, cmd_len);
 
-		pgs_ssl_t *ssl = pgs_ssl_new(vconf->ssl_ctx,
-					     (void *)config->server_address);
-		if (ssl == NULL) {
-			pgs_session_error(session, "SSL_new");
-			goto error;
+		if (vconf->ssl.enabled && vconf->ssl_ctx) {
+			pgs_ssl_t *ssl = pgs_ssl_new(
+				vconf->ssl_ctx, (void *)config->server_address);
+			if (ssl == NULL) {
+				pgs_session_error(session, "SSL_new");
+				goto error;
+			}
+			ptr->bev = pgs_bev_openssl_socket_new(
+				session->local_server->base, -1, ssl,
+				BUFFEREVENT_SSL_CONNECTING,
+				BEV_OPT_CLOSE_ON_FREE |
+					BEV_OPT_DEFER_CALLBACKS);
+			pgs_bev_openssl_set_allow_dirty_shutdown(ptr->bev, 1);
+		} else {
+			ptr->bev = bufferevent_socket_new(
+				session->local_server->base, -1,
+				BEV_OPT_CLOSE_ON_FREE |
+					BEV_OPT_DEFER_CALLBACKS);
 		}
-		ptr->bev = pgs_bev_openssl_socket_new(
-			session->local_server->base, -1, ssl,
-			BUFFEREVENT_SSL_CONNECTING,
-			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-		pgs_bev_openssl_set_allow_dirty_shutdown(ptr->bev, 1);
-		//ptr->bev = bufferevent_socket_new(
-		//	session->local_server->base, -1,
-		//	BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+
+		ptr->ctx = pgs_vmess_ctx_new(cmd, cmd_len);
 
 		pgs_bev_setcb(ptr->bev, on_v2ray_ws_remote_read, NULL,
 			      on_v2ray_ws_remote_event, session);
