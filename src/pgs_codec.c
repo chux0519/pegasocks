@@ -322,7 +322,7 @@ bool pgs_vmess_parse(pgs_buf_t *data, pgs_size_t data_len, pgs_vmess_ctx_t *ctx,
 			return false;
 		if (!pgs_aes_cryptor_decrypt(decryptor, data, 4, rrbuf))
 			return false;
-		ctx->resp_hash = rrbuf[0] << 24 | rrbuf[1] << 16 |
+		ctx->resp_hash = (uint32_t)rrbuf[0] << 24 | rrbuf[1] << 16 |
 				 rrbuf[2] << 8 | rrbuf[3];
 		return pgs_vmess_parse(data + 4, data_len - 4, ctx, writer);
 	}
