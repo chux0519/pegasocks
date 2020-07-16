@@ -210,6 +210,9 @@ pgs_vmess_ctx_t *pgs_vmess_ctx_new(const char *cmd, pgs_size_t cmdlen)
 }
 void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr)
 {
+	if (ptr->cmd)
+		pgs_free(ptr->cmd);
+	ptr->cmd = NULL;
 	if (ptr->encryptor)
 		pgs_aes_cryptor_free(ptr->encryptor);
 	if (ptr->decryptor)

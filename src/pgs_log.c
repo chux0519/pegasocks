@@ -143,6 +143,7 @@ void pgs_logger_server_serve(pgs_logger_server_t *server)
 		if (msg != NULL) {
 			fprintf(server->output, "%s\n", msg->msg);
 			fflush(server->output);
+			pgs_logger_msg_free(msg);
 		} else {
 			sleep(1);
 		}
