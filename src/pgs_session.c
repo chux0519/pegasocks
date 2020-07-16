@@ -559,27 +559,35 @@ static void do_trojan_ws_local_write(pgs_bev_t *bev, void *ctx)
 
 	unsigned char *data = pgs_evbuffer_pullup(outboundr, data_len);
 
-	pgs_ws_resp_t ws_meta;
-	if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
-		// ignore opcode here
-		if (ws_meta.opcode == 0x01) {
-			// write to local
-			pgs_evbuffer_add(inboundw, data + ws_meta.header_len,
-					 ws_meta.payload_len);
+	while (data_len > 2) {
+		pgs_ws_resp_t ws_meta;
+		if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
+			// ignore opcode here
+			if (ws_meta.opcode == 0x01) {
+				// write to local
+				pgs_evbuffer_add(inboundw,
+						 data + ws_meta.header_len,
+						 ws_meta.payload_len);
+			}
+
+			if (!ws_meta.fin)
+				pgs_session_debug(session,
+						  "frame to be continue..");
+
+			pgs_evbuffer_drain(outboundr,
+					   ws_meta.header_len +
+						   ws_meta.payload_len);
+
+			on_session_metrics_recv(session,
+						ws_meta.header_len +
+							ws_meta.payload_len);
+
+			data_len -= (ws_meta.header_len + ws_meta.payload_len);
+			data += (ws_meta.header_len + ws_meta.payload_len);
+		} else {
+			return;
 		}
-
-		if (!ws_meta.fin)
-			pgs_session_debug(session, "frame to be continue..");
-
-		pgs_evbuffer_drain(outboundr,
-				   ws_meta.header_len + ws_meta.payload_len);
-
-		on_session_metrics_recv(session, ws_meta.header_len +
-							 ws_meta.payload_len);
 	}
-
-	//next frame
-	do_trojan_ws_local_write(bev, ctx);
 }
 
 /*

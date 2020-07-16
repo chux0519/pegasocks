@@ -253,16 +253,7 @@ pgs_trojanserver_config_t *pgs_trojanserver_config_parse(pgs_config_t *config,
 	json_object *ws_obj = json_object_object_get(jobj, "websocket");
 
 	if (ssl_obj) {
-		// parse ssl config
-		// wss(trojan-go) not required
-		json_object_object_foreach(ssl_obj, key, val)
-		{
-			if (strcmp(key, "cert") == 0) {
-				ptr->ssl.cert = json_object_get_string(val);
-				if (ptr->ssl.cert == NULL)
-					goto error;
-			}
-		}
+		ptr->ssl.enabled = true;
 	}
 
 	if (ws_obj) {
