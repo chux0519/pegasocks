@@ -14,6 +14,95 @@ const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
 const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 const char vmess_key_suffix[36] = "c48619fe-8f02-49e0-b9e9-edf763e17e21";
 
+/*
+ * Socks5 5 handshake
+ * return false if error
+ * */
+bool pgs_socks5_handshake(pgs_session_t *session)
+{
+	pgs_bev_t *bev = session->inbound->bev;
+	pgs_session_inbound_state state = session->inbound->state;
+
+	pgs_evbuffer_t *output = pgs_bev_get_output(bev);
+	pgs_evbuffer_t *input = pgs_bev_get_input(bev);
+
+	pgs_size_t len = pgs_evbuffer_get_length(input);
+	unsigned char *rdata = pgs_evbuffer_pullup(input, len);
+
+	pgs_session_debug_buffer(session, rdata, len);
+
+	switch (state) {
+	case INBOUND_AUTH:
+		if (len < 2 || rdata[0] != 0x5) {
+			pgs_session_error(session, "socks5: auth");
+			return false;
+		}
+		pgs_evbuffer_add(output, "\x05\x00", 2);
+		pgs_evbuffer_drain(input, len);
+		session->inbound->state = INBOUND_CMD;
+		return true;
+	case INBOUND_CMD: {
+		if (len < 7 || rdata[0] != 0x5 || rdata[2] != 0x0) {
+			pgs_session_error(session, "socks5: cmd");
+			return false;
+		}
+		switch (rdata[1]) {
+		case 0x01: {
+			// connect
+			uint8_t atype = rdata[3];
+			uint16_t port = rdata[len - 2] << 8 | rdata[len - 1];
+
+			int addr_len = 0;
+			switch (atype) {
+			case 0x01:
+				// IPv4
+				addr_len = 4;
+				break;
+			case 0x03:
+				// Domain
+				addr_len = rdata[4] + 1;
+				break;
+			case 0x04:
+				// IPv6
+				addr_len = 16;
+				break;
+			default:
+				pgs_session_error(session,
+						  "socks5: wrong atyp");
+				return false;
+			}
+			// Set cmd
+			session->inbound->cmdlen = 4 + addr_len + 2;
+			session->inbound->cmd = pgs_malloc(
+				sizeof(pgs_buf_t) * session->inbound->cmdlen);
+			pgs_memcpy(session->inbound->cmd, rdata,
+				   session->inbound->cmdlen);
+
+			// socks5 response
+			pgs_evbuffer_add(output, "\x05\x00", 2);
+			pgs_evbuffer_add(output, rdata + 2,
+					 session->inbound->cmdlen - 2);
+			pgs_evbuffer_drain(input, session->inbound->cmdlen);
+			session->inbound->state = INBOUND_PROXY;
+			return true;
+		}
+		case 0x02: // TODO: bind
+		case 0x03: // TODO: udp associate
+		default:
+			pgs_session_error(session,
+					  "socks5: cmd not supprt yet");
+			return false;
+		}
+	}
+	case INBOUND_PROXY: // unreachable
+		break;
+	default:
+		break;
+	}
+
+	return false;
+}
+
 void pgs_ws_req(pgs_evbuffer_t *out, const char *hostname,
 		const char *server_address, int server_port, const char *path)
 {

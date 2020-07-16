@@ -1,5 +1,4 @@
 #include "pgs_local_server.h"
-#include "pgs_socks5.h"
 #include "pgs_session.h"
 #include <stdlib.h>
 #include <pthread.h>

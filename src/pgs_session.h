@@ -3,9 +3,7 @@
 
 #include "pgs_util.h"
 #include "pgs_core.h"
-#include "pgs_conn.h"
 #include "pgs_local_server.h"
-#include "pgs_socks5.h"
 #include "pgs_server_manager.h"
 #include "pgs_crypto.h"
 
@@ -26,19 +24,25 @@ typedef struct pgs_session_outbound_s pgs_session_outbound_t;
 typedef struct pgs_trojansession_ctx_s pgs_trojansession_ctx_t;
 typedef struct pgs_vmess_ctx_s pgs_vmess_ctx_t;
 typedef struct pgs_vmess_resp_s pgs_vmess_resp_t;
+typedef enum {
+	INBOUND_AUTH,
+	INBOUND_CMD,
+	INBOUND_PROXY,
+	INBOUND_ERR
+} pgs_session_inbound_state;
 
 struct pgs_session_s {
 	pgs_session_inbound_t *inbound;
 	pgs_session_outbound_t *outbound;
 	pgs_local_server_t *local_server;
-	// socks5 state machine
-	pgs_socks5_t fsm_socks5;
 	pgs_server_session_stats_t *metrics;
 };
 
 struct pgs_session_inbound_s {
-	pgs_conn_t *conn;
 	pgs_bev_t *bev;
+	pgs_session_inbound_state state;
+	pgs_buf_t *cmd;
+	pgs_size_t cmdlen;
 };
 
 struct pgs_session_outbound_s {
@@ -70,7 +74,7 @@ struct pgs_vmess_ctx_s {
 	// for ws state
 	bool connected;
 	// for request header
-	char *cmd;
+	const pgs_buf_t *cmd;
 	pgs_size_t cmdlen;
 	bool header_sent;
 	// for resp header
@@ -91,19 +95,18 @@ struct pgs_vmess_ctx_s {
 };
 
 // trojan session context
-pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const char *encodepass,
+pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const pgs_buf_t *encodepass,
 						   pgs_size_t passlen,
-						   const char *cmd,
+						   const pgs_buf_t *cmd,
 						   pgs_size_t cmdlen);
 void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx);
 
 // vmess context
-pgs_vmess_ctx_t *pgs_vmess_ctx_new(const char *cmd, pgs_size_t cmdlen);
+pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen);
 void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr);
 
 // inbound
-pgs_session_inbound_t *pgs_session_inbound_new(pgs_conn_t *conn,
-					       pgs_bev_t *bev);
+pgs_session_inbound_t *pgs_session_inbound_new(pgs_bev_t *bev);
 void pgs_session_inbound_free(pgs_session_inbound_t *sb);
 
 // outbound

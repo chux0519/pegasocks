@@ -35,7 +35,7 @@ struct pgs_server_config_s {
 	const char *server_address;
 	const char *server_type;
 	int server_port;
-	char *password;
+	pgs_buf_t *password;
 	void *extra; // type specific
 };
 

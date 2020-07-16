@@ -64,10 +64,9 @@ pgs_session_t *pgs_session_new(pgs_socket_t fd,
 {
 	pgs_session_t *ptr = pgs_malloc(sizeof(pgs_session_t));
 
-	pgs_conn_t *local_conn = pgs_conn_new(fd);
 	pgs_bev_t *bev = pgs_bev_socket_new(local_server->base, fd,
 					    BEV_OPT_CLOSE_ON_FREE);
-	ptr->inbound = pgs_session_inbound_new(local_conn, bev);
+	ptr->inbound = pgs_session_inbound_new(bev);
 
 	ptr->outbound = NULL;
 
@@ -79,13 +78,6 @@ pgs_session_t *pgs_session_new(pgs_socket_t fd,
 	ptr->metrics->send = 0;
 
 	ptr->local_server = local_server;
-
-	// init socks5 structure
-	ptr->fsm_socks5.state = AUTH;
-	ptr->fsm_socks5.rbuf = ptr->inbound->conn->rbuf;
-	ptr->fsm_socks5.wbuf = ptr->inbound->conn->wbuf;
-	ptr->fsm_socks5.read_bytes_ptr = &ptr->inbound->conn->read_bytes;
-	ptr->fsm_socks5.write_bytes_ptr = &ptr->inbound->conn->write_bytes;
 
 	return ptr;
 }
@@ -113,7 +105,6 @@ void pgs_session_free(pgs_session_t *session)
 	if (session->outbound) {
 		session->metrics->end = time(NULL);
 		const char *addr = session->outbound->dest;
-		LTRIM(addr);
 		// TODO: emit metrics
 		// session->local_server->sm
 		pgs_session_info(
@@ -130,28 +121,28 @@ void pgs_session_free(pgs_session_t *session)
 	pgs_free(session);
 }
 
-pgs_session_inbound_t *pgs_session_inbound_new(pgs_conn_t *conn, pgs_bev_t *bev)
+pgs_session_inbound_t *pgs_session_inbound_new(pgs_bev_t *bev)
 {
 	pgs_session_inbound_t *ptr = pgs_malloc(sizeof(pgs_session_inbound_t));
-	ptr->conn = conn;
 	ptr->bev = bev;
+	ptr->state = INBOUND_AUTH;
+	ptr->cmd = NULL;
+	ptr->cmdlen = 0;
 	return ptr;
 }
 
-void pgs_session_inbound_free(pgs_session_inbound_t *sb)
+void pgs_session_inbound_free(pgs_session_inbound_t *ptr)
 {
-	if (sb->conn) {
-		pgs_conn_free(sb->conn);
-	}
-	if (sb->bev) {
-		pgs_bev_free(sb->bev);
-	}
-	pgs_free(sb);
+	if (ptr->bev)
+		pgs_bev_free(ptr->bev);
+	if (ptr->cmd)
+		pgs_free(ptr->cmd);
+	pgs_free(ptr);
 }
 
-pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const char *encodepass,
+pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const pgs_buf_t *encodepass,
 						   pgs_size_t passlen,
-						   const char *cmd,
+						   const pgs_buf_t *cmd,
 						   pgs_size_t cmdlen)
 {
 	if (passlen != SHA224_LEN * 2 || cmdlen < 3)
@@ -183,7 +174,7 @@ void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx)
 	ctx = NULL;
 }
 
-pgs_vmess_ctx_t *pgs_vmess_ctx_new(const char *cmd, pgs_size_t cmdlen)
+pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen)
 {
 	pgs_vmess_ctx_t *ptr = pgs_malloc(sizeof(pgs_vmess_ctx_t));
 	ptr->connected = false;
@@ -192,8 +183,7 @@ pgs_vmess_ctx_t *pgs_vmess_ctx_new(const char *cmd, pgs_size_t cmdlen)
 	pgs_memzero(ptr->local_wbuf, _PGS_BUFSIZE);
 	pgs_memzero(ptr->remote_rbuf, _PGS_BUFSIZE);
 	pgs_memzero(ptr->remote_wbuf, _PGS_BUFSIZE);
-	ptr->cmd = pgs_malloc(sizeof(char) * cmdlen);
-	pgs_memcpy(ptr->cmd, cmd, cmdlen);
+	ptr->cmd = cmd;
 	ptr->cmdlen = cmdlen;
 	ptr->header_sent = false;
 	ptr->header_recved = false;
@@ -210,9 +200,6 @@ pgs_vmess_ctx_t *pgs_vmess_ctx_new(const char *cmd, pgs_size_t cmdlen)
 }
 void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr)
 {
-	if (ptr->cmd)
-		pgs_free(ptr->cmd);
-	ptr->cmd = NULL;
 	if (ptr->encryptor)
 		pgs_aes_cryptor_free(ptr->encryptor);
 	if (ptr->decryptor)
@@ -241,14 +228,15 @@ pgs_session_outbound_new(pgs_session_t *session,
 	ptr->bev = NULL;
 	ptr->ctx = NULL;
 
-	const char *cmd = (const char *)session->inbound->conn->rbuf;
-	pgs_size_t cmd_len = session->inbound->conn->read_bytes;
+	const pgs_buf_t *cmd = session->inbound->cmd;
+	pgs_size_t cmd_len = session->inbound->cmdlen;
 
-	int len = cmd_len - 2 - 4;
-	ptr->dest = pgs_malloc(sizeof(char) * (len + 1));
-	ptr->dest[len] = '\0';
-	pgs_memcpy(ptr->dest, cmd + 4, len);
-	ptr->port = cmd[cmd_len - 2] << 8 | cmd[cmd_len - 1];
+	ptr->port = (cmd[cmd_len - 2] << 8) | cmd[cmd_len - 1];
+	ptr->dest = socks5_dest_addr_parse(cmd, cmd_len);
+	if (ptr->dest == NULL) {
+		pgs_session_error(session, "socks5_dest_addr_parse");
+		goto error;
+	}
 
 	if (strcmp(config->server_type, "trojan") == 0) {
 		pgs_trojanserver_config_t *trojanconf = config->extra;
@@ -382,52 +370,36 @@ static void on_local_read(pgs_bev_t *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "read triggered");
-	// Socks5 local
-	// Then choose server type
-	pgs_evbuffer_t *output = pgs_bev_get_output(bev);
-	pgs_evbuffer_t *input = pgs_bev_get_input(bev);
 
-	pgs_conn_t *conn = session->inbound->conn;
-
-	// read from local
-	conn->read_bytes =
-		pgs_evbuffer_remove(input, conn->rbuf, sizeof conn->rbuf);
-	pgs_session_debug_buffer(session, (unsigned char *)conn->rbuf,
-				 conn->read_bytes);
-
-	if (session->fsm_socks5.state != PROXY) {
-		// socks5 fsm
-		pgs_socks5_step(&session->fsm_socks5);
-		if (session->fsm_socks5.state == ERR) {
-			pgs_session_error(session, "%s",
-					  session->fsm_socks5.err_msg);
-			on_local_event(bev, BEV_EVENT_ERROR, ctx);
-		}
-		pgs_session_debug(session, "response: ");
-		pgs_session_debug_buffer(session, (unsigned char *)conn->wbuf,
-					 conn->write_bytes);
-		// repsond to local socket
-		pgs_evbuffer_add(output, conn->wbuf, conn->write_bytes);
-		if (session->fsm_socks5.state == PROXY) {
-			pgs_server_config_t *config =
-				pgs_server_manager_get_config(
-					session->local_server->sm);
-			session->outbound =
-				pgs_session_outbound_new(session, config);
-
-			const char *addr = session->outbound->dest;
-			LTRIM(addr);
-			pgs_session_info(session, "--> %s:%d", addr,
-					 session->outbound->port);
-
-			pgs_session_outbound_run(session);
-		}
-		return;
-	} else {
-		pgs_session_error(session, "unreachable");
-		pgs_bev_free(bev);
-		pgs_session_free(session);
+	if (session->inbound->state >= INBOUND_PROXY) {
+		// error
+		pgs_session_error(session, "unreachable local read state");
+		goto error;
 	}
+
+	if (!pgs_socks5_handshake(session)) {
+		// error
+		pgs_session_error(session, "failed to do socks5 handshake");
+		goto error;
+	}
+
+	// outbound should reset local read callback
+	if (session->inbound->state == INBOUND_PROXY) {
+		pgs_server_config_t *config = pgs_server_manager_get_config(
+			session->local_server->sm);
+		session->outbound = pgs_session_outbound_new(session, config);
+
+		const char *addr = session->outbound->dest;
+		pgs_session_info(session, "--> %s:%d", addr,
+				 session->outbound->port);
+
+		pgs_session_outbound_run(session);
+	}
+
+	return;
+
+error:
+	pgs_session_free(session);
 }
 
 /**

@@ -116,7 +116,8 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 					goto error;
 			} else if (strcmp(key, "password") == 0) {
 				ptr[i].password =
-					(char *)json_object_get_string(val);
+					(pgs_buf_t *)json_object_get_string(
+						val);
 				if (ptr[i].password == NULL)
 					goto error;
 			}
@@ -126,15 +127,15 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 			pgs_buf_t encoded_pass[SHA224_LEN];
 			pgs_size_t encoded_len = 0;
 			sha224((const pgs_buf_t *)ptr[i].password,
-			       strlen(ptr[i].password), encoded_pass,
-			       &encoded_len);
+			       strlen((const char *)ptr[i].password),
+			       encoded_pass, &encoded_len);
 			if (encoded_len != SHA224_LEN)
 				goto error;
 
 			pgs_buf_t *hexpass =
 				to_hexstring(encoded_pass, encoded_len);
 
-			ptr[i].password = (char *)hexpass;
+			ptr[i].password = hexpass;
 		}
 		if (strcmp(ptr[i].server_type, "v2ray") == 0) {
 			char uuid_hex[32];
@@ -144,9 +145,9 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 				else
 					j++;
 			}
-			uint8_t *uuid = pgs_malloc(16 * sizeof(char));
+			pgs_buf_t *uuid = pgs_malloc(16 * sizeof(pgs_buf_t));
 			hextobin(uuid_hex, uuid, 16);
-			ptr[i].password = (char *)uuid;
+			ptr[i].password = uuid;
 		}
 		// parse type specific data
 		ptr[i].extra = pgs_server_config_parse_extra(

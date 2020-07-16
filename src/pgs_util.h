@@ -36,4 +36,6 @@ pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size);
 
 void hextobin(const char *str, uint8_t *bytes, size_t blen);
 
+char *socks5_dest_addr_parse(const pgs_buf_t *cmd, pgs_size_t cmd_len);
+
 #endif
