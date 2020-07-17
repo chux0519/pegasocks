@@ -173,8 +173,6 @@ void pgs_ws_write_head(pgs_evbuffer_t *buf, pgs_size_t len, int opcode)
 bool pgs_ws_parse_head(pgs_buf_t *data, pgs_size_t data_len,
 		       pgs_ws_resp_t *meta)
 {
-	bool parsed = false;
-
 	meta->fin = !!(*data & 0x80);
 	meta->opcode = *data & 0x0F;
 	meta->mask = !!(*(data + 1) & 0x80);
@@ -183,33 +181,32 @@ bool pgs_ws_parse_head(pgs_buf_t *data, pgs_size_t data_len,
 
 	if (meta->payload_len < 126) {
 		if (meta->header_len > data_len)
-			return parsed;
+			return false;
 
 	} else if (meta->payload_len == 126) {
 		meta->header_len += 2;
 		if (meta->header_len > data_len)
-			return parsed;
+			return false;
 
 		meta->payload_len = ntohs(*(uint16_t *)(data + 2));
 
 	} else if (meta->payload_len == 127) {
 		meta->header_len += 8;
 		if (meta->header_len > data_len)
-			return parsed;
+			return false;
 
 		meta->payload_len = ntohll(*(uint64_t *)(data + 2));
 	}
 
 	if (meta->header_len + meta->payload_len > data_len)
-		return parsed;
+		return false;
 
 	const unsigned char *mask_key = data + meta->header_len - 4;
 
 	for (int i = 0; meta->mask && i < meta->payload_len; i++)
 		data[meta->header_len + i] ^= mask_key[i % 4];
 
-	parsed = true;
-	return parsed;
+	return true;
 }
 
 pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
@@ -388,6 +385,7 @@ bool pgs_vmess_parse(pgs_buf_t *data, pgs_size_t data_len, pgs_vmess_ctx_t *ctx,
 		ctx->resp_len = 0;
 		return pgs_vmess_parse(data + 4, data_len - 4, ctx, writer);
 	}
+
 	if (ctx->resp_len == 0) {
 		if (data_len == 0) // may called by itself, wait for more data
 			return true;
@@ -396,7 +394,8 @@ bool pgs_vmess_parse(pgs_buf_t *data, pgs_size_t data_len, pgs_vmess_ctx_t *ctx,
 		if (!pgs_aes_cryptor_decrypt(decryptor, data, 2, rrbuf))
 			return false;
 		int l = rrbuf[0] << 8 | rrbuf[1];
-		if (l == 0) // end
+
+		if (l == 0 || l == 4) // end
 			return true;
 		if (l < 4)
 			return false;
