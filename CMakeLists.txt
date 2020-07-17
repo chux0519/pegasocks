@@ -50,12 +50,8 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 find_package(Libevent2 REQUIRED)
 include_directories(${LIBEVENT2_INCLUDE_DIR})
 
-find_package(OpenSSL 1.1.1 REQUIRED)
+find_package(OpenSSLx REQUIRED)
 include_directories(${OPENSSL_INCLUDE_DIR})
-
-if(APPLE)
-  set (CMAKE_C_FLAGS -I${OPENSSL_INCLUDE_DIR})
-endif()
 
 find_package(jsonc REQUIRED)
 include_directories(${JSONC_INCLUDE_DIRS})
