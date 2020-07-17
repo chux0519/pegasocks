@@ -325,17 +325,17 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
 
 	json_object *ws_obj = json_object_object_get(jobj, "websocket");
 
-	if (!ws_obj)
-		goto error;
-
-	// parse websocket config
-	ptr->websocket.enabled = true;
-	json_object_object_foreach(ws_obj, k, v)
-	{
-		if (strcmp(k, "path") == 0) {
-			ptr->websocket.path = json_object_get_string(v);
-		} else if (strcmp(k, "hostname") == 0) {
-			ptr->websocket.hostname = json_object_get_string(v);
+	if (ws_obj) {
+		// parse websocket config
+		ptr->websocket.enabled = true;
+		json_object_object_foreach(ws_obj, k, v)
+		{
+			if (strcmp(k, "path") == 0) {
+				ptr->websocket.path = json_object_get_string(v);
+			} else if (strcmp(k, "hostname") == 0) {
+				ptr->websocket.hostname =
+					json_object_get_string(v);
+			}
 		}
 	}
 
@@ -355,7 +355,7 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_new()
 {
 	pgs_v2rayserver_config_t *ptr =
 		pgs_malloc(sizeof(pgs_trojanserver_config_t));
-	ptr->ssl.enabled = true;
+	ptr->ssl.enabled = false;
 	ptr->ssl.cert = NULL;
 	ptr->websocket.enabled = false;
 	ptr->websocket.hostname = NULL;

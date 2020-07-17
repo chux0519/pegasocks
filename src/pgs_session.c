@@ -36,7 +36,7 @@ static void do_trojan_gfw_remote_write(pgs_bev_t *bev, void *ctx);
 static void do_trojan_gfw_local_write(pgs_bev_t *bev, void *ctx);
 
 /*
- * v2ray wss session handler
+ * v2ray websocket session handler
  */
 static void on_v2ray_ws_remote_event(pgs_bev_t *bev, short events, void *ctx);
 static void on_v2ray_ws_remote_read(pgs_bev_t *bev, void *ctx);
@@ -44,6 +44,13 @@ static void on_v2ray_ws_local_read(pgs_bev_t *bev, void *ctx);
 static void do_v2ray_ws_remote_request(pgs_bev_t *bev, void *ctx);
 static void do_v2ray_ws_remote_write(pgs_bev_t *bev, void *ctx);
 static void do_v2ray_ws_local_write(pgs_bev_t *bev, void *ctx);
+
+/*
+ * v2ray tcp session handler
+ */
+static void on_v2ray_tcp_remote_event(pgs_bev_t *bev, short events, void *ctx);
+static void on_v2ray_tcp_remote_read(pgs_bev_t *bev, void *ctx);
+static void on_v2ray_tcp_local_read(pgs_bev_t *bev, void *ctx);
 
 /*
  * metrics
@@ -275,37 +282,50 @@ pgs_session_outbound_new(pgs_session_t *session,
 	} else if (strcmp(config->server_type, "v2ray") == 0) {
 		pgs_v2rayserver_config_t *vconf = config->extra;
 		if (!vconf->websocket.enabled) {
-			pgs_session_error(session,
-					  "v2ray only support wss for now");
-			goto error;
-		}
+			// raw tcp vmess
+			ptr->ctx = pgs_vmess_ctx_new(cmd, cmd_len);
 
-		if (vconf->ssl.enabled && vconf->ssl_ctx) {
-			pgs_ssl_t *ssl = pgs_ssl_new(
-				vconf->ssl_ctx, (void *)config->server_address);
-			if (ssl == NULL) {
-				pgs_session_error(session, "SSL_new");
-				goto error;
-			}
-			ptr->bev = pgs_bev_openssl_socket_new(
-				session->local_server->base, -1, ssl,
-				BUFFEREVENT_SSL_CONNECTING,
-				BEV_OPT_CLOSE_ON_FREE |
-					BEV_OPT_DEFER_CALLBACKS);
-			pgs_bev_openssl_set_allow_dirty_shutdown(ptr->bev, 1);
-		} else {
 			ptr->bev = bufferevent_socket_new(
 				session->local_server->base, -1,
 				BEV_OPT_CLOSE_ON_FREE |
 					BEV_OPT_DEFER_CALLBACKS);
+
+			pgs_bev_setcb(ptr->bev, on_v2ray_tcp_remote_read, NULL,
+				      on_v2ray_tcp_remote_event, session);
+			pgs_bev_setcb(session->inbound->bev,
+				      on_v2ray_tcp_local_read, NULL,
+				      on_local_event, session);
+		} else {
+			// websocket can be protected by ssl
+			if (vconf->ssl.enabled && vconf->ssl_ctx) {
+				pgs_ssl_t *ssl = pgs_ssl_new(
+					vconf->ssl_ctx,
+					(void *)config->server_address);
+				if (ssl == NULL) {
+					pgs_session_error(session, "SSL_new");
+					goto error;
+				}
+				ptr->bev = pgs_bev_openssl_socket_new(
+					session->local_server->base, -1, ssl,
+					BUFFEREVENT_SSL_CONNECTING,
+					BEV_OPT_CLOSE_ON_FREE |
+						BEV_OPT_DEFER_CALLBACKS);
+				pgs_bev_openssl_set_allow_dirty_shutdown(
+					ptr->bev, 1);
+			} else {
+				ptr->bev = bufferevent_socket_new(
+					session->local_server->base, -1,
+					BEV_OPT_CLOSE_ON_FREE |
+						BEV_OPT_DEFER_CALLBACKS);
+			}
+			ptr->ctx = pgs_vmess_ctx_new(cmd, cmd_len);
+
+			pgs_bev_setcb(ptr->bev, on_v2ray_ws_remote_read, NULL,
+				      on_v2ray_ws_remote_event, session);
+			pgs_bev_setcb(session->inbound->bev,
+				      on_v2ray_ws_local_read, NULL,
+				      on_local_event, session);
 		}
-
-		ptr->ctx = pgs_vmess_ctx_new(cmd, cmd_len);
-
-		pgs_bev_setcb(ptr->bev, on_v2ray_ws_remote_read, NULL,
-			      on_v2ray_ws_remote_event, session);
-		pgs_bev_setcb(session->inbound->bev, on_v2ray_ws_local_read,
-			      NULL, on_local_event, session);
 		pgs_bev_enable(ptr->bev, EV_READ);
 	}
 
@@ -892,6 +912,95 @@ static void do_v2ray_ws_local_write(pgs_bev_t *bev, void *ctx)
 			return;
 		}
 	}
+}
+
+/*
+ * v2ray tcp handlers
+ */
+static void on_v2ray_tcp_remote_event(pgs_bev_t *bev, short events, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+
+	if (events & BEV_EVENT_CONNECTED) {
+		pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
+		v2ray_s_ctx->connected = true;
+		pgs_session_debug(session, "connected");
+		on_v2ray_tcp_local_read(session->inbound->bev, ctx);
+	}
+	if (events & BEV_EVENT_ERROR)
+		pgs_session_error(session, "Error from bufferevent");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		pgs_bev_free(bev);
+		pgs_session_free(session);
+	}
+}
+
+static void on_v2ray_tcp_remote_read(pgs_bev_t *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "remote read triggered");
+
+	pgs_bev_t *inbev = session->inbound->bev;
+	pgs_bev_t *outbev = session->outbound->bev;
+
+	pgs_evbuffer_t *outboundr = pgs_bev_get_input(outbev);
+	pgs_evbuffer_t *inboundw = pgs_bev_get_output(inbev);
+
+	pgs_size_t data_len = pgs_evbuffer_get_length(outboundr);
+	unsigned char *data = pgs_evbuffer_pullup(outboundr, data_len);
+
+	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
+	if (!pgs_vmess_parse(data, data_len, v2ray_s_ctx, inboundw)) {
+		pgs_session_error(session, "failed to decode vmess payload");
+		on_v2ray_tcp_remote_event(bev, BEV_EVENT_ERROR, ctx);
+	}
+
+	pgs_evbuffer_drain(outboundr, data_len);
+
+	on_session_metrics_recv(session, data_len);
+}
+
+static void on_v2ray_tcp_local_read(pgs_bev_t *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "local read triggered");
+
+	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
+	if (!v2ray_s_ctx->connected)
+		return;
+
+	pgs_session_debug(session, "write to remote");
+
+	pgs_bev_t *inbev = session->inbound->bev;
+	pgs_bev_t *outbev = session->outbound->bev;
+
+	pgs_evbuffer_t *outboundw = pgs_bev_get_output(outbev);
+	pgs_evbuffer_t *inboundr = pgs_bev_get_input(inbev);
+
+	pgs_size_t len = pgs_evbuffer_get_length(inboundr);
+	unsigned char *msg = pgs_evbuffer_pullup(inboundr, len);
+	pgs_session_debug_buffer(session, msg, len);
+	if (len <= 0)
+		return;
+
+	// vmess encode
+	pgs_size_t wbuf_offset = 0;
+	if (!v2ray_s_ctx->header_sent) {
+		// will init cryptor
+		wbuf_offset = pgs_vmess_write_head(
+			(const pgs_buf_t *)session->outbound->config->password,
+			v2ray_s_ctx);
+		v2ray_s_ctx->header_sent = true;
+	}
+
+	// write body will drain inboundr
+	pgs_size_t data_section_len = pgs_vmess_write_body(
+		v2ray_s_ctx->remote_wbuf + wbuf_offset, inboundr, v2ray_s_ctx);
+	pgs_size_t total_len = wbuf_offset + data_section_len;
+
+	pgs_evbuffer_add(outboundw, v2ray_s_ctx->remote_wbuf, total_len);
+
+	on_session_metrics_send(session, total_len);
 }
 
 static void on_session_metrics_recv(pgs_session_t *session, pgs_size_t len)
