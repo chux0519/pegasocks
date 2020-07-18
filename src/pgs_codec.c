@@ -252,19 +252,17 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 	RAND_bytes(header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
 	pgs_memcpy(ctx->key, header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
 	if (!ctx->encryptor)
-		ctx->encryptor =
-			pgs_aes_cryptor_new(EVP_aes_128_cfb(),
-					    (const pgs_buf_t *)ctx->key,
-					    (const pgs_buf_t *)ctx->iv);
+		ctx->encryptor = pgs_aes_cryptor_new(
+			EVP_aes_128_cfb(), (const pgs_buf_t *)ctx->key,
+			(const pgs_buf_t *)ctx->iv, PGS_ENCRYPT);
 	if (!ctx->decryptor) {
 		md5((const pgs_buf_t *)ctx->iv, AES_128_CFB_IV_LEN,
 		    (pgs_buf_t *)ctx->riv);
 		md5((const pgs_buf_t *)ctx->key, AES_128_CFB_KEY_LEN,
 		    (pgs_buf_t *)ctx->rkey);
-		ctx->decryptor =
-			pgs_aes_cryptor_new(EVP_aes_128_cfb(),
-					    (const pgs_buf_t *)ctx->rkey,
-					    (const pgs_buf_t *)ctx->riv);
+		ctx->decryptor = pgs_aes_cryptor_new(
+			EVP_aes_128_cfb(), (const pgs_buf_t *)ctx->rkey,
+			(const pgs_buf_t *)ctx->riv, PGS_DECRYPT);
 	}
 	offset += AES_128_CFB_IV_LEN;
 	// v

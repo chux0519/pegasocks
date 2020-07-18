@@ -5,17 +5,18 @@
 #include <openssl/evp.h>
 
 typedef struct pgs_aes_cryptor_s pgs_aes_cryptor_t;
+typedef enum { PGS_ENCRYPT, PGS_DECRYPT } pgs_cryptor_direction_t;
 
 struct pgs_aes_cryptor_s {
-	EVP_CIPHER_CTX *encrypt_ctx;
-	EVP_CIPHER_CTX *decrypt_ctx;
+	EVP_CIPHER_CTX *ctx;
 	const pgs_buf_t *key;
 	const pgs_buf_t *iv;
 };
 
 pgs_aes_cryptor_t *pgs_aes_cryptor_new(const EVP_CIPHER *cipher,
 				       const pgs_buf_t *key,
-				       const pgs_buf_t *iv);
+				       const pgs_buf_t *iv,
+				       pgs_cryptor_direction_t dir);
 void pgs_aes_cryptor_free(pgs_aes_cryptor_t *ptr);
 bool pgs_aes_cryptor_encrypt(pgs_aes_cryptor_t *ptr, const pgs_buf_t *plaintext,
 			     int plaintext_len, pgs_buf_t *ciphertext);
