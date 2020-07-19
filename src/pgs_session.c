@@ -181,7 +181,8 @@ void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx)
 	ctx = NULL;
 }
 
-pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen)
+pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen,
+				   pgs_v2rayserver_secure_t secure)
 {
 	pgs_vmess_ctx_t *ptr = pgs_malloc(sizeof(pgs_vmess_ctx_t));
 	ptr->connected = false;
@@ -202,6 +203,7 @@ pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen)
 	ptr->resp_hash = 0;
 	ptr->encryptor = NULL;
 	ptr->decryptor = NULL;
+	ptr->secure = secure;
 
 	return ptr;
 }
@@ -283,7 +285,8 @@ pgs_session_outbound_new(pgs_session_t *session,
 		pgs_v2rayserver_config_t *vconf = config->extra;
 		if (!vconf->websocket.enabled) {
 			// raw tcp vmess
-			ptr->ctx = pgs_vmess_ctx_new(cmd, cmd_len);
+			ptr->ctx =
+				pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
 
 			ptr->bev = bufferevent_socket_new(
 				session->local_server->base, -1,
@@ -318,7 +321,8 @@ pgs_session_outbound_new(pgs_session_t *session,
 					BEV_OPT_CLOSE_ON_FREE |
 						BEV_OPT_DEFER_CALLBACKS);
 			}
-			ptr->ctx = pgs_vmess_ctx_new(cmd, cmd_len);
+			ptr->ctx =
+				pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
 
 			pgs_bev_setcb(ptr->bev, on_v2ray_ws_remote_read, NULL,
 				      on_v2ray_ws_remote_event, session);

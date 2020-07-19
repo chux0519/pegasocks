@@ -92,6 +92,7 @@ struct pgs_vmess_ctx_s {
 	uint32_t resp_hash;
 	pgs_aes_cryptor_t *encryptor;
 	pgs_aes_cryptor_t *decryptor;
+	pgs_v2rayserver_secure_t secure;
 };
 
 // trojan session context
@@ -102,7 +103,8 @@ pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const pgs_buf_t *encodepass,
 void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx);
 
 // vmess context
-pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen);
+pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen,
+				   pgs_v2rayserver_secure_t secure);
 void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr);
 
 // inbound
