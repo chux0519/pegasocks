@@ -270,6 +270,7 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 	// standard format data
 	header_cmd_raw[offset] = 0x01;
 	offset += 1;
+	// TODO: support aead cipher (0x02)
 	// aes 126 cfb
 	header_cmd_raw[offset] = 0x00;
 	offset += 1;
@@ -339,6 +340,7 @@ pgs_size_t pgs_vmess_write_body(pgs_buf_t *buf, pgs_evbuffer_t *inboundr,
 	localr[0] = (data_len + 4) >> 8;
 	localr[1] = (data_len + 4);
 
+	// TODO: support aes-128-gcm
 	unsigned int f = fnv1a((void *)data, data_len);
 	localr[2] = f >> 24;
 	localr[3] = f >> 16;
@@ -350,9 +352,6 @@ pgs_size_t pgs_vmess_write_body(pgs_buf_t *buf, pgs_evbuffer_t *inboundr,
 
 	assert(ctx->encryptor != NULL);
 	pgs_aes_cryptor_encrypt(ctx->encryptor, localr, data_len + 6, buf);
-	// aes_128_cfb_encrypt(localr, data_len + 6,
-	// 		    (const unsigned char *)ctx->key,
-	// 		    (const unsigned char *)ctx->iv, buf);
 	return data_len + 6;
 }
 
@@ -403,6 +402,7 @@ bool pgs_vmess_parse(pgs_buf_t *data, pgs_size_t data_len, pgs_vmess_ctx_t *ctx,
 		return pgs_vmess_parse(data + 2, data_len - 2, ctx, writer);
 	}
 
+	// TODO: support aes-128-gcm
 	if (ctx->resp_hash == 0) {
 		if (data_len < 4) // need more data
 			return false;
