@@ -6,6 +6,7 @@ target_link_libraries (pgs_util_test
                        ${CMAKE_SOURCE_DIR}/3rd-party/sha3.c
                        ${CMAKE_SOURCE_DIR}/3rd-party/hash_32a.c
                        ${CMAKE_SOURCE_DIR}/src/pgs_util.c
+                       ${CMAKE_SOURCE_DIR}/src/pgs_crypto.c
                        ${OPENSSL_LIBRARIES}
                        )
 

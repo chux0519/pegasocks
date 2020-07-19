@@ -1,4 +1,5 @@
 #include "pgs_util.h"
+#include "pgs_crypto.h"
 #include "assert.h"
 
 void test_sha224()
@@ -114,14 +115,145 @@ void test_aes_128_cfb_decrypt()
 	assert(strcmp(result, (const char *)output) == 0);
 }
 
+void test_crypto_aes()
+{
+}
+
+void test_crypto_aead_encrypt()
+{
+	unsigned char key[16] = {
+		1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8
+	};
+	unsigned char iv[12] = { 0, 0, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
+	unsigned char plaintext[8] = "password";
+	unsigned char result1[8] = { 0x0b, 0x3b, 0x1e, 0x3b,
+				     0x6f, 0x5e, 0xa3, 0x0c };
+	unsigned char tag1[16] = { 0xa5, 0x33, 0x26, 0xb6, 0x34, 0xa1,
+				   0x17, 0xf8, 0x78, 0xdc, 0x09, 0x0e,
+				   0x76, 0x93, 0x47, 0x5e };
+	pgs_aead_cryptor_t *encryptor =
+		pgs_aead_cryptor_new(EVP_aes_128_gcm(), key, iv, PGS_ENCRYPT);
+
+	{
+		// First round
+		unsigned char en_tag[16] = { 0 };
+		unsigned char out[8] = { 0 };
+		int output_len;
+		pgs_aead_cryptor_encrypt(encryptor, plaintext, 8, en_tag, out,
+					 &output_len);
+
+		for (int i = 0; i < 16; i++) {
+			assert(en_tag[i] == tag1[i]);
+		}
+
+		assert(output_len == 8);
+		for (int i = 0; i < output_len; i++) {
+			assert(out[i] == result1[i]);
+		}
+	}
+
+	// Second round
+	unsigned char iv2[12] = { 0, 1, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
+	unsigned char result2[8] = { 0x61, 0x16, 0xae, 0x97,
+				     0x94, 0x0b, 0xdb, 0x65 };
+	unsigned char tag2[16] = { 0x4a, 0xdd, 0x05, 0x86, 0xf8, 0x0d,
+				   0x83, 0xb1, 0x1a, 0x3f, 0x25, 0xc4,
+				   0x0f, 0xe2, 0xe7, 0x5a };
+	{
+		unsigned char en_tag[16] = { 0 };
+		unsigned char out[8] = { 0 };
+		int output_len;
+		for (int i = 0; i < 12; i++) {
+			assert(iv2[i] == encryptor->iv[i]);
+		}
+
+		assert(pgs_aead_cryptor_encrypt(encryptor, plaintext, 8, en_tag,
+						out, &output_len) == true);
+
+		for (int i = 0; i < 16; i++) {
+			assert(en_tag[i] == tag2[i]);
+		}
+
+		assert(output_len == 8);
+		for (int i = 0; i < output_len; i++) {
+			assert(out[i] == result2[i]);
+		}
+	}
+}
+
+void test_crypto_aead_decrypt()
+{
+	unsigned char key[16] = {
+		1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8
+	};
+	unsigned char iv[12] = { 0, 0, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
+	unsigned char plaintext[8] = "password";
+	unsigned char ciphertext[8] = { 0x0b, 0x3b, 0x1e, 0x3b,
+					0x6f, 0x5e, 0xa3, 0x0c };
+	unsigned char tag1[16] = { 0xa5, 0x33, 0x26, 0xb6, 0x34, 0xa1,
+				   0x17, 0xf8, 0x78, 0xdc, 0x09, 0x0e,
+				   0x76, 0x93, 0x47, 0x5e };
+	pgs_aead_cryptor_t *decryptor =
+		pgs_aead_cryptor_new(EVP_aes_128_gcm(), key, iv, PGS_DECRYPT);
+
+	{
+		// First round
+		unsigned char out[8] = { 0 };
+		int output_len;
+		pgs_aead_cryptor_decrypt(decryptor, ciphertext, 8, tag1, out,
+					 &output_len);
+
+		assert(output_len == 8);
+		for (int i = 0; i < output_len; i++) {
+			assert(out[i] == plaintext[i]);
+		}
+	}
+
+	// Second round
+	unsigned char iv2[12] = { 0, 1, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
+	unsigned char ciphertext2[8] = { 0x61, 0x16, 0xae, 0x97,
+					 0x94, 0x0b, 0xdb, 0x65 };
+	unsigned char tag2[16] = { 0x4a, 0xdd, 0x05, 0x86, 0xf8, 0x0d,
+				   0x83, 0xb1, 0x1a, 0x3f, 0x25, 0xc4,
+				   0x0f, 0xe2, 0xe7, 0x5a };
+	{
+		unsigned char out[8] = { 0 };
+		int output_len;
+		for (int i = 0; i < 12; i++) {
+			assert(iv2[i] == decryptor->iv[i]);
+		}
+
+		assert(pgs_aead_cryptor_decrypt(decryptor, ciphertext2, 8, tag2,
+						out, &output_len) == true);
+
+		assert(output_len == 8);
+		for (int i = 0; i < output_len; i++) {
+			assert(out[i] == plaintext[i]);
+		}
+	}
+}
+
 int main()
 {
 	test_sha224();
+	printf("test_sha224 passed\n");
 	test_shake128();
+	printf("test_shake128 passed\n");
 	test_hmac_md5();
+	printf("test_hmac_md5 passed\n");
 	test_md5();
+	printf("test_md5 passed\n");
 	test_fnv1a();
+	printf("test_fnv1a passed\n");
 	test_aes_128_cfb_encrypt();
+	printf("test_aes_128_cfb_encrypt passed\n");
 	test_aes_128_cfb_decrypt();
+	printf("test_aes_128_cfb_decrypt passed\n");
+	test_crypto_aes();
+	printf("test_crypto_aes passed\n");
+	test_crypto_aead_encrypt();
+	printf("test_crypto_aead_encrypt passed\n");
+	test_crypto_aead_decrypt();
+	printf("test_crypto_aead_decrypt passed\n");
 	return 0;
 }
