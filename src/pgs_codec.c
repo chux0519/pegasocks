@@ -259,6 +259,9 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 				(const pgs_buf_t *)ctx->iv, PGS_ENCRYPT);
 			break;
 		case V2RAY_SECURE_GCM:
+			ctx->encryptor = pgs_aead_cryptor_new(
+				EVP_aes_128_gcm(), (const pgs_buf_t *)ctx->key,
+				(const pgs_buf_t *)ctx->iv, PGS_ENCRYPT);
 			break;
 		default:
 			// not support yet
@@ -278,6 +281,9 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 				(const pgs_buf_t *)ctx->riv, PGS_DECRYPT);
 			break;
 		case V2RAY_SECURE_GCM:
+			ctx->decryptor = pgs_aead_cryptor_new(
+				EVP_aes_128_gcm(), (const pgs_buf_t *)ctx->key,
+				(const pgs_buf_t *)ctx->iv, PGS_DECRYPT);
 			break;
 		default:
 			// not support yet
@@ -346,36 +352,55 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 	return header_auth_len + header_cmd_len;
 }
 
-pgs_size_t pgs_vmess_write_body(pgs_buf_t *buf, pgs_evbuffer_t *inboundr,
-				pgs_vmess_ctx_t *ctx)
+pgs_size_t pgs_vmess_write_body(const pgs_buf_t *data, pgs_size_t data_len,
+				pgs_buf_t *buf, pgs_vmess_ctx_t *ctx)
 {
-	pgs_size_t data_len = pgs_evbuffer_get_length(inboundr);
-	unsigned char *data = pgs_evbuffer_pullup(inboundr, data_len);
-
 	pgs_buf_t *localr = ctx->local_rbuf;
 
-	// data section
-	assert(data_len + 6 <= _PGS_BUFSIZE);
-	localr[0] = (data_len + 4) >> 8;
-	localr[1] = (data_len + 4);
+	assert(data_len + 2 <= _PGS_BUFSIZE);
 
-	// TODO: support aes-128-gcm
-	unsigned int f = fnv1a((void *)data, data_len);
-	localr[2] = f >> 24;
-	localr[3] = f >> 16;
-	localr[4] = f >> 8;
-	localr[5] = f;
+	switch (ctx->secure) {
+	case V2RAY_SECURE_CFB: {
+		// L
+		localr[0] = (data_len + 4) >> 8;
+		localr[1] = (data_len + 4);
 
-	pgs_memcpy(localr + 6, data, data_len);
-	pgs_evbuffer_drain(inboundr, data_len);
+		unsigned int f = fnv1a((void *)data, data_len);
+		localr[2] = f >> 24;
+		localr[3] = f >> 16;
+		localr[4] = f >> 8;
+		localr[5] = f;
 
-	assert(ctx->encryptor != NULL);
-	pgs_aes_cryptor_encrypt(ctx->encryptor, localr, data_len + 6, buf);
-	return data_len + 6;
+		pgs_memcpy(localr + 6, data, data_len);
+
+		assert(ctx->encryptor != NULL);
+		pgs_aes_cryptor_encrypt(ctx->encryptor, localr, data_len + 6,
+					buf);
+		return data_len + 6;
+	}
+	case V2RAY_SECURE_GCM: {
+		// L
+		buf[0] = (data_len + 16) >> 8;
+		buf[1] = (data_len + 16);
+
+		assert(ctx->encryptor != NULL);
+		int ciphertext_len = 0;
+		pgs_aead_cryptor_encrypt(ctx->encryptor, data, data_len,
+					 buf + 2 + data_len, buf + 2,
+					 &ciphertext_len);
+
+		return ciphertext_len + 16 + 2;
+	}
+	default:
+		// not support yet
+		break;
+	}
+
+	return 0;
 }
 
-bool pgs_vmess_parse(pgs_buf_t *data, pgs_size_t data_len, pgs_vmess_ctx_t *ctx,
-		     pgs_evbuffer_t *writer)
+bool pgs_vmess_parse(const pgs_buf_t *data, pgs_size_t data_len,
+		     pgs_vmess_ctx_t *ctx, pgs_evbuffer_t *writer)
 {
 	pgs_vmess_resp_t *meta = &ctx->resp_meta;
 	pgs_buf_t *rrbuf = ctx->remote_rbuf;

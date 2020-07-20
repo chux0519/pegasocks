@@ -839,8 +839,14 @@ static void do_v2ray_ws_remote_write(pgs_bev_t *bev, void *ctx)
 			v2ray_s_ctx);
 		v2ray_s_ctx->header_sent = true;
 	}
-	pgs_size_t data_section_len = pgs_vmess_write_body(
-		v2ray_s_ctx->remote_wbuf + wbuf_offset, inboundr, v2ray_s_ctx);
+
+	pgs_size_t data_len = pgs_evbuffer_get_length(inboundr);
+	const pgs_buf_t *data = pgs_evbuffer_pullup(inboundr, data_len);
+	pgs_size_t data_section_len =
+		pgs_vmess_write_body(data, data_len,
+				     v2ray_s_ctx->remote_wbuf + wbuf_offset,
+				     v2ray_s_ctx);
+	pgs_evbuffer_drain(inboundr, data_len);
 	pgs_size_t total_len = wbuf_offset + data_section_len;
 
 	// ws encode
@@ -998,8 +1004,14 @@ static void on_v2ray_tcp_local_read(pgs_bev_t *bev, void *ctx)
 	}
 
 	// write body will drain inboundr
-	pgs_size_t data_section_len = pgs_vmess_write_body(
-		v2ray_s_ctx->remote_wbuf + wbuf_offset, inboundr, v2ray_s_ctx);
+	pgs_size_t data_len = pgs_evbuffer_get_length(inboundr);
+	const pgs_buf_t *data = pgs_evbuffer_pullup(inboundr, data_len);
+	pgs_size_t data_section_len =
+		pgs_vmess_write_body(data, data_len,
+				     v2ray_s_ctx->remote_wbuf + wbuf_offset,
+				     v2ray_s_ctx);
+	pgs_evbuffer_drain(inboundr, data_len);
+
 	pgs_size_t total_len = wbuf_offset + data_section_len;
 
 	pgs_evbuffer_add(outboundw, v2ray_s_ctx->remote_wbuf, total_len);

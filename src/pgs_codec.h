@@ -37,9 +37,9 @@ bool pgs_ws_parse_head(pgs_buf_t *data, pgs_size_t data_len,
 /* vmess */
 pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx);
 
-pgs_size_t pgs_vmess_write_body(pgs_buf_t *buf, pgs_evbuffer_t *inboundr,
-				pgs_vmess_ctx_t *ctx);
+pgs_size_t pgs_vmess_write_body(const pgs_buf_t *data, pgs_size_t data_len,
+				pgs_buf_t *buf, pgs_vmess_ctx_t *ctx);
 
-bool pgs_vmess_parse(pgs_buf_t *data, pgs_size_t data_len, pgs_vmess_ctx_t *ctx,
-		     pgs_evbuffer_t *writer);
+bool pgs_vmess_parse(const pgs_buf_t *data, pgs_size_t data_len,
+		     pgs_vmess_ctx_t *ctx, pgs_evbuffer_t *writer);
 #endif
