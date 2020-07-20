@@ -17,8 +17,8 @@ typedef struct pgs_config_ws_s pgs_v2rayserver_ws_t;
 typedef enum {
 	V2RAY_SECURE_CFB = 0,
 	V2RAY_SECURE_NONE = 1,
-	V2RAY_SECURE_GCM = 2,
-	V2RAY_SECURE_CHACHA = 3
+	V2RAY_SECURE_GCM = 3,
+	V2RAY_SECURE_CHACHA = 4
 } pgs_v2rayserver_secure_t;
 
 #define pgs_config_info(config, ...)                                           \
