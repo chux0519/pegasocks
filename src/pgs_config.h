@@ -14,7 +14,12 @@ typedef struct pgs_config_ssl_s pgs_trojanserver_ssl_t;
 typedef struct pgs_config_ws_s pgs_trojanserver_ws_t;
 typedef struct pgs_config_ssl_s pgs_v2rayserver_ssl_t;
 typedef struct pgs_config_ws_s pgs_v2rayserver_ws_t;
-typedef enum { V2RAY_SECURE_CFB, V2RAY_SECURE_GCM } pgs_v2rayserver_secure_t;
+typedef enum {
+	V2RAY_SECURE_CFB = 0,
+	V2RAY_SECURE_NONE = 1,
+	V2RAY_SECURE_GCM = 2,
+	V2RAY_SECURE_CHACHA = 3
+} pgs_v2rayserver_secure_t;
 
 #define pgs_config_info(config, ...)                                           \
 	pgs_logger_main_info(config->log_file, __VA_ARGS__)
@@ -57,10 +62,10 @@ struct pgs_trojanserver_config_s {
 };
 
 struct pgs_v2rayserver_config_s {
+	pgs_v2rayserver_secure_t secure;
 	pgs_v2rayserver_ssl_t ssl;
 	pgs_v2rayserver_ws_t websocket;
 	pgs_ssl_ctx_t *ssl_ctx;
-	pgs_v2rayserver_secure_t secure;
 };
 
 /* common */

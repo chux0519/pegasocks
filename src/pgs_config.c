@@ -310,12 +310,14 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
 {
 	pgs_v2rayserver_config_t *ptr = pgs_v2rayserver_config_new();
 
-	ptr->secure = V2RAY_SECURE_CFB;
 	json_object *secure_obj = json_object_object_get(jobj, "secure");
-	const char *secure = json_object_get_string(secure_obj);
-	if (secure && strcmp(secure, "aes-128-gcm")) {
-		ptr->secure = V2RAY_SECURE_GCM;
+	if (secure_obj) {
+		const char *secure = json_object_get_string(secure_obj);
+		if (secure && strcmp(secure, "aes-128-gcm") == 0) {
+			ptr->secure = V2RAY_SECURE_GCM;
+		}
 	}
+
 	json_object *ssl_obj = json_object_object_get(jobj, "ssl");
 	if (ssl_obj) {
 		ptr->ssl.enabled = true;
@@ -367,6 +369,7 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_new()
 	ptr->websocket.hostname = NULL;
 	ptr->websocket.path = NULL;
 	ptr->ssl_ctx = NULL;
+	ptr->secure = V2RAY_SECURE_CFB;
 
 	return ptr;
 }

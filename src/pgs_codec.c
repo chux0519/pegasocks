@@ -251,18 +251,38 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 	// data key
 	RAND_bytes(header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
 	pgs_memcpy(ctx->key, header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
-	if (!ctx->encryptor)
-		ctx->encryptor = pgs_aes_cryptor_new(
-			EVP_aes_128_cfb(), (const pgs_buf_t *)ctx->key,
-			(const pgs_buf_t *)ctx->iv, PGS_ENCRYPT);
+	if (!ctx->encryptor) {
+		switch (ctx->secure) {
+		case V2RAY_SECURE_CFB:
+			ctx->encryptor = pgs_aes_cryptor_new(
+				EVP_aes_128_cfb(), (const pgs_buf_t *)ctx->key,
+				(const pgs_buf_t *)ctx->iv, PGS_ENCRYPT);
+			break;
+		case V2RAY_SECURE_GCM:
+			break;
+		default:
+			// not support yet
+			break;
+		}
+	}
+
 	if (!ctx->decryptor) {
 		md5((const pgs_buf_t *)ctx->iv, AES_128_CFB_IV_LEN,
 		    (pgs_buf_t *)ctx->riv);
 		md5((const pgs_buf_t *)ctx->key, AES_128_CFB_KEY_LEN,
 		    (pgs_buf_t *)ctx->rkey);
-		ctx->decryptor = pgs_aes_cryptor_new(
-			EVP_aes_128_cfb(), (const pgs_buf_t *)ctx->rkey,
-			(const pgs_buf_t *)ctx->riv, PGS_DECRYPT);
+		switch (ctx->secure) {
+		case V2RAY_SECURE_CFB:
+			ctx->decryptor = pgs_aes_cryptor_new(
+				EVP_aes_128_cfb(), (const pgs_buf_t *)ctx->rkey,
+				(const pgs_buf_t *)ctx->riv, PGS_DECRYPT);
+			break;
+		case V2RAY_SECURE_GCM:
+			break;
+		default:
+			// not support yet
+			break;
+		}
 	}
 	offset += AES_128_CFB_IV_LEN;
 	// v
@@ -270,9 +290,8 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 	// standard format data
 	header_cmd_raw[offset] = 0x01;
 	offset += 1;
-	// TODO: support aead cipher (0x02)
 	// aes 126 cfb
-	header_cmd_raw[offset] = 0x00;
+	header_cmd_raw[offset] = ctx->secure;
 	offset += 1;
 	// X
 	header_cmd_raw[offset] = 0x00;
