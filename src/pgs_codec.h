@@ -42,4 +42,8 @@ pgs_size_t pgs_vmess_write_body(const pgs_buf_t *data, pgs_size_t data_len,
 
 bool pgs_vmess_parse(const pgs_buf_t *data, pgs_size_t data_len,
 		     pgs_vmess_ctx_t *ctx, pgs_evbuffer_t *writer);
+bool pgs_vmess_parse_cfb(const pgs_buf_t *data, pgs_size_t data_len,
+			 pgs_vmess_ctx_t *ctx, pgs_evbuffer_t *writer);
+bool pgs_vmess_parse_gcm(const pgs_buf_t *data, pgs_size_t data_len,
+			 pgs_vmess_ctx_t *ctx, pgs_evbuffer_t *writer);
 #endif

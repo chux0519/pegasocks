@@ -413,13 +413,25 @@ pgs_size_t pgs_vmess_write_body(const pgs_buf_t *data, pgs_size_t data_len,
 bool pgs_vmess_parse(const pgs_buf_t *data, pgs_size_t data_len,
 		     pgs_vmess_ctx_t *ctx, pgs_evbuffer_t *writer)
 {
+	switch (ctx->secure) {
+	case V2RAY_SECURE_CFB:
+		return pgs_vmess_parse_cfb(data, data_len, ctx, writer);
+	case V2RAY_SECURE_GCM:
+		return pgs_vmess_parse_gcm(data, data_len, ctx, writer);
+	default:
+		// not implement yet
+		break;
+	}
+	return false;
+}
+
+bool pgs_vmess_parse_cfb(const pgs_buf_t *data, pgs_size_t data_len,
+			 pgs_vmess_ctx_t *ctx, pgs_evbuffer_t *writer)
+{
 	pgs_vmess_resp_t *meta = &ctx->resp_meta;
 	pgs_buf_t *rrbuf = ctx->remote_rbuf;
 	pgs_buf_t *lwbuf = ctx->local_wbuf;
 	pgs_aes_cryptor_t *decryptor = ctx->decryptor;
-
-	const pgs_buf_t *key = (const pgs_buf_t *)ctx->rkey;
-	const pgs_buf_t *iv = (const pgs_buf_t *)ctx->riv;
 
 	if (!ctx->header_recved) {
 		if (data_len < 4)
@@ -457,7 +469,6 @@ bool pgs_vmess_parse(const pgs_buf_t *data, pgs_size_t data_len,
 		return pgs_vmess_parse(data + 2, data_len - 2, ctx, writer);
 	}
 
-	// TODO: support aes-128-gcm
 	if (ctx->resp_hash == 0) {
 		if (data_len < 4) // need more data
 			return false;
@@ -481,4 +492,10 @@ bool pgs_vmess_parse(const pgs_buf_t *data, pgs_size_t data_len,
 
 	return pgs_vmess_parse(data + data_to_decrypt,
 			       data_len - data_to_decrypt, ctx, writer);
+}
+
+bool pgs_vmess_parse_gcm(const pgs_buf_t *data, pgs_size_t data_len,
+			 pgs_vmess_ctx_t *ctx, pgs_evbuffer_t *writer)
+{
+	return false;
 }
