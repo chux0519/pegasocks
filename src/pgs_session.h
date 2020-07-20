@@ -85,9 +85,7 @@ struct pgs_vmess_ctx_s {
 		uint8_t cmd;
 		uint8_t m;
 	} resp_meta;
-	bool body_recved;
 	pgs_size_t resp_len;
-	pgs_size_t chunk_len;
 	pgs_size_t remote_rbuf_pos;
 	uint32_t resp_hash;
 	pgs_base_cryptor_t *encryptor;

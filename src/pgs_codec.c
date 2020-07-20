@@ -292,8 +292,8 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 			ctx->decryptor =
 				(pgs_base_cryptor_t *)pgs_aead_cryptor_new(
 					EVP_aes_128_gcm(),
-					(const pgs_buf_t *)ctx->key,
-					(const pgs_buf_t *)ctx->iv,
+					(const pgs_buf_t *)ctx->rkey,
+					(const pgs_buf_t *)ctx->riv,
 					PGS_DECRYPT);
 			break;
 		default:
@@ -307,7 +307,7 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 	// standard format data
 	header_cmd_raw[offset] = 0x01;
 	offset += 1;
-	// aes 126 cfb
+	// secure
 	header_cmd_raw[offset] = ctx->secure;
 	offset += 1;
 	// X
@@ -425,6 +425,7 @@ bool pgs_vmess_parse(const pgs_buf_t *data, pgs_size_t data_len,
 	return false;
 }
 
+/* symmetric cipher will eat all the data put in */
 bool pgs_vmess_parse_cfb(const pgs_buf_t *data, pgs_size_t data_len,
 			 pgs_vmess_ctx_t *ctx, pgs_evbuffer_t *writer)
 {
@@ -438,7 +439,6 @@ bool pgs_vmess_parse_cfb(const pgs_buf_t *data, pgs_size_t data_len,
 			return false;
 		if (!pgs_aes_cryptor_decrypt(decryptor, data, 4, rrbuf))
 			return false;
-		ctx->remote_rbuf_pos = 4;
 		meta->v = rrbuf[0];
 		meta->opt = rrbuf[1];
 		meta->cmd = rrbuf[2];
@@ -494,8 +494,90 @@ bool pgs_vmess_parse_cfb(const pgs_buf_t *data, pgs_size_t data_len,
 			       data_len - data_to_decrypt, ctx, writer);
 }
 
+/* AEAD cipher */
 bool pgs_vmess_parse_gcm(const pgs_buf_t *data, pgs_size_t data_len,
 			 pgs_vmess_ctx_t *ctx, pgs_evbuffer_t *writer)
 {
-	return false;
+	pgs_vmess_resp_t *meta = &ctx->resp_meta;
+	pgs_buf_t *rrbuf = ctx->remote_rbuf;
+	pgs_buf_t *lwbuf = ctx->local_wbuf;
+	pgs_aead_cryptor_t *decryptor = (pgs_aead_cryptor_t *)ctx->decryptor;
+
+	if (!ctx->header_recved) {
+		if (data_len < 4)
+			return false;
+		if (!aes_128_cfb_decrypt(data, 4, (const pgs_buf_t *)ctx->rkey,
+					 (const pgs_buf_t *)ctx->riv, rrbuf))
+			return false;
+		meta->v = rrbuf[0];
+		meta->opt = rrbuf[1];
+		meta->cmd = rrbuf[2];
+		meta->m = rrbuf[3];
+		if (meta->m != 0) // support no cmd
+			return false;
+		ctx->header_recved = true;
+		ctx->resp_len = 0;
+		return pgs_vmess_parse_gcm(data + 4, data_len - 4, ctx, writer);
+	}
+
+	if (ctx->resp_len == 0) {
+		if (data_len == 0) // may called by itself, wait for more data
+			return true;
+		if (data_len < 2) // illegal data
+			return false;
+		int l = data[0] << 8 | data[1];
+
+		if (l == 0 || l == 16) // end
+			return true;
+		if (l < 16)
+			return false;
+		ctx->resp_len = l - 16;
+		ctx->resp_hash = -1;
+		// skip fnv1a hash
+		return pgs_vmess_parse_gcm(data + 2, data_len - 2, ctx, writer);
+	}
+
+	if (ctx->remote_rbuf_pos + data_len < ctx->resp_len + 16) {
+		// need more data, have to cache this
+		pgs_memcpy(rrbuf, data, data_len);
+		ctx->remote_rbuf_pos = data_len;
+		return true;
+	}
+
+	if (ctx->remote_rbuf_pos == 0) {
+		// enough data for decoding and no cache
+		pgs_size_t data_to_decrypt = ctx->resp_len;
+		int decrypt_len = 0;
+		if (!pgs_aead_cryptor_decrypt(decryptor, data, ctx->resp_len,
+					      data + ctx->resp_len, lwbuf,
+					      &decrypt_len))
+			return false;
+
+		pgs_evbuffer_add(writer, lwbuf, data_to_decrypt);
+		ctx->resp_len -= data_to_decrypt;
+
+		return pgs_vmess_parse_gcm(data + data_to_decrypt + 16,
+					   data_len - data_to_decrypt - 16, ctx,
+					   writer);
+	} else {
+		// have some cache in last chunk
+		// read more and do the rest
+		pgs_size_t data_to_read =
+			ctx->resp_len + 16 - ctx->remote_rbuf_pos;
+		pgs_memcpy(rrbuf + ctx->remote_rbuf_pos, data, data_to_read);
+
+		int decrypt_len = 0;
+		if (!pgs_aead_cryptor_decrypt(decryptor, rrbuf, ctx->resp_len,
+					      rrbuf + ctx->resp_len, lwbuf,
+					      &decrypt_len))
+			return false;
+
+		pgs_evbuffer_add(writer, lwbuf, ctx->resp_len);
+		ctx->resp_len = 0;
+		ctx->remote_rbuf_pos = 0;
+
+		return pgs_vmess_parse_gcm(data + data_to_read,
+					   data_len - data_to_read, ctx,
+					   writer);
+	}
 }

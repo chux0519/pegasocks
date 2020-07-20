@@ -196,9 +196,7 @@ pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen,
 	ptr->header_sent = false;
 	ptr->header_recved = false;
 	pgs_memzero(&ptr->resp_meta, sizeof(pgs_vmess_resp_t));
-	ptr->body_recved = false;
 	ptr->resp_len = 0;
-	ptr->chunk_len = 0;
 	ptr->remote_rbuf_pos = 0;
 	ptr->resp_hash = 0;
 	ptr->encryptor = NULL;
