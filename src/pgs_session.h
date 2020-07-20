@@ -90,8 +90,8 @@ struct pgs_vmess_ctx_s {
 	pgs_size_t chunk_len;
 	pgs_size_t remote_rbuf_pos;
 	uint32_t resp_hash;
-	pgs_aes_cryptor_t *encryptor;
-	pgs_aes_cryptor_t *decryptor;
+	pgs_base_cryptor_t *encryptor;
+	pgs_base_cryptor_t *decryptor;
 	pgs_v2rayserver_secure_t secure;
 };
 

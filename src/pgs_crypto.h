@@ -4,11 +4,12 @@
 #include "pgs_core.h"
 #include <openssl/evp.h>
 
-typedef struct pgs_aes_cryptor_s pgs_aes_cryptor_t;
+typedef struct pgs_base_cryptor_s pgs_base_cryptor_t;
+typedef struct pgs_base_cryptor_s pgs_aes_cryptor_t;
 typedef struct pgs_aead_cryptor_s pgs_aead_cryptor_t;
 typedef enum { PGS_ENCRYPT, PGS_DECRYPT } pgs_cryptor_direction_t;
 
-struct pgs_aes_cryptor_s {
+struct pgs_base_cryptor_s {
 	EVP_CIPHER_CTX *ctx;
 	const pgs_buf_t *key;
 	const pgs_buf_t *iv;
@@ -18,8 +19,8 @@ struct pgs_aead_cryptor_s {
 	EVP_CIPHER_CTX *ctx;
 	const pgs_buf_t *key;
 	pgs_buf_t *iv;
-	uint16_t counter;
 	pgs_cryptor_direction_t dir;
+	uint16_t counter;
 };
 
 /* AES cipher */

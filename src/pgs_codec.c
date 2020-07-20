@@ -4,11 +4,16 @@
 #include <assert.h>
 #include <openssl/rand.h>
 
+#ifndef htonll
 #define htonll(x)                                                              \
 	((1 == htonl(1)) ?                                                     \
 		 (x) :                                                         \
 		 ((uint64_t)htonl((x)&0xFFFFFFFF) << 32) | htonl((x) >> 32))
+#endif
+
+#ifndef ntohll
 #define ntohll(x) htonll(x)
+#endif
 
 const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
 const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
@@ -259,9 +264,12 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 				(const pgs_buf_t *)ctx->iv, PGS_ENCRYPT);
 			break;
 		case V2RAY_SECURE_GCM:
-			ctx->encryptor = pgs_aead_cryptor_new(
-				EVP_aes_128_gcm(), (const pgs_buf_t *)ctx->key,
-				(const pgs_buf_t *)ctx->iv, PGS_ENCRYPT);
+			ctx->encryptor =
+				(pgs_base_cryptor_t *)pgs_aead_cryptor_new(
+					EVP_aes_128_gcm(),
+					(const pgs_buf_t *)ctx->key,
+					(const pgs_buf_t *)ctx->iv,
+					PGS_ENCRYPT);
 			break;
 		default:
 			// not support yet
@@ -281,9 +289,12 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 				(const pgs_buf_t *)ctx->riv, PGS_DECRYPT);
 			break;
 		case V2RAY_SECURE_GCM:
-			ctx->decryptor = pgs_aead_cryptor_new(
-				EVP_aes_128_gcm(), (const pgs_buf_t *)ctx->key,
-				(const pgs_buf_t *)ctx->iv, PGS_DECRYPT);
+			ctx->decryptor =
+				(pgs_base_cryptor_t *)pgs_aead_cryptor_new(
+					EVP_aes_128_gcm(),
+					(const pgs_buf_t *)ctx->key,
+					(const pgs_buf_t *)ctx->iv,
+					PGS_DECRYPT);
 			break;
 		default:
 			// not support yet
@@ -385,9 +396,9 @@ pgs_size_t pgs_vmess_write_body(const pgs_buf_t *data, pgs_size_t data_len,
 
 		assert(ctx->encryptor != NULL);
 		int ciphertext_len = 0;
-		pgs_aead_cryptor_encrypt(ctx->encryptor, data, data_len,
-					 buf + 2 + data_len, buf + 2,
-					 &ciphertext_len);
+		pgs_aead_cryptor_encrypt((pgs_aead_cryptor_t *)ctx->encryptor,
+					 data, data_len, buf + 2 + data_len,
+					 buf + 2, &ciphertext_len);
 
 		return ciphertext_len + 16 + 2;
 	}
