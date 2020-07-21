@@ -1,6 +1,7 @@
 #include "pgs_local_server.h"
 #include "pgs_session.h"
 #include <stdlib.h>
+#include <signal.h>
 #include <pthread.h>
 
 static void accept_error_cb(pgs_listener_t *listener, void *ctx)
@@ -60,6 +61,7 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 // Run the Loop
 void pgs_local_server_run(pgs_local_server_t *local)
 {
+	signal(SIGPIPE, SIG_IGN);
 	pgs_ev_base_dispatch(local->base);
 }
 
