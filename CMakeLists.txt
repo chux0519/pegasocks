@@ -56,14 +56,12 @@ include_directories(${OPENSSL_INCLUDE_DIR})
 find_package(jsonc REQUIRED)
 include_directories(${JSONC_INCLUDE_DIRS})
 
-# utils
-find_package (Threads)
-
 add_executable(pegas main.c ${SOURCES})
-target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} Threads::Threads)
 
+target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+
+# tests
 enable_testing()
-
 add_subdirectory(test)
 
 
