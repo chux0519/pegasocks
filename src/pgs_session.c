@@ -459,8 +459,6 @@ static void on_trojan_ws_remote_read(pgs_bev_t *bev, void *ctx)
 
 	pgs_size_t data_len = pgs_evbuffer_get_length(input);
 	unsigned char *data = pgs_evbuffer_pullup(input, data_len);
-	// read from remote
-	pgs_session_debug_buffer(session, data, data_len);
 
 	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
 	if (!trojan_s_ctx->connected) {
@@ -537,7 +535,6 @@ static void do_trojan_ws_remote_write(pgs_bev_t *bev, void *ctx)
 	pgs_evbuffer_t *buf = outboundw;
 	pgs_size_t len = pgs_evbuffer_get_length(inboundr);
 	unsigned char *msg = pgs_evbuffer_pullup(inboundr, len);
-	pgs_session_debug_buffer(session, msg, len);
 
 	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
 	pgs_size_t head_len = trojan_s_ctx->head_len;
@@ -549,8 +546,6 @@ static void do_trojan_ws_remote_write(pgs_bev_t *bev, void *ctx)
 	if (head_len > 0) {
 		pgs_evbuffer_add(buf, trojan_s_ctx->head, head_len);
 		trojan_s_ctx->head_len = 0;
-		pgs_session_debug_buffer(
-			session, (unsigned char *)trojan_s_ctx->head, head_len);
 	}
 	// x ^ 0 = x
 	pgs_evbuffer_add(buf, msg, len - head_len);
@@ -651,8 +646,6 @@ static void on_trojan_gfw_remote_read(pgs_bev_t *bev, void *ctx)
 
 	pgs_size_t data_len = pgs_evbuffer_get_length(input);
 	unsigned char *data = pgs_evbuffer_pullup(input, data_len);
-	// read from remote
-	pgs_session_debug_buffer(session, data, data_len);
 
 	do_trojan_gfw_local_write(bev, ctx);
 }
@@ -692,7 +685,6 @@ static void do_trojan_gfw_remote_write(pgs_bev_t *bev, void *ctx)
 	pgs_evbuffer_t *buf = outboundw;
 	pgs_size_t len = pgs_evbuffer_get_length(inboundr);
 	unsigned char *msg = pgs_evbuffer_pullup(inboundr, len);
-	pgs_session_debug_buffer(session, msg, len);
 
 	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
 	pgs_size_t head_len = trojan_s_ctx->head_len;
@@ -702,8 +694,6 @@ static void do_trojan_gfw_remote_write(pgs_bev_t *bev, void *ctx)
 	if (head_len > 0) {
 		pgs_evbuffer_add(buf, trojan_s_ctx->head, head_len);
 		trojan_s_ctx->head_len = 0;
-		pgs_session_debug_buffer(
-			session, (unsigned char *)trojan_s_ctx->head, head_len);
 	}
 	pgs_evbuffer_add(buf, msg, len - head_len);
 
@@ -824,7 +814,6 @@ static void do_v2ray_ws_remote_write(pgs_bev_t *bev, void *ctx)
 	pgs_evbuffer_t *buf = outboundw;
 	pgs_size_t len = pgs_evbuffer_get_length(inboundr);
 	unsigned char *msg = pgs_evbuffer_pullup(inboundr, len);
-	pgs_session_debug_buffer(session, msg, len);
 
 	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
 
@@ -849,11 +838,6 @@ static void do_v2ray_ws_remote_write(pgs_bev_t *bev, void *ctx)
 
 	// ws encode
 	pgs_ws_write_bin(outboundw, v2ray_s_ctx->remote_wbuf, total_len);
-
-	// empty package indicated request end
-	pgs_session_debug_buffer(session,
-				 v2ray_s_ctx->remote_wbuf + wbuf_offset,
-				 total_len - wbuf_offset);
 
 	on_session_metrics_send(session, total_len);
 }
@@ -987,7 +971,6 @@ static void on_v2ray_tcp_local_read(pgs_bev_t *bev, void *ctx)
 
 	pgs_size_t len = pgs_evbuffer_get_length(inboundr);
 	unsigned char *msg = pgs_evbuffer_pullup(inboundr, len);
-	pgs_session_debug_buffer(session, msg, len);
 	if (len <= 0)
 		return;
 
