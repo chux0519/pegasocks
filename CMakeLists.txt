@@ -60,6 +60,8 @@ add_executable(pegas main.c ${SOURCES})
 
 target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
 
+install(TARGETS pegas)
+
 # tests
 enable_testing()
 add_subdirectory(test)
