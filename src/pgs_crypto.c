@@ -211,7 +211,7 @@ bool pgs_aead_cryptor_decrypt(pgs_aead_cryptor_t *ptr,
 void pgs_aead_cryptor_increase_iv(pgs_aead_cryptor_t *ptr)
 {
 	ptr->counter += 1;
-	ptr->iv[0] = ptr->counter << 8;
+	ptr->iv[0] = ptr->counter >> 8;
 	ptr->iv[1] = ptr->counter;
 	switch (ptr->dir) {
 	case PGS_ENCRYPT: {

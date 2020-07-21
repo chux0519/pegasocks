@@ -539,8 +539,8 @@ bool pgs_vmess_parse_gcm(const pgs_buf_t *data, pgs_size_t data_len,
 
 	if (ctx->remote_rbuf_pos + data_len < ctx->resp_len + 16) {
 		// need more data, have to cache this
-		pgs_memcpy(rrbuf, data, data_len);
-		ctx->remote_rbuf_pos = data_len;
+		pgs_memcpy(rrbuf + ctx->remote_rbuf_pos, data, data_len);
+		ctx->remote_rbuf_pos += data_len;
 		return true;
 	}
 
