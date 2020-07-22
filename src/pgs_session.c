@@ -209,10 +209,22 @@ pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen,
 }
 void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr)
 {
-	if (ptr->encryptor)
-		pgs_aes_cryptor_free(ptr->encryptor);
-	if (ptr->decryptor)
-		pgs_aes_cryptor_free(ptr->decryptor);
+	if (ptr->encryptor) {
+		if (ptr->secure == V2RAY_SECURE_CFB)
+			pgs_aes_cryptor_free(
+				(pgs_aes_cryptor_t *)ptr->encryptor);
+		else
+			pgs_aead_cryptor_free(
+				(pgs_aead_cryptor_t *)ptr->encryptor);
+	}
+	if (ptr->decryptor) {
+		if (ptr->secure == V2RAY_SECURE_CFB)
+			pgs_aes_cryptor_free(
+				(pgs_aes_cryptor_t *)ptr->decryptor);
+		else
+			pgs_aead_cryptor_free(
+				(pgs_aead_cryptor_t *)ptr->decryptor);
+	}
 	ptr->encryptor = NULL;
 	ptr->decryptor = NULL;
 	if (ptr)
