@@ -44,6 +44,8 @@ static void on_v2ray_ws_local_read(pgs_bev_t *bev, void *ctx);
 static void do_v2ray_ws_remote_request(pgs_bev_t *bev, void *ctx);
 static void do_v2ray_ws_remote_write(pgs_bev_t *bev, void *ctx);
 static void do_v2ray_ws_local_write(pgs_bev_t *bev, void *ctx);
+static void v2ray_ws_vmess_write_cb(pgs_evbuffer_t *writer, pgs_buf_t *data,
+				    pgs_size_t len);
 
 /*
  * v2ray tcp session handler
@@ -787,6 +789,13 @@ static void on_v2ray_ws_local_read(pgs_bev_t *bev, void *ctx)
 	pgs_session_debug(session, "write to remote");
 	do_v2ray_ws_remote_write(bev, ctx);
 }
+
+static void v2ray_ws_vmess_write_cb(pgs_evbuffer_t *writer, pgs_buf_t *data,
+				    pgs_size_t len)
+{
+	pgs_ws_write_bin(writer, data, len);
+}
+
 static void do_v2ray_ws_remote_request(pgs_bev_t *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
@@ -811,34 +820,17 @@ static void do_v2ray_ws_remote_write(pgs_bev_t *bev, void *ctx)
 	pgs_evbuffer_t *outboundw = pgs_bev_get_output(outbev);
 	pgs_evbuffer_t *inboundr = pgs_bev_get_input(inbev);
 
-	pgs_evbuffer_t *buf = outboundw;
-	pgs_size_t len = pgs_evbuffer_get_length(inboundr);
-	unsigned char *msg = pgs_evbuffer_pullup(inboundr, len);
-
 	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
-
-	// vmess encode
-	pgs_size_t wbuf_offset = 0;
-	if (!v2ray_s_ctx->header_sent) {
-		// will init cryptor
-		wbuf_offset = pgs_vmess_write_head(
-			(const pgs_buf_t *)session->outbound->config->password,
-			v2ray_s_ctx);
-		v2ray_s_ctx->header_sent = true;
-	}
 
 	pgs_size_t data_len = pgs_evbuffer_get_length(inboundr);
 	const pgs_buf_t *data = pgs_evbuffer_pullup(inboundr, data_len);
-	pgs_size_t data_section_len =
-		pgs_vmess_write_body(data, data_len,
-				     v2ray_s_ctx->remote_wbuf + wbuf_offset,
-				     v2ray_s_ctx);
+
+	pgs_size_t total_len = pgs_vmess_write(
+		(const pgs_buf_t *)session->outbound->config->password, data,
+		data_len, v2ray_s_ctx, outboundw,
+		(pgs_vmess_write_body_cb)&v2ray_ws_vmess_write_cb);
+
 	pgs_evbuffer_drain(inboundr, data_len);
-	pgs_size_t total_len = wbuf_offset + data_section_len;
-
-	// ws encode
-	pgs_ws_write_bin(outboundw, v2ray_s_ctx->remote_wbuf, total_len);
-
 	on_session_metrics_send(session, total_len);
 }
 
@@ -969,34 +961,16 @@ static void on_v2ray_tcp_local_read(pgs_bev_t *bev, void *ctx)
 	pgs_evbuffer_t *outboundw = pgs_bev_get_output(outbev);
 	pgs_evbuffer_t *inboundr = pgs_bev_get_input(inbev);
 
-	pgs_size_t len = pgs_evbuffer_get_length(inboundr);
-	unsigned char *msg = pgs_evbuffer_pullup(inboundr, len);
-	if (len <= 0)
-		return;
-
-	// vmess encode
-	pgs_size_t wbuf_offset = 0;
-	if (!v2ray_s_ctx->header_sent) {
-		// will init cryptor
-		wbuf_offset = pgs_vmess_write_head(
-			(const pgs_buf_t *)session->outbound->config->password,
-			v2ray_s_ctx);
-		v2ray_s_ctx->header_sent = true;
-	}
-
-	// write body will drain inboundr
 	pgs_size_t data_len = pgs_evbuffer_get_length(inboundr);
+	if (data_len <= 0)
+		return;
 	const pgs_buf_t *data = pgs_evbuffer_pullup(inboundr, data_len);
-	pgs_size_t data_section_len =
-		pgs_vmess_write_body(data, data_len,
-				     v2ray_s_ctx->remote_wbuf + wbuf_offset,
-				     v2ray_s_ctx);
+	pgs_size_t total_len = pgs_vmess_write(
+		(const pgs_buf_t *)session->outbound->config->password, data,
+		data_len, v2ray_s_ctx, outboundw,
+		(pgs_vmess_write_body_cb)&pgs_evbuffer_add);
+
 	pgs_evbuffer_drain(inboundr, data_len);
-
-	pgs_size_t total_len = wbuf_offset + data_section_len;
-
-	pgs_evbuffer_add(outboundw, v2ray_s_ctx->remote_wbuf, total_len);
-
 	on_session_metrics_send(session, total_len);
 }
 

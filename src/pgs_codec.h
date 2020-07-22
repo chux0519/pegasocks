@@ -11,6 +11,8 @@
 #define pgs_ws_write_bin(b, msg, l) pgs_ws_write(b, msg, l, 0x02)
 
 typedef struct pgs_ws_resp_s pgs_ws_resp_t;
+typedef void *(*pgs_vmess_write_body_cb)(pgs_evbuffer_t *, pgs_buf_t *,
+					 pgs_size_t);
 
 /* for ws response header */
 struct pgs_ws_resp_s {
@@ -38,7 +40,13 @@ bool pgs_ws_parse_head(pgs_buf_t *data, pgs_size_t data_len,
 pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx);
 
 pgs_size_t pgs_vmess_write_body(const pgs_buf_t *data, pgs_size_t data_len,
-				pgs_buf_t *buf, pgs_vmess_ctx_t *ctx);
+				pgs_size_t head_len, pgs_vmess_ctx_t *ctx,
+				pgs_evbuffer_t *writer,
+				pgs_vmess_write_body_cb cb);
+
+pgs_size_t pgs_vmess_write(const pgs_buf_t *password, const pgs_buf_t *data,
+			   pgs_size_t data_len, pgs_vmess_ctx_t *ctx,
+			   pgs_evbuffer_t *writer, pgs_vmess_write_body_cb cb);
 
 bool pgs_vmess_parse(const pgs_buf_t *data, pgs_size_t data_len,
 		     pgs_vmess_ctx_t *ctx, pgs_evbuffer_t *writer);

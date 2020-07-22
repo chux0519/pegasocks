@@ -9,8 +9,8 @@
 #include <stdbool.h> // bool
 #include <stdio.h> // FILE etc
 
-#define _PGS_BUFSIZE 32 * 1024
-#define _PGS_READ_BUFSZIE 32 * 1024
+#define _PGS_BUFSIZE 16 * 1024
+#define _PGS_READ_BUFSZIE 16 * 1024
 #define pgs_memzero(buf, n) (void)memset(buf, 0, n)
 #define pgs_memcpy memcpy
 #define pgs_free free
