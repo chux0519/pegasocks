@@ -7,12 +7,12 @@ C 语言编写，轻量，支持类 unix 系统。
 
 ## 特点
 
-与其他大多数支持多协议的客户端不同，pegasocks 不依赖各种第三方 core(比如 v2ray-core 等)，而是基于 libevent 真的去实现相关的协议，并且尽可能的照顾性能。因此它
+与其他大多数支持多协议的客户端不同，pegasocks 不依赖各种第三方 core(比如 v2ray-core 等)，而是真的去实现相关协议的拆装，并且尽可能的照顾性能。因此它
 
-1. 🍃 足够轻量，没有 QT 或是 boost 或是其他第三方二进制的依赖
-2. 🚀 性能优先，采用多线程，利用内核进行 loadbalance，每个线程一个 event loop，因此理论上吞吐量会比较高（待benchmark）
-3. ❌ 没有 GUI，可以直接配合 systemd, launchd, rc 或是各种自定义脚本配置开机启动。后期计划开发一个简单的 tray indicator，在系统的托盘里显示，并且提供一些简单的交互，总之重型的 GUI 是不在考虑范围内的。
-4. 🚥 这也是一个 learn by doing 项目，欢迎大家 review 代码，提供优化思路和 C 语言编程相关的指导。
+1. 🍃 足够轻量，没有 QT 或是 boost 或是其他第三方二进制的依赖，因此资源占用低。
+2. 🚀 性能优先，默认多个 worker 线程，每个线程一个 event loop，因此理论上吞吐量会比较高（待benchmark）
+3. 🚥 这是一个 learn by doing 项目，欢迎大家 review 代码，提供优化思路和 C 语言编程相关的指导。
+4. ❌ 没有 GUI，可以直接配合 systemd, launchd, rc 或是各种自定义脚本配置开机启动。后期计划开发一个简单的 tray indicator，在系统的托盘里显示，并且提供一些简单的交互，总之重型的 GUI 是不在考虑范围内的。
 
 ## 依赖
 
@@ -28,7 +28,10 @@ C 语言编写，轻量，支持类 unix 系统。
 
 ## 运行
 
-> pegas -c config.json
+> pegas -c config.json -t 4
+
+- `-c` 指定配置文件，默认为同目录下 config.json
+- `-t` 指定工作线程数量，默认为 4
 
 ## 配置
 
