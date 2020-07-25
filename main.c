@@ -9,6 +9,7 @@
 #include "pgs_local_server.h"
 #include "pgs_config.h"
 #include "pgs_server_manager.h"
+#include "pgs_stats.h"
 
 #define MAX_SERVER_THREADS 4
 #define MAX_LOG_MPSC_SIZE 64
@@ -92,12 +93,13 @@ int main(int argc, char **argv)
 		statsq, config->servers, config->servers_count);
 
 	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config, sm };
+	pgs_stats_server_ctx_t stats_ctx = { mpsc, sm, config };
 
 	pgs_logger_server_t *logger_server =
 		pgs_logger_server_new(logger, config->log_file);
 
 	// Spawn threads
-	pthread_t threads[server_threads + 1];
+	pthread_t threads[server_threads + 2];
 	pthread_attr_t attr;
 
 	pthread_attr_init(&attr);
@@ -105,9 +107,12 @@ int main(int argc, char **argv)
 
 	// Start logger thread
 	pthread_create(&threads[0], &attr, start_logger, logger_server);
+	// Start stats thread
+	pthread_create(&threads[1], &attr, start_stats_server,
+		       (void *)&stats_ctx);
 
 	// Local server threads
-	for (int i = 1; i <= server_threads; i++) {
+	for (int i = 2; i <= server_threads; i++) {
 		pthread_create(&threads[i], &attr, start_local_server,
 			       (void *)&ctx);
 	}
