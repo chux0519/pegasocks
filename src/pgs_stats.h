@@ -25,6 +25,7 @@ struct pgs_stats_server_ctx_s {
 struct pgs_stats_time_cb_arg_s {
 	pgs_stats_server_t *server;
 	pgs_event_t *ev;
+	struct timeval tv;
 };
 
 pgs_stats_server_t *pgs_stats_server_new();
@@ -33,4 +34,3 @@ void pgs_stats_server_start(pgs_stats_server_t *ptr);
 void *start_stats_server(void *data);
 
 #endif
-
