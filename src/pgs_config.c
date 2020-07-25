@@ -362,7 +362,7 @@ error:
 pgs_v2rayserver_config_t *pgs_v2rayserver_config_new()
 {
 	pgs_v2rayserver_config_t *ptr =
-		pgs_malloc(sizeof(pgs_trojanserver_config_t));
+		pgs_malloc(sizeof(pgs_v2rayserver_config_t));
 	ptr->ssl.enabled = false;
 	ptr->ssl.cert = NULL;
 	ptr->websocket.enabled = false;
