@@ -112,13 +112,13 @@ int main(int argc, char **argv)
 		       (void *)&stats_ctx);
 
 	// Local server threads
-	for (int i = 2; i <= server_threads; i++) {
+	for (int i = 2; i < server_threads + 2; i++) {
 		pthread_create(&threads[i], &attr, start_local_server,
 			       (void *)&ctx);
 	}
 
 	// block on all threads
-	for (int i = 0; i <= server_threads; i++) {
+	for (int i = 0; i < server_threads + 2; i++) {
 		pthread_join(threads[i], NULL);
 	}
 
