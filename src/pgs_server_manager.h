@@ -50,4 +50,12 @@ pgs_server_config_t *pgs_server_manager_get_config(pgs_server_manager_t *sm);
 void pgs_server_stats_init(pgs_server_stats_t *ptr, int len);
 void pgs_server_stats_free(pgs_server_stats_t *ptr, int len);
 
+pgs_session_stats_msg_t *pgs_session_stats_msg_new(time_t start, time_t end,
+						   pgs_size_t send,
+						   pgs_size_t recv,
+						   int config_idx);
+void pgs_session_stats_msg_send(pgs_session_stats_msg_t *msg,
+				pgs_server_manager_t *sm);
+void pgs_session_stats_msg_free(pgs_session_stats_msg_t *msg);
+
 #endif

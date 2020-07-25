@@ -6,6 +6,7 @@
 
 typedef struct pgs_stats_server_s pgs_stats_server_t;
 typedef struct pgs_stats_server_ctx_s pgs_stats_server_ctx_t;
+typedef struct pgs_stats_time_cb_arg_s pgs_stats_time_cb_arg_t;
 
 struct pgs_stats_server_s {
 	pgs_tid tid;
@@ -19,6 +20,11 @@ struct pgs_stats_server_ctx_s {
 	pgs_mpsc_t *mpsc; // for logger
 	pgs_server_manager_t *sm;
 	const pgs_config_t *config;
+};
+
+struct pgs_stats_time_cb_arg_s {
+	pgs_stats_server_t *server;
+	pgs_event_t *ev;
 };
 
 pgs_stats_server_t *pgs_stats_server_new();

@@ -24,22 +24,25 @@ void pgs_server_manager_free(pgs_server_manager_t *ptr)
 
 void pgs_server_manager_tryrecv(pgs_server_manager_t *ptr)
 {
-	pgs_session_stats_msg_t *msg = pgs_mpsc_recv(ptr->mpsc);
-	if (msg && msg->server_config_index >= ptr->server_len) {
+	while (true) {
+		pgs_session_stats_msg_t *msg = pgs_mpsc_recv(ptr->mpsc);
+		if (msg == NULL)
+			return;
+
 		pgs_server_stats_t *stats =
 			&ptr->server_stats[msg->server_config_index];
-		int idx = stats->session_stats_index % ptr->server_len;
 		pgs_server_session_stats_t *session_stats =
-			&stats->session_stats[idx];
-		session_stats->end = msg->data->end;
+			&stats->session_stats[stats->session_stats_index];
+
 		session_stats->start = msg->data->start;
+		session_stats->end = msg->data->end;
 		session_stats->recv = msg->data->recv;
-		session_stats->start = msg->data->end;
+		session_stats->send = msg->data->send;
 		stats->session_stats_index += 1;
-	}
-	if (msg) {
-		pgs_free(msg->data);
-		pgs_free(msg);
+		if (stats->session_stats_index == MAX_SESSION_STATS_SIZE)
+			stats->session_stats_index = 0;
+
+		pgs_session_stats_msg_free(msg);
 	}
 }
 
@@ -61,6 +64,9 @@ void pgs_server_stats_init(pgs_server_stats_t *ptr, int len)
 		ptr[i].session_stats =
 			pgs_malloc(MAX_SESSION_STATS_SIZE *
 				   sizeof(pgs_server_session_stats_t));
+		pgs_memzero(ptr[i].session_stats,
+			    MAX_SESSION_STATS_SIZE *
+				    sizeof(pgs_server_session_stats_t));
 		ptr[i].session_stats_index = 0;
 	}
 }
@@ -72,4 +78,35 @@ void pgs_server_stats_free(pgs_server_stats_t *ptr, int len)
 			pgs_free(ptr[i].session_stats);
 	}
 	pgs_free(ptr);
+}
+
+pgs_session_stats_msg_t *pgs_session_stats_msg_new(time_t start, time_t end,
+						   pgs_size_t send,
+						   pgs_size_t recv,
+						   int config_idx)
+{
+	pgs_server_session_stats_t *data =
+		pgs_malloc(sizeof(pgs_server_session_stats_t));
+	data->start = start;
+	data->end = end;
+	data->send = send;
+	data->recv = recv;
+	pgs_session_stats_msg_t *ptr =
+		pgs_malloc(sizeof(pgs_session_stats_msg_t));
+	ptr->server_config_index = config_idx;
+	ptr->data = data;
+	return ptr;
+}
+
+void pgs_session_stats_msg_send(pgs_session_stats_msg_t *msg,
+				pgs_server_manager_t *sm)
+{
+	pgs_mpsc_send(sm->mpsc, msg);
+}
+
+void pgs_session_stats_msg_free(pgs_session_stats_msg_t *msg)
+{
+	if (msg->data)
+		pgs_free(msg->data);
+	pgs_free(msg);
 }

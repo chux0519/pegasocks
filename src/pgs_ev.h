@@ -12,7 +12,11 @@ typedef struct event_base pgs_ev_base_t;
 typedef struct evdns_base pgs_ev_dns_base_t;
 typedef struct bufferevent pgs_bev_t;
 typedef struct evbuffer pgs_evbuffer_t;
+typedef struct event pgs_event_t;
 
+#define pgs_evtimer_new evtimer_new
+#define pgs_evtimer_add evtimer_add
+#define pgs_evtimer_del evtimer_del
 #define pgs_listener_new evconnlistener_new
 #define pgs_listener_free evconnlistener_free
 #define pgs_ev_base_new event_base_new

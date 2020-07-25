@@ -114,8 +114,12 @@ void pgs_session_free(pgs_session_t *session)
 	if (session->outbound) {
 		session->metrics->end = time(NULL);
 		const char *addr = session->outbound->dest;
-		// TODO: emit metrics
-		// session->local_server->sm
+		// emit metrics
+		pgs_session_stats_msg_t *msg = pgs_session_stats_msg_new(
+			session->metrics->start, session->metrics->end,
+			session->metrics->send, session->metrics->recv,
+			session->outbound->config_idx);
+		pgs_session_stats_msg_send(msg, session->local_server->sm);
 		pgs_session_info(
 			session,
 			"connection to %s:%d closed, send: %d, recv: %d", addr,

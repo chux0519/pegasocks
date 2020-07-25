@@ -4,11 +4,11 @@
 static void time_cb(evutil_socket_t fd, short event, void *arg)
 {
 	struct timeval tv;
-	struct event *ev = arg;
+	pgs_stats_time_cb_arg_t *ctx = arg;
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 	printf("interval\n");
-	evtimer_add(ev, &tv);
+	pgs_evtimer_add(ctx->ev, &tv);
 }
 
 pgs_stats_server_t *pgs_stats_server_new(pgs_server_manager_t *sm,
@@ -41,11 +41,17 @@ void pgs_stats_server_start(pgs_stats_server_t *ptr)
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 
-	struct event *ev;
+	pgs_event_t *ev;
 
-	// TODO: carry ptr
-	ev = evtimer_new(ptr->base, time_cb, event_self_cbarg());
-	evtimer_add(ev, &tv);
+	pgs_stats_time_cb_arg_t *arg =
+		pgs_malloc(sizeof(pgs_stats_time_cb_arg_t));
+	arg->ev = NULL;
+	arg->server = ptr;
+
+	ev = pgs_evtimer_new(ptr->base, time_cb, (void *)arg);
+	arg->ev = ev;
+
+	pgs_evtimer_add(ev, &tv);
 
 	pgs_ev_base_dispatch(ptr->base);
 }
