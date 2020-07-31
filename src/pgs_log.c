@@ -114,45 +114,16 @@ void pgs_logger_main_log(LOG_LEVEL level, FILE *output, const char *fmt, ...)
 	fflush(output);
 }
 
-pgs_logger_server_t *pgs_logger_server_new(pgs_logger_t *logger, FILE *output)
+void pgs_logger_tryrecv(pgs_logger_t *logger, FILE *output)
 {
-	pgs_logger_server_t *ptr = pgs_malloc(sizeof(pgs_logger_server_t));
-	ptr->logger = logger;
-	// update thread id
-	ptr->logger->tid = (pgs_tid)pthread_self();
-	ptr->output = output;
-	return ptr;
-}
-
-void pgs_logger_server_free(pgs_logger_server_t *server)
-{
-	if (server->output != stderr && server->output != NULL) {
-		fclose(server->output);
-	}
-	pgs_logger_free(server->logger);
-	pgs_free(server);
-}
-
-// drain log and write to output
-void pgs_logger_server_serve(pgs_logger_server_t *server)
-{
-	// FIXME: busy loop and sleep here
-	// may use condvar and mutex
-	while (1) {
-		pgs_logger_msg_t *msg = pgs_mpsc_recv(server->logger->mpsc);
+	while (true) {
+		pgs_logger_msg_t *msg = pgs_mpsc_recv(logger->mpsc);
 		if (msg != NULL) {
-			fprintf(server->output, "%s\n", msg->msg);
-			fflush(server->output);
+			fprintf(output, "%s\n", msg->msg);
+			fflush(output);
 			pgs_logger_msg_free(msg);
 		} else {
-			sleep(1);
+			return;
 		}
 	}
-}
-
-void *start_logger(void *ctx)
-{
-	pgs_logger_server_serve((pgs_logger_server_t *)ctx);
-
-	return 0;
 }

@@ -9,7 +9,7 @@
 #include "pgs_local_server.h"
 #include "pgs_config.h"
 #include "pgs_server_manager.h"
-#include "pgs_stats.h"
+#include "pgs_helper_thread.h"
 
 #define MAX_SERVER_THREADS 4
 #define MAX_LOG_MPSC_SIZE 64
@@ -93,38 +93,33 @@ int main(int argc, char **argv)
 		statsq, config->servers, config->servers_count);
 
 	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config, sm };
-	pgs_stats_server_ctx_t stats_ctx = { mpsc, sm, config };
-
-	pgs_logger_server_t *logger_server =
-		pgs_logger_server_new(logger, config->log_file);
+	pgs_helper_thread_arg_t helper_thread_arg = { sm, logger, config };
 
 	// Spawn threads
-	pthread_t threads[server_threads + 2];
+	pthread_t threads[server_threads + 1];
 	pthread_attr_t attr;
 
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-	// Start logger thread
-	pthread_create(&threads[0], &attr, start_logger, logger_server);
+	// Start helper thread
+	pthread_create(&threads[0], &attr, pgs_helper_thread_start,
+		       (void *)&helper_thread_arg);
 	// Start stats thread
-	pthread_create(&threads[1], &attr, start_stats_server,
-		       (void *)&stats_ctx);
 
 	// Local server threads
-	for (int i = 2; i < server_threads + 2; i++) {
+	for (int i = 1; i < server_threads + 1; i++) {
 		pthread_create(&threads[i], &attr, start_local_server,
 			       (void *)&ctx);
 	}
 
 	// block on all threads
-	for (int i = 0; i < server_threads + 2; i++) {
+	for (int i = 0; i < server_threads + 1; i++) {
 		pthread_join(threads[i], NULL);
 	}
 
 	pthread_attr_destroy(&attr);
 
-	pgs_logger_server_free(logger_server);
 	pgs_logger_free(logger);
 	pgs_mpsc_free(mpsc);
 	pgs_config_free(config);

@@ -51,14 +51,9 @@ void pgs_logger_log(LOG_LEVEL level, pgs_logger_t *logger, const char *fmt,
 void pgs_logger_main_log(LOG_LEVEL level, FILE *output, const char *fmt, ...);
 
 // logger thread functions
-pgs_logger_server_t *pgs_logger_server_new(pgs_logger_t *logger, FILE *output);
-void pgs_logger_server_free(pgs_logger_server_t *server);
-void pgs_logger_server_serve(pgs_logger_server_t *server);
+void pgs_logger_tryrecv(pgs_logger_t *logger, FILE *output);
 
 pgs_logger_msg_t *pgs_logger_msg_new(char *msg, pgs_tid tid);
 void pgs_logger_msg_free(pgs_logger_msg_t *lmsg);
-
-// start point, will run in a seperate thread
-void *start_logger(void *ctx);
 
 #endif
