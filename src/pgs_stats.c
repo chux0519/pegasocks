@@ -4,30 +4,8 @@
 static void time_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pgs_stats_time_cb_arg_t *ctx = arg;
-	printf("interval\n");
 	// try to read metrics
 	pgs_server_manager_tryrecv(ctx->server->sm);
-	// print it
-	pgs_server_stats_t *server_metrics = ctx->server->sm->server_stats;
-
-	for (int i = 0; i < ctx->server->sm->server_len; i++) {
-		//printf("connect_delay: %d\n", server_metrics[i].connect_delay);
-		//printf("g204_delay: %d\n", server_metrics[i].g204_delay);
-		//printf("session stats: \n");
-		pgs_server_session_stats_t *session_metrics =
-			server_metrics[i].session_stats;
-		for (int j = 0; j < MAX_SESSION_STATS_SIZE; j++) {
-			if (session_metrics[j].start != 0) {
-				// TODO: ll
-				printf("start: %lu, end: %lu, recv: %llu, send: %llu\n",
-				       j, session_metrics[j].start,
-				       session_metrics[j].end,
-				       session_metrics[j].recv,
-				       session_metrics[j].send);
-			}
-		}
-	}
-
 	pgs_evtimer_add(ctx->ev, &ctx->tv);
 }
 
