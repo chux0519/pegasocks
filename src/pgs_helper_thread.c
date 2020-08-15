@@ -17,14 +17,24 @@ static void pgs_timer_cb(evutil_socket_t fd, short event, void *data)
 	pgs_evtimer_add(arg->ev, &arg->tv);
 }
 
-void pgs_timer_init(pgs_helper_thread_ctx_t *ptr)
+static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
+{
+	pgs_timer_cb_arg_t *arg = data;
+	// TODO: get connect time and g204 time
+	arg->tv.tv_sec = 5;
+	arg->tv.tv_usec = 0;
+	pgs_evtimer_add(arg->ev, &arg->tv);
+}
+
+void pgs_timer_init(int interval, pgs_timer_cb_t cb,
+		    pgs_helper_thread_ctx_t *ptr)
 {
 	// FIXME: leaks
 	pgs_timer_cb_arg_t *arg = pgs_malloc(sizeof(pgs_timer_cb_arg_t));
-	arg->tv.tv_sec = 1;
+	arg->tv.tv_sec = interval;
 	arg->tv.tv_usec = 0;
 	arg->ctx = ptr;
-	arg->ev = pgs_evtimer_new(ptr->base, pgs_timer_cb, (void *)arg);
+	arg->ev = pgs_evtimer_new(ptr->base, cb, (void *)arg);
 
 	pgs_evtimer_add(arg->ev, &arg->tv);
 }
@@ -55,7 +65,9 @@ void *pgs_helper_thread_start(void *data)
 	pgs_helper_thread_ctx_t *ctx = pgs_helper_thread_ctx_new(arg);
 
 	// init timer cb
-	pgs_timer_init(ctx);
+	pgs_timer_init(1, pgs_timer_cb, ctx);
+
+	pgs_timer_init(5, pgs_metrics_timer_cb, ctx);
 
 	pgs_ev_base_dispatch(ctx->base);
 

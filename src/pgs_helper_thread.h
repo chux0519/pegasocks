@@ -7,6 +7,7 @@
 typedef struct pgs_helper_thread_ctx_s pgs_helper_thread_ctx_t;
 typedef struct pgs_helper_thread_arg_s pgs_helper_thread_arg_t;
 typedef struct pgs_timer_cb_arg_s pgs_timer_cb_arg_t;
+typedef void(pgs_timer_cb_t)(evutil_socket_t fd, short event, void *data);
 
 struct pgs_timer_cb_arg_s {
 	pgs_event_t *ev;
@@ -33,6 +34,6 @@ pgs_helper_thread_ctx_new(pgs_helper_thread_arg_t *arg);
 void pgs_helper_thread_ctx_free(pgs_helper_thread_ctx_t *ptr);
 
 void *pgs_helper_thread_start(void *data);
-void pgs_timer_init(pgs_helper_thread_ctx_t *ptr);
+void pgs_timer_init(int interval, pgs_timer_cb_t, pgs_helper_thread_ctx_t *ptr);
 
 #endif
