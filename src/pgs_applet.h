@@ -4,14 +4,22 @@
 #include "pgs_core.h"
 #include "pgs_server_manager.h"
 #include "pgs_log.h"
+#include "pgs_local_server.h"
 
 typedef struct pgs_tray_context_s pgs_tray_context_t;
+
+typedef void(spawn_fn)(pthread_t *threads, int server_threads,
+		       pgs_local_server_ctx_t *ctx);
+
+typedef void(shutdown_fn)(pthread_t *threads, int server_threads);
 
 struct pgs_tray_context_s {
 	pgs_logger_t *logger;
 	pgs_server_manager_t *sm;
 	pthread_t *threads;
 	int thread_num;
+	spawn_fn *spawn_workers;
+	shutdown_fn *kill_workers;
 };
 
 #ifdef WITH_APPLET
@@ -43,6 +51,6 @@ void pgs_tray_clean();
 
 #endif
 
-void pgs_tran_start(pgs_tray_context_t *ctx);
+void pgs_tray_start(pgs_tray_context_t *ctx);
 
 #endif

@@ -4,32 +4,11 @@
 
 static pgs_tray_t tray;
 
-static void toggle_cb(pgs_tray_menu_t *item)
-{
-	printf("toggle cb\n");
-	item->checked = !item->checked;
-	tray_update(&tray);
-}
-
-static void on_off_cb(pgs_tray_menu_t *item)
-{
-	(void)item;
-	pgs_tray_context_t *ctx = item->context;
-	item->checked = !item->checked;
-	pgs_logger_info(ctx->logger, "turn pegas %s", item->text);
-	// TODO: shutdown all worker threads
-	// TODO: or spawn all worker threads
-	item->text = item->checked ? "on" : "off";
-	tray.icon = item->checked ? TRAY_ICON1 : TRAY_ICON2;
-	tray_update(&tray);
-}
-
 static void quit_cb(pgs_tray_menu_t *item)
 {
 	(void)item;
-	printf("quit cb\n");
-	// TODO: clean
-	tray_exit();
+	pgs_tray_context_t *ctx = tray.menu[0].context;
+	ctx->kill_workers(ctx->threads, ctx->thread_num);
 }
 
 static void submenu_cb(pgs_tray_menu_t *item)
@@ -42,16 +21,12 @@ static void submenu_cb(pgs_tray_menu_t *item)
 
 static pgs_tray_t tray = {
 	.icon = TRAY_ICON1,
-	.menu =
-		(pgs_tray_menu_t[]){
-			{ .text = "on", .cb = on_off_cb, .checked = 1 },
-			{ .text = "-" },
-			{
-				.text = "servers",
-			},
-			{ .text = "-" },
-			{ .text = "quit", .cb = quit_cb },
-			{ .text = NULL } },
+	.menu = (pgs_tray_menu_t[]){ {
+					     .text = "servers",
+				     },
+				     { .text = "-" },
+				     { .text = "quit", .cb = quit_cb },
+				     { .text = NULL } },
 };
 
 void pgs_tray_submenu_update(pgs_tray_context_t *ctx,
@@ -79,14 +54,14 @@ void pgs_tray_init(pgs_tray_context_t *ctx)
 	pgs_tray_menu_t *servers_submenu =
 		pgs_malloc(sizeof(pgs_tray_menu_t) * ctx->sm->server_len * 3);
 	pgs_tray_submenu_update(ctx, servers_submenu);
-	tray.menu[2].submenu = servers_submenu;
+	tray.menu[0].submenu = servers_submenu;
 	tray.menu[0].context = ctx;
 }
 // clean submenu
 void pgs_tray_clean()
 {
-	if (tray.menu[2].submenu)
-		pgs_free(tray.menu[2].submenu);
+	if (tray.menu[0].submenu)
+		pgs_free(tray.menu[0].submenu);
 }
 
 // TODO: recv args(thread handles, metrics server, configs)
@@ -110,7 +85,7 @@ void pgs_tray_start(pgs_tray_context_t *ctx)
 }
 
 #else
-void pgs_tran_start(pgs_tray_context_t *ctx)
+void pgs_tray_start(pgs_tray_context_t *ctx)
 {
 }
 

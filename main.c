@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <signal.h>
 #include <unistd.h>
 #include "pgs_local_server.h"
 #include "pgs_config.h"
@@ -15,6 +16,29 @@
 #define MAX_SERVER_THREADS 4
 #define MAX_LOG_MPSC_SIZE 64
 #define MAX_STATS_MPSC_SIZE 64
+
+static void spawn_workers(pthread_t *threads, int server_threads,
+			  pgs_local_server_ctx_t *ctx)
+{
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	// Local server threads
+	for (int i = 0; i < server_threads; i++) {
+		pthread_create(&threads[i], &attr, start_local_server,
+			       (void *)ctx);
+	}
+
+	pthread_attr_destroy(&attr);
+}
+
+static void kill_workers(pthread_t *threads, int server_threads)
+{
+	for (int i = 0; i < server_threads; i++) {
+		pthread_kill(threads[i], SIGINT);
+	}
+}
 
 int main(int argc, char **argv)
 {
@@ -106,24 +130,19 @@ int main(int argc, char **argv)
 	// Start helper thread
 	pthread_create(&threads[0], &attr, pgs_helper_thread_start,
 		       (void *)&helper_thread_arg);
-	// Start stats thread
 
 	// Local server threads
-	for (int i = 1; i < server_threads + 1; i++) {
-		pthread_create(&threads[i], &attr, start_local_server,
-			       (void *)&ctx);
-	}
+	spawn_workers(threads + 1, server_threads, &ctx);
 
 #ifdef WITH_APPLET
-	pgs_tray_context_t tray_ctx = { logger, sm, threads,
-					server_threads + 1 };
+	pgs_tray_context_t tray_ctx = { logger,	       sm,
+					threads + 1,   server_threads,
+					spawn_workers, kill_workers };
 	pgs_tray_start(&tray_ctx);
 #endif
 
-	// block on all threads
-	for (int i = 0; i < server_threads + 1; i++) {
-		pthread_join(threads[i], NULL);
-	}
+	// block on helper thread
+	pthread_join(threads[0], NULL);
 
 	pthread_attr_destroy(&attr);
 

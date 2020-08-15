@@ -61,6 +61,7 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 // Run the Loop
 void pgs_local_server_run(pgs_local_server_t *local)
 {
+	// ignore SIGPIPE
 	signal(SIGPIPE, SIG_IGN);
 	pgs_ev_base_dispatch(local->base);
 }
