@@ -26,12 +26,28 @@ C 语言编写，轻量，支持类 unix 系统。
 >
 > cmake .. && make
 
+
 ## 运行
 
 > pegas -c config.json -t 4
 
 - `-c` 指定配置文件，默认为同目录下 config.json
 - `-t` 指定工作线程数量，默认为 4
+
+
+## 系统托盘
+
+默认编译二进制文件不带 GUI，带上参数 `-DWITH_TRAY=1` 开启系统托盘功能。
+
+> cmake -DWITH_TRAY=1 .. && make
+
+运行时，将 `icon.svg` 放到 pegas 同级目录，然后正常使用即可。
+
+PS: 目前只在 linux 平台做了适配，其他平台可能暂时编译不过。
+
+![pegas_applet.png](./pegas_applet.png)
+
+ 目前只支持切换服务器，之后计划支持显示各个服务器的网络状况（get google 204 或者 ping 的时间），除此之外不再准备添加更多功能了。
 
 ## 配置
 
@@ -48,11 +64,6 @@ C 语言编写，轻量，支持类 unix 系统。
     - [x] tcp
     - [x] websocket
     - [x] tls + websocket
-- control pannel
-  - [ ] 设置当前服务器
-  - [ ] 收集服务器的 metrics
-  - [ ] 重启服务
-- 负载均衡(control pannel 完成后可以使用其他语言、技术进行编写)
 - 平台适配
   - [x] linux
   - [x] osx
