@@ -47,7 +47,8 @@ void pgs_tray_submenu_update(pgs_tray_context_t *ctx,
 		servers_submenu[i].cb = pick_server_cb;
 		servers_submenu[i].context = server_idx;
 		// TODO: metrics
-		servers_submenu[i + 1].text = "metrics: TODO";
+		servers_submenu[i + 1].text =
+			ctx->sm->server_configs[server_idx].server_type;
 		servers_submenu[i + 1].disabled = 1;
 		servers_submenu[i + 2].text = "-";
 	}
