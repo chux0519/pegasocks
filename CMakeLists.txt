@@ -56,9 +56,19 @@ include_directories(${OPENSSL_INCLUDE_DIR})
 find_package(jsonc REQUIRED)
 include_directories(${JSONC_INCLUDE_DIRS})
 
-add_executable(pegas main.c ${SOURCES})
+add_executable(pegas main.c ${SOURCES} ./3rd-party/tray/tray.h)
 
 target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+
+if(DEFINED WITH_APPLET)
+if(UNIX AND NOT APPLE)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
+  include_directories(${APPINDICATOR_INCLUDE_DIRS})
+  target_link_libraries(pegas ${APPINDICATOR_LIBRARIES})
+endif()
+add_compile_definitions(WITH_APPLET=$WITH_APPLET)
+endif(DEFINED WITH_APPLET)
 
 install(TARGETS pegas)
 

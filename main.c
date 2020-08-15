@@ -10,6 +10,7 @@
 #include "pgs_config.h"
 #include "pgs_server_manager.h"
 #include "pgs_helper_thread.h"
+#include "pgs_applet.h"
 
 #define MAX_SERVER_THREADS 4
 #define MAX_LOG_MPSC_SIZE 64
@@ -112,6 +113,11 @@ int main(int argc, char **argv)
 		pthread_create(&threads[i], &attr, start_local_server,
 			       (void *)&ctx);
 	}
+
+#ifdef WITH_APPLET
+	pgs_tray_context_t tray_ctx = { sm, threads, server_threads + 1 };
+	pgs_tray_start(&tray_ctx);
+#endif
 
 	// block on all threads
 	for (int i = 0; i < server_threads + 1; i++) {
