@@ -3,10 +3,12 @@
 
 #include "pgs_core.h"
 #include "pgs_server_manager.h"
+#include "pgs_log.h"
 
 typedef struct pgs_tray_context_s pgs_tray_context_t;
 
 struct pgs_tray_context_s {
+	pgs_logger_t *logger;
 	pgs_server_manager_t *sm;
 	pthread_t *threads;
 	int thread_num;
