@@ -4,6 +4,9 @@
 
 static pgs_tray_t tray;
 
+void pgs_tray_submenu_update(pgs_tray_context_t *ctx,
+			     pgs_tray_menu_t *servers_submenu);
+
 static void quit_cb(pgs_tray_menu_t *item)
 {
 	(void)item;
@@ -11,11 +14,14 @@ static void quit_cb(pgs_tray_menu_t *item)
 	ctx->kill_workers(ctx->threads, ctx->thread_num);
 }
 
-static void submenu_cb(pgs_tray_menu_t *item)
+static void pick_server_cb(pgs_tray_menu_t *item)
 {
 	(void)item;
-	printf("submenu: clicked on %s, index: %d\n", item->text,
-	       item->context);
+	pgs_tray_context_t *ctx = tray.menu[0].context;
+	pgs_logger_info(ctx->logger, "switched to server %s, index: %d",
+			item->text, item->context);
+	ctx->sm->cur_server_index = item->context;
+	pgs_tray_submenu_update(ctx, tray.menu[0].submenu);
 	tray_update(&tray);
 }
 
@@ -38,6 +44,8 @@ void pgs_tray_submenu_update(pgs_tray_context_t *ctx,
 			ctx->sm->server_configs[server_idx].server_address;
 		servers_submenu[i].checked =
 			server_idx == ctx->sm->cur_server_index;
+		servers_submenu[i].cb = pick_server_cb;
+		servers_submenu[i].context = server_idx;
 		// TODO: metrics
 		servers_submenu[i + 1].text = "metrics: TODO";
 		servers_submenu[i + 1].disabled = 1;
