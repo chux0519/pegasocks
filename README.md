@@ -40,9 +40,9 @@ C 语言编写，轻量，支持类 unix 系统。
 
 ## 系统托盘
 
-默认编译二进制文件不带 GUI，带上参数 `-DWITH_TRAY=1` 开启系统托盘功能。
+默认编译二进制文件不带 GUI，带上参数 `-DWITH_APPLET=1` 开启系统托盘功能。
 
-> cmake -DWITH_TRAY=1 .. && make
+> cmake -DWITH_APPLET=1 .. && make
 
 运行时，将 `icon.svg` 放到 pegas 同级目录，然后正常使用即可。
 
