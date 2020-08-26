@@ -44,11 +44,19 @@ C 语言编写，轻量，支持类 unix 系统。
 
 > cmake -DWITH_APPLET=1 .. && make
 
-运行时，将 `icon.svg` 放到 pegas 同级目录，然后正常使用即可。
-
-PS: 目前只在 linux 平台做了适配，其他平台可能暂时编译不过。
+### Linux 
 
 ![pegas_applet.png](./pegas_applet.png)
+运行时，将 `icon.svg` 放到 pegas 同级目录，然后正常使用即可。
+
+
+### OSX
+
+![pegas_applet_osx.png](./pegas_applet_osx.png)
+运行时，将 `icon.png` 放到 pegas 同级目录，然后正常使用即可。
+
+PS: 目前只在 linux/osx 平台做了适配，其他平台可能暂时编译不过。
+
 
  目前只支持切换服务器，之后计划支持显示各个服务器的网络状况（get google 204 或者 ping 的时间），除此之外不再准备添加更多功能了。
 
