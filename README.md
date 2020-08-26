@@ -46,13 +46,15 @@ C 语言编写，轻量，支持类 unix 系统。
 
 ### Linux 
 
-![pegas_applet.png](./pegas_applet.png)
+<img src="./pegas_applet.png" width="300" />
+
 运行时，将 `icon.svg` 放到 pegas 同级目录，然后正常使用即可。
 
 
 ### OSX
 
-![pegas_applet_osx.png](./pegas_applet_osx.png)
+<img src="./pegas_applet_osx.png" width="300" />
+
 运行时，将 `icon.png` 放到 pegas 同级目录，然后正常使用即可。
 
 PS: 目前只在 linux/osx 平台做了适配，其他平台可能暂时编译不过。
