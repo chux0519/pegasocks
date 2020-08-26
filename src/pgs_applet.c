@@ -79,7 +79,7 @@ void pgs_tray_start(pgs_tray_context_t *ctx)
 	pgs_tray_init(ctx);
 	if (tray_init(&tray) < 0) {
 		printf("failed to create tray\n");
-		return 1;
+		return;
 	}
 	int iter = 0;
 	while (tray_loop(1) == 0) {
