@@ -57,6 +57,16 @@ C 语言编写，轻量，支持类 unix 系统。
 
 运行时，将 `icon.png` 放到 pegas 同级目录，然后正常使用即可。
 
+构建流程
+
+在 OSX 平台有打包成 app bundle 的脚本，在 build 完成后，确认有 build/pegas 文件，然后运行 `./bundle.sh`，build 目录下会出现 `pegas.app`。
+然后在用户目录下创建 `~/.pegasrc`，写入 json 格式的配置文件。
+最后双击 pegas.app 即可。
+
+更多参数修改可以手动修改 `bundle.sh` 作出适合自己的调整。
+
+如果遇到无法启动的状况，请确认系统安装了 libevent 和 json-c (brew install libevent json-c)
+
 PS: 目前只在 linux/osx 平台做了适配，其他平台可能暂时编译不过。
 
 
