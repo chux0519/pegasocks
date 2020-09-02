@@ -8,8 +8,10 @@
 
 typedef struct pgs_config_s pgs_config_t;
 typedef struct pgs_server_config_s pgs_server_config_t;
+typedef struct pgs_server_ws_config_base_s pgs_server_ws_config_base_t;
 typedef struct pgs_trojanserver_config_s pgs_trojanserver_config_t;
 typedef struct pgs_v2rayserver_config_s pgs_v2rayserver_config_t;
+typedef struct pgs_config_ssl_s pgs_config_ssl_t;
 typedef struct pgs_config_ssl_s pgs_trojanserver_ssl_t;
 typedef struct pgs_config_ws_s pgs_trojanserver_ws_t;
 typedef struct pgs_config_ssl_s pgs_v2rayserver_ssl_t;
@@ -55,6 +57,11 @@ struct pgs_config_ws_s {
 	const char *hostname;
 };
 
+struct pgs_server_ws_config_base_s {
+	pgs_trojanserver_ssl_t ssl;
+	pgs_trojanserver_ws_t websocket;
+};
+
 struct pgs_trojanserver_config_s {
 	pgs_trojanserver_ssl_t ssl;
 	pgs_trojanserver_ws_t websocket;
@@ -62,9 +69,9 @@ struct pgs_trojanserver_config_s {
 };
 
 struct pgs_v2rayserver_config_s {
-	pgs_v2rayserver_secure_t secure;
 	pgs_v2rayserver_ssl_t ssl;
 	pgs_v2rayserver_ws_t websocket;
+	pgs_v2rayserver_secure_t secure;
 	pgs_ssl_ctx_t *ssl_ctx;
 };
 
