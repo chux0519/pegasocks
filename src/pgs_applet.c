@@ -46,11 +46,14 @@ void pgs_tray_submenu_update(pgs_tray_context_t *ctx,
 			server_idx == ctx->sm->cur_server_index;
 		servers_submenu[i].cb = pick_server_cb;
 		servers_submenu[i].context = server_idx;
+		servers_submenu[i].submenu = NULL;
 		// TODO: metrics
 		servers_submenu[i + 1].text =
 			ctx->sm->server_configs[server_idx].server_type;
 		servers_submenu[i + 1].disabled = 1;
+		servers_submenu[i + 1].submenu = NULL;
 		servers_submenu[i + 2].text = "-";
+		servers_submenu[i + 2].submenu = NULL;
 	}
 	servers_submenu[ctx->sm->server_len * 3 - 1].text = NULL;
 }
@@ -73,7 +76,6 @@ void pgs_tray_clean()
 		pgs_free(tray.menu[0].submenu);
 }
 
-// TODO: recv args(thread handles, metrics server, configs)
 void pgs_tray_start(pgs_tray_context_t *ctx)
 {
 	pgs_tray_init(ctx);
@@ -99,4 +101,3 @@ void pgs_tray_start(pgs_tray_context_t *ctx)
 }
 
 #endif
-
