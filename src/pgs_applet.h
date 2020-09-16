@@ -20,6 +20,7 @@ struct pgs_tray_context_s {
 	int thread_num;
 	spawn_fn *spawn_workers;
 	shutdown_fn *kill_workers;
+	char *metrics_label;
 };
 
 #ifdef WITH_APPLET

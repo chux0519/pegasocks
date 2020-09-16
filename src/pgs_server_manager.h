@@ -19,8 +19,8 @@ struct pgs_server_session_stats_s {
 };
 
 struct pgs_server_stats_s {
-	float connect_delay;
-	float g204_delay;
+	double connect_delay;
+	double g204_delay;
 	pgs_server_session_stats_t *session_stats;
 	pgs_size_t session_stats_index;
 };

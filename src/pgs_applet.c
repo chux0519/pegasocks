@@ -48,8 +48,13 @@ void pgs_tray_submenu_update(pgs_tray_context_t *ctx,
 		servers_submenu[i].context = server_idx;
 		servers_submenu[i].submenu = NULL;
 		// TODO: metrics
+		sprintf(&ctx->metrics_label[256 * server_idx],
+			"(%s) g204: %.2f ms  connect: %.2f ms",
+			ctx->sm->server_configs[server_idx].server_type,
+			ctx->sm->server_stats[server_idx].g204_delay,
+			ctx->sm->server_stats[server_idx].connect_delay);
 		servers_submenu[i + 1].text =
-			ctx->sm->server_configs[server_idx].server_type;
+			&ctx->metrics_label[256 * server_idx];
 		servers_submenu[i + 1].disabled = 1;
 		servers_submenu[i + 1].submenu = NULL;
 		servers_submenu[i + 2].text = "-";
@@ -65,6 +70,8 @@ void pgs_tray_init(pgs_tray_context_t *ctx)
 			ctx->sm->cur_server_index, ctx->sm->server_len);
 	pgs_tray_menu_t *servers_submenu =
 		pgs_malloc(sizeof(pgs_tray_menu_t) * ctx->sm->server_len * 3);
+	ctx->metrics_label =
+		pgs_malloc(sizeof(char) * 256 * ctx->sm->server_len);
 	pgs_tray_submenu_update(ctx, servers_submenu);
 	tray.menu[0].submenu = servers_submenu;
 	tray.menu[0].context = ctx;
@@ -74,6 +81,9 @@ void pgs_tray_clean()
 {
 	if (tray.menu[0].submenu)
 		pgs_free(tray.menu[0].submenu);
+	pgs_tray_context_t *ctx = tray.menu[0].context;
+	if (ctx->metrics_label)
+		pgs_free(ctx->metrics_label);
 }
 
 void pgs_tray_start(pgs_tray_context_t *ctx)
@@ -86,11 +96,10 @@ void pgs_tray_start(pgs_tray_context_t *ctx)
 	int iter = 0;
 	while (tray_loop(1) == 0) {
 		if (++iter % 5 == 0) {
-			// TODO: update metrics, every 5 iteration
-			// printf("should update state\n");
+			pgs_tray_submenu_update(ctx, tray.menu[0].submenu);
+			tray_update(&tray);
 			iter = 0;
 		}
-		// printf("iteration\n");
 	}
 	pgs_tray_clean();
 }
