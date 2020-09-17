@@ -137,7 +137,8 @@ int main(int argc, char **argv)
 #ifdef WITH_APPLET
 	pgs_tray_context_t tray_ctx = { logger,	       sm,
 					threads + 1,   server_threads,
-					spawn_workers, kill_workers };
+					spawn_workers, kill_workers,
+					NULL };
 	pgs_tray_start(&tray_ctx);
 #endif
 

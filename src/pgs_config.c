@@ -55,6 +55,7 @@ pgs_config_t *pgs_config_load(const char *config)
 	}
 
 	ptr->log_isatty = isatty(fileno(ptr->log_file));
+	ptr->ping_interval = 120;
 
 	json_object_object_foreach(jobj, key, val)
 	{
@@ -77,6 +78,8 @@ pgs_config_t *pgs_config_load(const char *config)
 			ptr->servers = pgs_config_parse_servers(ptr, val);
 			if (ptr->servers == NULL)
 				goto error;
+		} else if (strcmp(key, "ping_interval") == 0) {
+			ptr->ping_interval = json_object_get_int(val);
 		}
 	}
 	return ptr;

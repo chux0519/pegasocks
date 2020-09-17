@@ -1,5 +1,6 @@
 #include "pgs_helper_thread.h"
 #include "pgs_core.h"
+#include "pgs_metrics.h"
 #include <assert.h>
 
 static void pgs_timer_cb(evutil_socket_t fd, short event, void *data);
@@ -20,8 +21,11 @@ static void pgs_timer_cb(evutil_socket_t fd, short event, void *data)
 static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 {
 	pgs_timer_cb_arg_t *arg = data;
-	// TODO: get connect time and g204 time
-	arg->tv.tv_sec = 5;
+	for (int i = 0; i < arg->ctx->sm->server_len; i++) {
+		get_metrics_g204_connect(arg->ctx->base, arg->ctx->sm, i,
+					 arg->ctx->logger);
+	}
+	arg->tv.tv_sec = arg->ctx->config->ping_interval;
 	arg->tv.tv_usec = 0;
 	pgs_evtimer_add(arg->ev, &arg->tv);
 }
@@ -67,7 +71,7 @@ void *pgs_helper_thread_start(void *data)
 	// init timer cb
 	pgs_timer_init(1, pgs_timer_cb, ctx);
 
-	pgs_timer_init(5, pgs_metrics_timer_cb, ctx);
+	pgs_timer_init(1, pgs_metrics_timer_cb, ctx);
 
 	pgs_ev_base_dispatch(ctx->base);
 
