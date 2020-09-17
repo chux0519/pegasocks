@@ -34,6 +34,7 @@ struct pgs_config_s {
 	const char *local_address;
 	int local_port;
 	int timeout;
+	int ping_interval;
 	int log_level;
 	FILE *log_file;
 	bool log_isatty;

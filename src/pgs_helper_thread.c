@@ -25,7 +25,7 @@ static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 		get_metrics_g204_connect(arg->ctx->base, arg->ctx->sm, i,
 					 arg->ctx->logger);
 	}
-	arg->tv.tv_sec = 15;
+	arg->tv.tv_sec = arg->ctx->config->ping_interval;
 	arg->tv.tv_usec = 0;
 	pgs_evtimer_add(arg->ev, &arg->tv);
 }
