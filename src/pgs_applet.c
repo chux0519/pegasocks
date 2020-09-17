@@ -56,6 +56,7 @@ void pgs_tray_submenu_update(pgs_tray_context_t *ctx,
 		servers_submenu[i + 1].text =
 			&ctx->metrics_label[256 * server_idx];
 		servers_submenu[i + 1].disabled = 1;
+		servers_submenu[i + 1].checked = 0;
 		servers_submenu[i + 1].submenu = NULL;
 		servers_submenu[i + 2].text = "-";
 		servers_submenu[i + 2].submenu = NULL;
