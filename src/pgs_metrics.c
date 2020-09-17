@@ -244,10 +244,48 @@ static void on_v2ray_ws_g204_read(pgs_bev_t *bev, void *ctx)
 static void on_trojan_gfw_g204_read(pgs_bev_t *bev, void *ctx)
 {
 	// with data
+	pgs_metrics_task_ctx_t *mctx = ctx;
+	clock_t now = clock();
+	double g204_time = now - mctx->start_at;
+	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
+	mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
 }
 static void on_trojan_gfw_g204_event(pgs_bev_t *bev, short events, void *ctx)
 {
 	// connect time and error handling
+	pgs_metrics_task_ctx_t *mctx = ctx;
+	if (events & BEV_EVENT_CONNECTED) {
+		// set connected
+		pgs_trojansession_ctx_t *sctx = mctx->outbound->ctx;
+		sctx->connected = true;
+		clock_t now = clock();
+		double connect_time = now - mctx->start_at;
+		pgs_logger_debug(mctx->logger, "connect: %f", connect_time);
+		mctx->sm->server_stats[mctx->server_idx].connect_delay =
+			connect_time;
+		// write request
+		pgs_evbuffer_t *output = pgs_bev_get_output(bev);
+		pgs_size_t len = strlen(g204_http_req);
+		pgs_size_t head_len = sctx->head_len;
+		if (head_len > 0)
+			len += head_len;
+
+		if (head_len > 0) {
+			pgs_evbuffer_add(output, sctx->head, head_len);
+			sctx->head_len = 0;
+		}
+		pgs_evbuffer_add(output, g204_http_req, len - head_len);
+	}
+	if (events & BEV_EVENT_ERROR)
+		pgs_logger_error(mctx->logger, "Error from bufferevent");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		pgs_ssl_t *ssl = pgs_bev_openssl_get_ssl(bev);
+		if (ssl)
+			pgs_ssl_close(ssl);
+		pgs_bev_free(bev);
+		if (mctx)
+			pgs_metrics_task_ctx_free(mctx);
+	}
 }
 static void on_v2ray_tcp_g204_read(pgs_bev_t *bev, void *ctx)
 {
