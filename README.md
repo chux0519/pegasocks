@@ -42,7 +42,7 @@ C 语言编写，轻量，支持类 unix 系统。
 
 默认编译二进制文件不带 GUI，带上参数 `-DWITH_APPLET=1` 开启系统托盘功能。
 
-> cmake -DWITH_APPLET=1 .. && make
+> cmake -DCMAKE_BUILD_TYPE=Release -DWITH_APPLET=1 .. && make
 
 ### Linux 
 
@@ -91,4 +91,4 @@ PS: 目前只在 linux/osx 平台做了适配，其他平台可能暂时编译�
   - [x] linux
   - [x] osx
   - [ ] FreeBSD（待测试，应该可以直接支持）
-  - [ ] windows（待测试，可能需要 pthread 的支持)
+  - [ ] windows（暂不支持)
