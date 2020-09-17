@@ -70,8 +70,6 @@ C 语言编写，轻量，支持类 unix 系统。
 PS: 目前只在 linux/osx 平台做了适配，其他平台可能暂时编译不过。
 
 
- 目前只支持切换服务器，之后计划支持显示各个服务器的网络状况（get google 204 或者 ping 的时间），除此之外不再准备添加更多功能了。
-
 ## 配置
 
 见[配置文档](https://github.com/chux0519/pegasocks/wiki/%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E)
