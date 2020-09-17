@@ -253,6 +253,7 @@ static void on_trojan_gfw_g204_read(pgs_bev_t *bev, void *ctx)
 	double g204_time = elapse(mctx->start_at);
 	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
 	mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
+	on_trojan_gfw_g204_event(bev, BEV_EVENT_EOF, ctx);
 }
 static void on_trojan_gfw_g204_event(pgs_bev_t *bev, short events, void *ctx)
 {
@@ -296,6 +297,8 @@ static void on_v2ray_tcp_g204_read(pgs_bev_t *bev, void *ctx)
 	double g204_time = elapse(mctx->start_at);
 	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
 	mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
+	// drop it, clean up
+	on_v2ray_tcp_g204_event(bev, BEV_EVENT_EOF, ctx);
 }
 static void on_v2ray_tcp_g204_event(pgs_bev_t *bev, short events, void *ctx)
 {
