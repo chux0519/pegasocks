@@ -16,6 +16,15 @@ static void on_trojan_gfw_g204_event(pgs_bev_t *bev, short events, void *ctx);
 static void on_v2ray_tcp_g204_read(pgs_bev_t *bev, void *ctx);
 static void on_v2ray_tcp_g204_event(pgs_bev_t *bev, short events, void *ctx);
 
+static double elapse(struct timeval start_at)
+{
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	long seconds = now.tv_sec - start_at.tv_sec;
+	long micros = ((seconds * 1000000) + now.tv_usec - start_at.tv_usec);
+	return micros / 1000;
+}
+
 void get_metrics_g204_connect(pgs_ev_base_t *base, pgs_server_manager_t *sm,
 			      int idx, pgs_logger_t *logger)
 {
@@ -111,7 +120,7 @@ void get_metrics_g204_connect(pgs_ev_base_t *base, pgs_server_manager_t *sm,
 	// do request
 	pgs_logger_debug(mctx->logger, "connect: %s:%d", config->server_address,
 			 config->server_port);
-	mctx->start_at = clock();
+	gettimeofday(&mctx->start_at, NULL);
 	pgs_bev_socket_connect_hostname(mctx->outbound->bev, mctx->dns_base,
 					AF_INET, config->server_address,
 					config->server_port);
@@ -162,8 +171,7 @@ static void on_trojan_ws_g204_read(pgs_bev_t *bev, void *ctx)
 			//drain
 			pgs_evbuffer_drain(input, data_len);
 			trojan_s_ctx->connected = true;
-			clock_t now = clock();
-			double connect_time = now - mctx->start_at;
+			double connect_time = elapse(mctx->start_at);
 			pgs_logger_debug(mctx->logger, "connect: %f",
 					 connect_time);
 			mctx->sm->server_stats[mctx->server_idx].connect_delay =
@@ -186,8 +194,7 @@ static void on_trojan_ws_g204_read(pgs_bev_t *bev, void *ctx)
 			pgs_evbuffer_add(output, g204_http_req, len - head_len);
 		}
 	} else {
-		clock_t now = clock();
-		double g204_time = now - mctx->start_at;
+		double g204_time = elapse(mctx->start_at);
 		pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
 		mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
 	}
@@ -221,8 +228,7 @@ static void on_v2ray_ws_g204_read(pgs_bev_t *bev, void *ctx)
 			//drain
 			pgs_evbuffer_drain(input, data_len);
 			v2ray_s_ctx->connected = true;
-			clock_t now = clock();
-			double connect_time = now - mctx->start_at;
+			double connect_time = elapse(mctx->start_at);
 			pgs_logger_debug(mctx->logger, "connect: %f",
 					 connect_time);
 			mctx->sm->server_stats[mctx->server_idx].connect_delay =
@@ -235,8 +241,7 @@ static void on_v2ray_ws_g204_read(pgs_bev_t *bev, void *ctx)
 				(pgs_vmess_write_body_cb)&v2ray_ws_vmess_write_cb);
 		}
 	} else {
-		clock_t now = clock();
-		double g204_time = now - mctx->start_at;
+		double g204_time = elapse(mctx->start_at);
 		pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
 		mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
 	}
@@ -245,8 +250,7 @@ static void on_trojan_gfw_g204_read(pgs_bev_t *bev, void *ctx)
 {
 	// with data
 	pgs_metrics_task_ctx_t *mctx = ctx;
-	clock_t now = clock();
-	double g204_time = now - mctx->start_at;
+	double g204_time = elapse(mctx->start_at);
 	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
 	mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
 }
@@ -258,8 +262,7 @@ static void on_trojan_gfw_g204_event(pgs_bev_t *bev, short events, void *ctx)
 		// set connected
 		pgs_trojansession_ctx_t *sctx = mctx->outbound->ctx;
 		sctx->connected = true;
-		clock_t now = clock();
-		double connect_time = now - mctx->start_at;
+		double connect_time = elapse(mctx->start_at);
 		pgs_logger_debug(mctx->logger, "connect: %f", connect_time);
 		mctx->sm->server_stats[mctx->server_idx].connect_delay =
 			connect_time;
@@ -290,8 +293,7 @@ static void on_trojan_gfw_g204_event(pgs_bev_t *bev, short events, void *ctx)
 static void on_v2ray_tcp_g204_read(pgs_bev_t *bev, void *ctx)
 {
 	pgs_metrics_task_ctx_t *mctx = ctx;
-	clock_t now = clock();
-	double g204_time = now - mctx->start_at;
+	double g204_time = elapse(mctx->start_at);
 	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
 	mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
 }
@@ -302,8 +304,7 @@ static void on_v2ray_tcp_g204_event(pgs_bev_t *bev, short events, void *ctx)
 		// set connected
 		pgs_vmess_ctx_t *sctx = mctx->outbound->ctx;
 		sctx->connected = true;
-		clock_t now = clock();
-		double connect_time = now - mctx->start_at;
+		double connect_time = elapse(mctx->start_at);
 		pgs_logger_debug(mctx->logger, "connect: %f", connect_time);
 		mctx->sm->server_stats[mctx->server_idx].connect_delay =
 			connect_time;
@@ -356,7 +357,7 @@ pgs_metrics_task_ctx_new(pgs_ev_base_t *base, pgs_server_manager_t *sm, int idx,
 	ptr->server_idx = idx;
 	ptr->logger = logger;
 	ptr->outbound = outbound;
-	ptr->start_at = clock();
+	gettimeofday(&ptr->start_at, NULL);
 	return ptr;
 }
 

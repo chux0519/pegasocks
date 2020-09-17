@@ -44,15 +44,18 @@ void pgs_tray_submenu_update(pgs_tray_context_t *ctx,
 			ctx->sm->server_configs[server_idx].server_address;
 		servers_submenu[i].checked =
 			server_idx == ctx->sm->cur_server_index;
+		servers_submenu[i].disabled = 0;
 		servers_submenu[i].cb = pick_server_cb;
 		servers_submenu[i].context = server_idx;
 		servers_submenu[i].submenu = NULL;
 		if (ctx->sm->server_stats[server_idx].connect_delay > 0) {
 			sprintf(&ctx->metrics_label[256 * server_idx],
-				"%s [g204: %.0f ms | connect: %.0f ms]",
+				"%-8s| connect:%*.0f ms | g204:%*.0f ms",
 				ctx->sm->server_configs[server_idx].server_type,
-				ctx->sm->server_stats[server_idx].g204_delay,
-				ctx->sm->server_stats[server_idx].connect_delay);
+				6,
+				ctx->sm->server_stats[server_idx].connect_delay,
+				6,
+				ctx->sm->server_stats[server_idx].g204_delay);
 			servers_submenu[i + 1].text =
 				&ctx->metrics_label[256 * server_idx];
 		} else {

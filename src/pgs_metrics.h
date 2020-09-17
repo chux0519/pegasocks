@@ -15,7 +15,7 @@ struct pgs_metrics_task_ctx_s {
 	int server_idx;
 	pgs_logger_t *logger;
 	pgs_session_outbound_t *outbound;
-	clock_t start_at;
+	struct timeval start_at;
 };
 
 void get_metrics_g204_connect(pgs_ev_base_t *base, pgs_server_manager_t *sm,
