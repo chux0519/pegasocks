@@ -109,9 +109,9 @@ void get_metrics_g204_connect(pgs_ev_base_t *base, pgs_server_manager_t *sm,
 	}
 
 	// do request
-	mctx->start_at = clock();
 	pgs_logger_debug(mctx->logger, "connect: %s:%d", config->server_address,
 			 config->server_port);
+	mctx->start_at = clock();
 	pgs_bev_socket_connect_hostname(mctx->outbound->bev, mctx->dns_base,
 					AF_INET, config->server_address,
 					config->server_port);
@@ -141,8 +141,56 @@ static void on_ws_g204_event(pgs_bev_t *bev, short events, void *ctx)
 }
 static void on_trojan_ws_g204_read(pgs_bev_t *bev, void *ctx)
 {
-	// ws status
-	// with data
+	pgs_metrics_task_ctx_t *mctx = ctx;
+	pgs_logger_debug(mctx->logger, "remote read triggered");
+	pgs_evbuffer_t *output = pgs_bev_get_output(bev);
+	pgs_evbuffer_t *input = pgs_bev_get_input(bev);
+
+	pgs_size_t data_len = pgs_evbuffer_get_length(input);
+	unsigned char *data = pgs_evbuffer_pullup(input, data_len);
+
+	pgs_trojansession_ctx_t *trojan_s_ctx = mctx->outbound->ctx;
+	if (!trojan_s_ctx->connected) {
+		if (!strstr((const char *)data, "\r\n\r\n"))
+			return;
+
+		if (pgs_ws_upgrade_check((const char *)data)) {
+			pgs_logger_error(mctx->logger,
+					 "websocket upgrade fail!");
+			on_ws_g204_event(bev, BEV_EVENT_ERROR, ctx);
+		} else {
+			//drain
+			pgs_evbuffer_drain(input, data_len);
+			trojan_s_ctx->connected = true;
+			clock_t now = clock();
+			double connect_time = now - mctx->start_at;
+			pgs_logger_debug(mctx->logger, "connect: %f",
+					 connect_time);
+			mctx->sm->server_stats[mctx->server_idx].connect_delay =
+				connect_time;
+
+			pgs_size_t len = strlen(g204_http_req);
+			pgs_size_t head_len = trojan_s_ctx->head_len;
+
+			if (head_len > 0)
+				len += head_len;
+
+			pgs_ws_write_head_text(output, len);
+
+			if (head_len > 0) {
+				pgs_evbuffer_add(output, trojan_s_ctx->head,
+						 head_len);
+				trojan_s_ctx->head_len = 0;
+			}
+			// x ^ 0 = x
+			pgs_evbuffer_add(output, g204_http_req, len - head_len);
+		}
+	} else {
+		clock_t now = clock();
+		double g204_time = now - mctx->start_at;
+		pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
+		mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
+	}
 }
 
 static void v2ray_ws_vmess_write_cb(pgs_evbuffer_t *writer, pgs_buf_t *data,
@@ -154,13 +202,11 @@ static void v2ray_ws_vmess_write_cb(pgs_evbuffer_t *writer, pgs_buf_t *data,
 static void on_v2ray_ws_g204_read(pgs_bev_t *bev, void *ctx)
 {
 	pgs_metrics_task_ctx_t *mctx = ctx;
-	pgs_logger_debug(mctx->logger, "remote read triggered");
 	pgs_evbuffer_t *output = pgs_bev_get_output(bev);
 	pgs_evbuffer_t *input = pgs_bev_get_input(bev);
 
 	pgs_size_t data_len = pgs_evbuffer_get_length(input);
 	unsigned char *data = pgs_evbuffer_pullup(input, data_len);
-	pgs_logger_debug_buffer(mctx->logger, data, data_len);
 
 	pgs_vmess_ctx_t *v2ray_s_ctx = mctx->outbound->ctx;
 	if (!v2ray_s_ctx->connected) {
@@ -177,7 +223,6 @@ static void on_v2ray_ws_g204_read(pgs_bev_t *bev, void *ctx)
 			v2ray_s_ctx->connected = true;
 			clock_t now = clock();
 			double connect_time = now - mctx->start_at;
-			connect_time /= (CLOCKS_PER_SEC / 1000);
 			pgs_logger_debug(mctx->logger, "connect: %f",
 					 connect_time);
 			mctx->sm->server_stats[mctx->server_idx].connect_delay =
@@ -192,7 +237,6 @@ static void on_v2ray_ws_g204_read(pgs_bev_t *bev, void *ctx)
 	} else {
 		clock_t now = clock();
 		double g204_time = now - mctx->start_at;
-		g204_time /= (CLOCKS_PER_SEC / 1000);
 		pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
 		mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
 	}
