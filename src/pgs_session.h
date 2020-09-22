@@ -30,6 +30,11 @@ typedef enum {
 	INBOUND_PROXY,
 	INBOUND_ERR
 } pgs_session_inbound_state;
+typedef void(on_event_cb)(pgs_bev_t *bev, short events, void *ctx);
+typedef void(on_read_cb)(pgs_bev_t *bev, void *ctx);
+typedef void(free_ctx_fn)(void *ctx);
+typedef struct pgs_session_outbound_cbs_s pgs_session_outbound_cbs_t;
+typedef struct pgs_session_inbound_cbs_s pgs_session_inbound_cbs_t;
 
 struct pgs_session_s {
 	pgs_session_inbound_t *inbound;
@@ -52,6 +57,25 @@ struct pgs_session_outbound_s {
 	char *dest;
 	int port;
 	void *ctx;
+};
+
+struct pgs_session_outbound_cbs_s {
+	on_event_cb *on_trojan_ws_remote_event;
+	on_event_cb *on_trojan_gfw_remote_event;
+	on_event_cb *on_v2ray_ws_remote_event;
+	on_event_cb *on_v2ray_tcp_remote_event;
+	on_read_cb *on_trojan_ws_remote_read;
+	on_read_cb *on_trojan_gfw_remote_read;
+	on_read_cb *on_v2ray_ws_remote_read;
+	on_read_cb *on_v2ray_tcp_remote_read;
+};
+
+struct pgs_session_inbound_cbs_s {
+	on_event_cb *on_local_event;
+	on_read_cb *on_trojan_ws_local_read;
+	on_read_cb *on_trojan_gfw_local_read;
+	on_read_cb *on_v2ray_ws_local_read;
+	on_read_cb *on_v2ray_tcp_local_read;
 };
 
 struct pgs_trojansession_ctx_s {
@@ -111,10 +135,14 @@ void pgs_session_inbound_free(pgs_session_inbound_t *sb);
 
 // outbound
 pgs_session_outbound_t *
-pgs_session_outbound_new(pgs_session_t *session,
-			 const pgs_server_config_t *config);
+pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
+			 const pgs_buf_t *cmd, pgs_size_t cmd_len,
+			 pgs_logger_t *logger, pgs_ev_base_t *base,
+			 pgs_ev_dns_base_t *dns_base, pgs_bev_t *inbev,
+			 pgs_session_inbound_cbs_t inbound_cbs,
+			 pgs_session_outbound_cbs_t outbound_cbs, void *cb_ctx,
+			 free_ctx_fn *free_cb_ctx);
 void pgs_session_outbound_free(pgs_session_outbound_t *outbound);
-void pgs_session_outbound_run(pgs_session_t *session);
 
 // session
 pgs_session_t *pgs_session_new(pgs_socket_t fd,
