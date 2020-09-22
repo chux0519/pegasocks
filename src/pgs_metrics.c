@@ -29,107 +29,25 @@ void get_metrics_g204_connect(pgs_ev_base_t *base, pgs_server_manager_t *sm,
 			      int idx, pgs_logger_t *logger)
 {
 	const pgs_server_config_t *config = &sm->server_configs[idx];
-	pgs_session_outbound_t *ptr =
-		pgs_malloc(sizeof(pgs_session_outbound_t));
-	ptr->config = config;
-	ptr->config_idx = idx;
-
 	const pgs_buf_t *cmd = g204_cmd;
 	pgs_size_t cmd_len = 20;
-
-	ptr->port = (cmd[cmd_len - 2] << 8) | cmd[cmd_len - 1];
-	ptr->dest = socks5_dest_addr_parse(cmd, cmd_len);
-
-	ptr->bev = NULL;
-	ptr->ctx = NULL;
-
 	pgs_metrics_task_ctx_t *mctx =
-		pgs_metrics_task_ctx_new(base, sm, idx, logger, ptr);
+		pgs_metrics_task_ctx_new(base, sm, idx, logger, NULL);
 
-	if (strcmp(config->server_type, "trojan") == 0) {
-		pgs_trojanserver_config_t *trojanconf = config->extra;
-		ptr->ctx = pgs_trojansession_ctx_new(config->password, 56, cmd,
-						     cmd_len);
+	pgs_session_inbound_cbs_t inbound_cbs = { NULL, NULL, NULL, NULL,
+						  NULL };
+	pgs_session_outbound_cbs_t outbound_cbs = {
+		on_ws_g204_event,	on_trojan_gfw_g204_event,
+		on_ws_g204_event,	on_v2ray_tcp_g204_event,
+		on_trojan_ws_g204_read, on_trojan_gfw_g204_read,
+		on_v2ray_ws_g204_read,	on_v2ray_tcp_g204_read
+	};
 
-		pgs_ssl_t *ssl = pgs_ssl_new(trojanconf->ssl_ctx,
-					     (void *)config->server_address);
-		if (ssl == NULL) {
-			goto error;
-		}
-		ptr->bev = pgs_bev_openssl_socket_new(
-			base, -1, ssl, BUFFEREVENT_SSL_CONNECTING,
-			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-		pgs_bev_openssl_set_allow_dirty_shutdown(ptr->bev, 1);
-
-		if (trojanconf->websocket.enabled) {
-			// websocket support(trojan-go)
-			pgs_bev_setcb(ptr->bev, on_trojan_ws_g204_read, NULL,
-				      on_ws_g204_event, mctx);
-			pgs_bev_enable(ptr->bev, EV_READ);
-		} else {
-			// trojan-gfw
-			pgs_bev_setcb(ptr->bev, on_trojan_gfw_g204_read, NULL,
-				      on_trojan_gfw_g204_event, mctx);
-			pgs_bev_enable(ptr->bev, EV_READ);
-		}
-	} else if (strcmp(config->server_type, "v2ray") == 0) {
-		pgs_v2rayserver_config_t *vconf = config->extra;
-		if (!vconf->websocket.enabled) {
-			// raw tcp vmess
-			ptr->ctx =
-				pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
-
-			ptr->bev = bufferevent_socket_new(
-				base, -1,
-				BEV_OPT_CLOSE_ON_FREE |
-					BEV_OPT_DEFER_CALLBACKS);
-
-			pgs_bev_setcb(ptr->bev, on_v2ray_tcp_g204_read, NULL,
-				      on_v2ray_tcp_g204_event, mctx);
-		} else {
-			// websocket can be protected by ssl
-			if (vconf->ssl.enabled && vconf->ssl_ctx) {
-				pgs_ssl_t *ssl = pgs_ssl_new(
-					vconf->ssl_ctx,
-					(void *)config->server_address);
-				if (ssl == NULL) {
-					goto error;
-				}
-				ptr->bev = pgs_bev_openssl_socket_new(
-					base, -1, ssl,
-					BUFFEREVENT_SSL_CONNECTING,
-					BEV_OPT_CLOSE_ON_FREE |
-						BEV_OPT_DEFER_CALLBACKS);
-				pgs_bev_openssl_set_allow_dirty_shutdown(
-					ptr->bev, 1);
-			} else {
-				ptr->bev = bufferevent_socket_new(
-					base, -1,
-					BEV_OPT_CLOSE_ON_FREE |
-						BEV_OPT_DEFER_CALLBACKS);
-			}
-			ptr->ctx =
-				pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
-
-			pgs_bev_setcb(ptr->bev, on_v2ray_ws_g204_read, NULL,
-				      on_ws_g204_event, mctx);
-		}
-		pgs_bev_enable(ptr->bev, EV_READ);
-	}
-
-	// do request
-	pgs_logger_debug(mctx->logger, "connect: %s:%d", config->server_address,
-			 config->server_port);
-	gettimeofday(&mctx->start_at, NULL);
-	pgs_bev_socket_connect_hostname(mctx->outbound->bev, mctx->dns_base,
-					AF_INET, config->server_address,
-					config->server_port);
-	return;
-error:
-	if (ptr)
-		pgs_session_outbound_free(ptr);
-	if (mctx)
-		pgs_metrics_task_ctx_free(mctx);
+	pgs_session_outbound_t *ptr = pgs_session_outbound_new(
+		config, idx, cmd, cmd_len, logger, base, mctx->dns_base, NULL,
+		inbound_cbs, outbound_cbs, mctx,
+		(free_ctx_fn *)pgs_metrics_task_ctx_free);
+	mctx->outbound = ptr;
 }
 
 static void on_ws_g204_event(pgs_bev_t *bev, short events, void *ctx)
