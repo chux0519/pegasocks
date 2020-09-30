@@ -34,8 +34,8 @@ C 语言编写，轻量，支持类 unix 系统。
 
 > pegas -c config.json -t 4
 
-- `-c` 指定配置文件，默认为同目录下 config.json
-- `-t` 指定工作线程数量，默认为 4
+- `-c` 指定配置文件，默认会依次尝试 `$XDG_CONFIG_HOME/.pegasrc` 或者 `$XDG_CONFIG_HOME/pegas/config` 
+- `-t` 指定工作线程数量，默认为 CPU 核心数量
 
 
 ## 系统托盘
