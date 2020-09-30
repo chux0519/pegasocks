@@ -44,8 +44,7 @@ int main(int argc, char **argv)
 {
 	// default settings
 	int server_threads = sysconf(_SC_NPROCESSORS_CONF);
-	char default_config_path[] = "config.json";
-	char *config_path = default_config_path;
+	char *config_path = NULL;
 
 	// parse opt
 	int opt = 0;
@@ -58,6 +57,28 @@ int main(int argc, char **argv)
 			server_threads = atoi(optarg);
 			break;
 		}
+	}
+
+	char full_config_path[512] = { 0 };
+	char config_home[512] = { 0 };
+	if (!config_path) {
+		const char *xdg_config_home = getenv("XDG_CONFIG_HOME");
+		const char *home = getenv("HOME");
+		if (!xdg_config_home || strlen(xdg_config_home) == 0) {
+			sprintf(config_home, "%s/.config", home);
+		} else {
+			strcpy(config_home, xdg_config_home);
+		}
+		sprintf(full_config_path, "%s/.pegasrc", config_home);
+		if (access(full_config_path, F_OK) == -1) {
+			sprintf(full_config_path, "%s/pegas/config",
+				config_home);
+			if (access(full_config_path, F_OK) == -1) {
+				fprintf(stderr, "config is required");
+				return -1;
+			}
+		}
+		config_path = full_config_path;
 	}
 
 	int err = 0;
