@@ -7,13 +7,13 @@
 #include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
+#include <sys/sysinfo.h>
 #include "pgs_local_server.h"
 #include "pgs_config.h"
 #include "pgs_server_manager.h"
 #include "pgs_helper_thread.h"
 #include "pgs_applet.h"
 
-#define MAX_SERVER_THREADS 4
 #define MAX_LOG_MPSC_SIZE 64
 #define MAX_STATS_MPSC_SIZE 64
 
@@ -43,7 +43,7 @@ static void kill_workers(pthread_t *threads, int server_threads)
 int main(int argc, char **argv)
 {
 	// default settings
-	int server_threads = MAX_SERVER_THREADS;
+	int server_threads = sysconf(_SC_NPROCESSORS_CONF);
 	char default_config_path[] = "config.json";
 	char *config_path = default_config_path;
 
