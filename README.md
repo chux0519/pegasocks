@@ -35,7 +35,7 @@ C 语言编写，轻量，支持类 unix 系统。
 > pegas -c config.json -t 4
 
 - `-c` 指定配置文件，默认会依次尝试 `$XDG_CONFIG_HOME/.pegasrc` 或者 `$XDG_CONFIG_HOME/pegas/config` 
-- `-t` 指定工作线程数量，默认为 CPU 核心数量
+- `-t` 指定工作线程数量，默认为 4
 
 
 ## 系统托盘
@@ -88,5 +88,7 @@ PS: 目前只在 linux/osx 平台做了适配，其他平台可能暂时编译�
 - 平台适配
   - [x] linux
   - [x] osx
-  - [ ] FreeBSD（待测试，应该可以直接支持）
-  - [ ] windows（暂不支持)
+  - [ ] *BSD（大部分 BSD 应该都可以支持，只在 OpenBSD 下做了测试）
+      - [X] OpenBSD
+      - [?] FreeBSD
+      - [?] NetBSD
