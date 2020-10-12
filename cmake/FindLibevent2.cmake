@@ -16,8 +16,8 @@ else()
 	FIND_PATH(LIBEVENT2_INCLUDE_DIR event2/event.h HINTS /usr/include/event2 )
 
 	# -levent -levent_core -levent_extra -levent_openssl
-
-	FIND_LIBRARY(LIBEVENT2_LIBRARIES NAMES event libevent )
+  # OpenBSD issue, lookup from /usr/local/lib to avoid lib mismatch
+  FIND_LIBRARY(LIBEVENT2_LIBRARIES NAMES event libevent PATHS /usr/local/lib)
 	FIND_LIBRARY(LIBEVENT2_CORE_LIBRARIES NAMES event_core libevent_core )
 	FIND_LIBRARY(LIBEVENT2_EXTRA_LIBRARIES NAMES event_extra libevent_extra )
   FIND_LIBRARY(LIBEVENT2_SSL_LIBRARIES NAMES event_openssl libevent_openssl )

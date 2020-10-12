@@ -7,7 +7,6 @@
 #include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
-#include <sys/sysinfo.h>
 #include "pgs_local_server.h"
 #include "pgs_config.h"
 #include "pgs_server_manager.h"
@@ -43,7 +42,7 @@ static void kill_workers(pthread_t *threads, int server_threads)
 int main(int argc, char **argv)
 {
 	// default settings
-	int server_threads = sysconf(_SC_NPROCESSORS_CONF);
+	int server_threads = 4;
 	char *config_path = NULL;
 
 	// parse opt

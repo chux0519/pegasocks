@@ -1,6 +1,7 @@
 #ifndef _PGS_APPLET
 #define _PGS_APPLET
 
+#include <pthread.h>
 #include "pgs_core.h"
 #include "pgs_server_manager.h"
 #include "pgs_log.h"

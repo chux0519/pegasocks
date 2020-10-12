@@ -8,6 +8,7 @@
 #include <stdlib.h> // malloc
 #include <stdbool.h> // bool
 #include <stdio.h> // FILE etc
+#include <pthread.h>
 
 #define _PGS_BUFSIZE 16 * 1024
 #define _PGS_READ_BUFSZIE 16 * 1024
