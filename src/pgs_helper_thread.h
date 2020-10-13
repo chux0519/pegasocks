@@ -27,6 +27,7 @@ struct pgs_helper_thread_arg_s {
 	pgs_server_manager_t *sm;
 	pgs_logger_t *logger;
 	const pgs_config_t *config;
+	int ctrl_fd;
 };
 
 pgs_helper_thread_ctx_t *

@@ -67,6 +67,14 @@ pgs_config_t *pgs_config_load(const char *config)
 			ptr->local_port = json_object_get_int(val);
 			if (ptr->local_port == 0)
 				goto error;
+		} else if (strcmp(key, "control_file") == 0) {
+			ptr->control_file = json_object_get_string(val);
+			if (ptr->control_file == NULL)
+				goto error;
+		} else if (strcmp(key, "control_port") == 0) {
+			ptr->control_port = json_object_get_int(val);
+			if (ptr->control_port == 0)
+				goto error;
 		} else if (strcmp(key, "timeout") == 0) {
 			ptr->timeout = json_object_get_int(val);
 			if (ptr->timeout == 0)
@@ -191,6 +199,8 @@ pgs_config_t *pgs_config_new()
 	ptr->servers_count = 0;
 	ptr->local_address = NULL;
 	ptr->local_port = 0;
+	ptr->control_port = 0;
+	ptr->control_file = "/tmp/pegas.sock";
 	ptr->timeout = 0;
 	ptr->log_level = 0;
 	ptr->log_file = stderr;

@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
+#include <sys/un.h>
 #include "pgs_local_server.h"
 #include "pgs_config.h"
 #include "pgs_server_manager.h"
@@ -39,6 +40,97 @@ static void kill_workers(pthread_t *threads, int server_threads)
 	}
 }
 
+static int init_local_server_fd(const pgs_config_t *config, int *fd)
+{
+	int err = 0;
+	struct sockaddr_in sin;
+	int port = config->local_port;
+
+	memset(&sin, 0, sizeof(sin));
+
+	sin.sin_family = AF_INET;
+	err = inet_pton(AF_INET, config->local_address, &sin.sin_addr);
+	if (err <= 0) {
+		if (err == 0)
+			pgs_config_error(config, "Not in presentation format");
+		else
+			perror("inet_pton");
+		exit(EXIT_FAILURE);
+	}
+	sin.sin_port = htons(port);
+
+	*fd = socket(AF_INET, SOCK_STREAM, 0);
+	int reuse_port = 1;
+
+	err = setsockopt(*fd, SOL_SOCKET, SO_REUSEPORT,
+			 (const void *)&reuse_port, sizeof(int));
+	if (err < 0) {
+		perror("setsockopt");
+		return err;
+	}
+
+	int flag = fcntl(*fd, F_GETFL, 0);
+	fcntl(*fd, F_SETFL, flag | O_NONBLOCK);
+
+	err = bind(*fd, (struct sockaddr *)&sin, sizeof(sin));
+
+	if (err < 0) {
+		perror("bind");
+		return err;
+	}
+	return err;
+}
+
+static int init_control_fd(const pgs_config_t *config, int *fd)
+{
+	int err = 0;
+	if (config->control_port) {
+		// tcp port
+		struct sockaddr_in sin;
+		int port = config->control_port;
+
+		memset(&sin, 0, sizeof(sin));
+
+		sin.sin_family = AF_INET;
+		err = inet_pton(AF_INET, config->local_address, &sin.sin_addr);
+		if (err <= 0) {
+			if (err == 0)
+				pgs_config_error(config,
+						 "Not in presentation format");
+			else
+				perror("inet_pton");
+			exit(EXIT_FAILURE);
+		}
+		sin.sin_port = htons(port);
+
+		*fd = socket(AF_INET, SOCK_STREAM, 0);
+		int flag = fcntl(*fd, F_GETFL, 0);
+		fcntl(*fd, F_SETFL, flag | O_NONBLOCK);
+		err = bind(*fd, (struct sockaddr *)&sin, sizeof(sin));
+		if (err < 0) {
+			perror("bind");
+			return err;
+		}
+	} else if (config->control_file) {
+		// unix socket
+		struct sockaddr_un server;
+		*fd = socket(AF_UNIX, SOCK_STREAM, 0);
+		server.sun_family = AF_UNIX;
+		strcpy(server.sun_path, config->control_file);
+		int flag = fcntl(*fd, F_GETFL, 0);
+		fcntl(*fd, F_SETFL, flag | O_NONBLOCK);
+		unlink(config->control_file);
+		err = bind(*fd, (struct sockaddr *)&server,
+			   sizeof(struct sockaddr_un));
+		if (err < 0) {
+			perror("bind");
+			return err;
+		}
+	}
+
+	return err;
+}
+
 int main(int argc, char **argv)
 {
 	// default settings
@@ -58,6 +150,7 @@ int main(int argc, char **argv)
 		}
 	}
 
+	// get config path
 	char full_config_path[512] = { 0 };
 	char config_home[512] = { 0 };
 	if (!config_path) {
@@ -80,9 +173,6 @@ int main(int argc, char **argv)
 		config_path = full_config_path;
 	}
 
-	int err = 0;
-	struct sockaddr_in sin;
-
 	// load config
 	pgs_config_t *config = pgs_config_load(config_path);
 	if (config == NULL) {
@@ -93,40 +183,16 @@ int main(int argc, char **argv)
 	pgs_config_info(config, "worker threads: %d, config: %s",
 			server_threads, config_path);
 
-	int port = config->local_port;
-
-	memset(&sin, 0, sizeof(sin));
-
-	sin.sin_family = AF_INET;
-	err = inet_pton(AF_INET, config->local_address, &sin.sin_addr);
-	if (err <= 0) {
-		if (err == 0)
-			pgs_config_error(config, "Not in presentation format");
-		else
-			perror("inet_pton");
-		exit(EXIT_FAILURE);
+	int server_fd, ctrl_fd;
+	if (init_local_server_fd(config, &server_fd) < 0) {
+		perror("failed to init local server");
+		return -1;
 	}
-	sin.sin_port = htons(port);
-
-	int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-	int reuse_port = 1;
-
-	err = setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT,
-			 (const void *)&reuse_port, sizeof(int));
-	if (err < 0) {
-		perror("setsockopt");
-		return err;
+	if (init_control_fd(config, &ctrl_fd) < 0) {
+		perror("failed to init local server");
+		return -1;
 	}
 
-	int flag = fcntl(server_fd, F_GETFL, 0);
-	fcntl(server_fd, F_SETFL, flag | O_NONBLOCK);
-
-	err = bind(server_fd, (struct sockaddr *)&sin, sizeof(sin));
-
-	if (err < 0) {
-		perror("bind");
-		return err;
-	}
 	// mpsc with 64 message slots
 	pgs_mpsc_t *mpsc = pgs_mpsc_new(MAX_LOG_MPSC_SIZE);
 	pgs_mpsc_t *statsq = pgs_mpsc_new(MAX_STATS_MPSC_SIZE);
@@ -138,7 +204,10 @@ int main(int argc, char **argv)
 		statsq, config->servers, config->servers_count);
 
 	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config, sm };
-	pgs_helper_thread_arg_t helper_thread_arg = { sm, logger, config };
+
+	// TODO: init ctrl_fd
+	pgs_helper_thread_arg_t helper_thread_arg = { sm, logger, config,
+						      ctrl_fd };
 
 	// Spawn threads
 	pthread_t threads[server_threads + 1];

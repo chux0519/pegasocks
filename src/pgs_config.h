@@ -33,6 +33,8 @@ struct pgs_config_s {
 	int servers_count;
 	const char *local_address;
 	int local_port;
+	int control_port;
+	const char *control_file;
 	int timeout;
 	int ping_interval;
 	int log_level;

@@ -1,6 +1,7 @@
 #include "pgs_helper_thread.h"
 #include "pgs_core.h"
 #include "pgs_metrics.h"
+#include "pgs_control.h"
 #include <assert.h>
 
 static void pgs_timer_cb(evutil_socket_t fd, short event, void *data);
@@ -72,6 +73,10 @@ void *pgs_helper_thread_start(void *data)
 	pgs_timer_init(1, pgs_timer_cb, ctx);
 
 	pgs_timer_init(1, pgs_metrics_timer_cb, ctx);
+
+	// init control pannel
+	pgs_control_server_start(arg->ctrl_fd, ctx->base, ctx->sm, ctx->logger,
+				 ctx->config);
 
 	pgs_ev_base_dispatch(ctx->base);
 
