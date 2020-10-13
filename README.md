@@ -37,6 +37,23 @@ C 语言编写，轻量，支持类 unix 系统。
 - `-c` 指定配置文件，默认会依次尝试 `$XDG_CONFIG_HOME/.pegasrc` 或者 `$XDG_CONFIG_HOME/pegas/config` 
 - `-t` 指定工作线程数量，默认为 4
 
+## 配置
+
+见[配置文档](https://github.com/chux0519/pegasocks/wiki/%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E)
+
+
+## 交互
+
+程序启动后，默认监听 `/tmp/pegas.sock`(可以配置，同时支持 TCP 端口和 unix socket)，通过 unix socket 可以和主程序进行交互。支持的命令有：
+
+- `GET SERVERS`，将返回服务器的信息
+- `SET SERVER $idx`，设置当前服务器
+
+在 linux 下 socat 演示
+
+<img src="https://i.imgur.com/dlFuKtg.png" width="512" />
+
+另外，支持系统托盘，见下
 
 ## 系统托盘
 
@@ -48,31 +65,29 @@ C 语言编写，轻量，支持类 unix 系统。
 
 <img src="./pegas_applet.png" width="512" />
 
-运行时，将 `icon.svg` 放到 pegas 同级目录，然后正常使用即可。
+从命令行启动时，将 `icon.svg` 放到 pegas 同级目录，然后正常使用即可。
 
 
 ### OSX
 
 <img src="./pegas_applet_osx.png" width="512" />
 
-运行时，将 `icon.png` 放到 pegas 同级目录，然后正常使用即可。
+从命令行运行时，将 `icon.png` 放到 pegas 同级目录，然后正常使用即可。
 
 构建流程
 
-在 OSX 平台有打包成 app bundle 的脚本，在 build 完成后，确认有 build/pegas 文件，然后运行 `./bundle.sh`，build 目录下会出现 `pegas.app`。
-然后在用户目录下创建 `~/.pegasrc`，写入 json 格式的配置文件。
-最后双击 pegas.app 即可。
+在 OSX 平台有打包成 app bundle 的脚本，在完成上面的 build 步骤，确认有 build/pegas 文件
+
+然后
+
+> cd .. && ./bundle.sh
+
+build 目录下会出现 `pegas.app`，最后在用户目录下创建 `~/.pegasrc`，写入 json 格式的配置文件。
 
 更多参数修改可以手动修改 `bundle.sh` 作出适合自己的调整。
 
 如果遇到无法启动的状况，请确认系统安装了 libevent 和 json-c (brew install libevent json-c)
 
-PS: 目前只在 linux/osx 平台做了适配，其他平台可能暂时编译不过。
-
-
-## 配置
-
-见[配置文档](https://github.com/chux0519/pegasocks/wiki/%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E)
 
 ## 开发计划
 
