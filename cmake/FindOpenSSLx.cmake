@@ -6,5 +6,5 @@ if (APPLE)
     set(OPENSSL_SSL_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libssl.dylib CACHE FILEPATH "" FORCE)
     set (CMAKE_C_FLAGS -I${OPENSSL_INCLUDE_DIR})
 endif()
-find_package(OpenSSL 1.1.1 REQUIRED)
+find_package(OpenSSL 1.1.0 REQUIRED)
 

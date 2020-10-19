@@ -73,7 +73,7 @@ endif()
 add_compile_definitions(WITH_APPLET=$WITH_APPLET)
 endif(DEFINED WITH_APPLET)
 
-install(TARGETS pegas)
+install(TARGETS pegas RUNTIME DESTINATION bin)
 
 # tests
 enable_testing()
