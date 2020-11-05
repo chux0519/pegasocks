@@ -83,10 +83,13 @@ bool pgs_socks5_handshake(pgs_session_t *session)
 			pgs_memcpy(session->inbound->cmd, rdata,
 				   session->inbound->cmdlen);
 
-			// socks5 response
-			pgs_evbuffer_add(output, "\x05\x00", 2);
-			pgs_evbuffer_add(output, rdata + 2,
-					 session->inbound->cmdlen - 2);
+			// socks5 response, BND.ADDR and BND.PORT should be 0
+			// only the UDP ASSOCIATE command will set this,
+			// otherwise it may cause some kind of error,
+			// e.g. using `nc -X 5 -x 127.0.0.1:1080 %h %p` to proxy the ssh connection
+			pgs_evbuffer_add(
+				output,
+				"\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00", 10);
 			pgs_evbuffer_drain(input, session->inbound->cmdlen);
 			session->inbound->state = INBOUND_PROXY;
 			return true;
