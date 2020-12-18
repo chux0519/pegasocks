@@ -83,24 +83,4 @@ OSX上，默认会将二进制打包成 app bundle，直接将打包出的 `buil
 ⚠️注:如果遇到无法启动的状况，请确认
 
 1. 系统安装了 libevent 和 json-c (brew install libevent json-c)
-2. 是否有配置文件，app bundle 会检测 ** `~/.config/.pegasrc` **
-
-
-## 开发计划
-
-- 多种协议支持
-  - [x] trojan
-    - [x] trojan-gfw
-    - [x] trojan-go
-  - [x] v2ray
-    - [x] vmess
-    - [x] tcp
-    - [x] websocket
-    - [x] tls + websocket
-- 平台适配
-  - [x] linux
-  - [x] osx
-  - [ ] *BSD（大部分 BSD 应该都可以支持，只在 OpenBSD 下做了测试）
-      - [X] OpenBSD
-      - [?] FreeBSD
-      - [?] NetBSD
+2. 是否有 **配置文件**，app bundle 会检测 `~/.config/.pegasrc`
