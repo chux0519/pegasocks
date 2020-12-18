@@ -7,6 +7,8 @@ It is lightweight and supports unix-like systems.
 
 ⚠️ This project is under development, please consider the cost and risk of use at your own discretion.
 
+[中文](./README.md) | English
+
 ## Features
 
 Unlike most other clients that support multiple protocols, pegasocks does not rely on various third-party cores (e.g. v2ray-core, etc.), but really goes for the disassembly of the relevant protocols and takes care of performance as much as possible. Therefore it
