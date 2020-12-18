@@ -27,8 +27,12 @@ C 语言编写，轻量，支持类 unix 系统。
 
 > mkdir build && cd build
 >
-> cmake .. && make
+> cmake -DCMAKE_BUILD_TYPE=Release .. && make
 
+
+注: OSX 平台默认检测 `/usr/local/Cellar/openssl@1.1/` 目录下最新的 openssl 作为 openssl 根目录。另外支持手动设置 cmake 参数
+
+> -DOPENSSL_ROOT_DIR=/xxxxxx/xxx/xxx ..
 
 ## 运行
 
