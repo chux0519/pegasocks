@@ -64,7 +64,7 @@ include_directories(${OPENSSL_INCLUDE_DIR})
 find_package(jsonc REQUIRED)
 include_directories(${JSONC_INCLUDE_DIRS})
 
-add_executable(pegas main.c ${SOURCES} ./3rd-party/tray/tray.h)
+add_executable(pegas ${SOURCES} ./3rd-party/tray/tray.h)
 
 target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
 
@@ -79,7 +79,7 @@ if(APPLE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DTRAY_APPKIT=1 -DOBJC_OLD_DISPATCH_PROTOTYPES=1 -framework Cocoa")
   # add app bundle
   set(BUNDLE_TARGET PegasApp)
-  add_executable(${BUNDLE_TARGET} main.c ${SOURCES} ./3rd-party/tray/tray.h)
+  add_executable(${BUNDLE_TARGET} ${SOURCES} ./3rd-party/tray/tray.h)
   target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
 
   set_target_properties(${BUNDLE_TARGET} PROPERTIES
@@ -108,11 +108,11 @@ if(APPLE)
       COMMAND sips -z 512 512 ./iconx1024.png --out ${ICON_TARGET}/icon_512x512.png
       COMMAND cp iconx1024.png ${ICON_TARGET}/icon_512x512@2x.png
       COMMAND iconutil -c icns ${ICON_TARGET}
-      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/logo"
       )
 
     set(BUNDLE_RESOURCES ${ICON_OUTPUT} )
-    list(APPEND BUNDLE_RESOURCES "${CMAKE_SOURCE_DIR}/icon.png")
+    list(APPEND BUNDLE_RESOURCES "${CMAKE_SOURCE_DIR}/logo/icon.png")
   set_target_properties(${BUNDLE_TARGET} PROPERTIES RESOURCE "${BUNDLE_RESOURCES}")
   target_sources(${BUNDLE_TARGET} PUBLIC ${BUNDLE_RESOURCES})
 endif()

@@ -1,4 +1,4 @@
-<img src="./icon.svg" width="150" align="left" />
+<img src="./logo/icon.svg" width="150" align="left" />
 
 # pegasocks 
 
@@ -30,7 +30,7 @@ C 语言编写，轻量，支持类 unix 系统。
 > cmake -DCMAKE_BUILD_TYPE=Release .. && make
 
 
-注: OSX 平台默认检测 `/usr/local/Cellar/openssl@1.1/` 目录下最新的 openssl 作为 openssl 根目录。另外支持手动设置 cmake 参数
+注: OSX 系统下默认检测 `/usr/local/Cellar/openssl@1.1/` 目录下最新的 openssl 作为 openssl 根目录。另外支持手动设置 cmake 参数
 
 > -DOPENSSL_ROOT_DIR=/xxxxxx/xxx/xxx ..
 
@@ -67,30 +67,23 @@ C 语言编写，轻量，支持类 unix 系统。
 
 ### Linux 
 
-<img src="./pegas_applet.png" width="512" />
+<img src="https://i.imgur.com/Ny0WMJA.png" width="512" />
 
-从命令行启动时，将 `icon.svg` 放到 pegas 同级目录，然后正常使用即可。
+从命令行启动时，将 `logo/icon.svg` 放到 pegas 同级目录，然后正常使用即可。
 
 
 ### OSX
 
-<img src="./pegas_applet_osx.png" width="512" />
+<img src="https://i.imgur.com/jOA04aU.png" width="512" />
 
-从命令行运行时，将 `icon.png` 放到 pegas 同级目录，然后正常使用即可。
+从命令行运行时，将 `logo/icon.png` 放到 pegas 同级目录，然后正常使用即可。
 
-构建流程
+OSX上，默认会将二进制打包成 app bundle，直接将打包出的 `build/PegasApp.app` 复制到应用程序即可。
 
-在 OSX 平台有打包成 app bundle 的脚本，在完成上面的 build 步骤，确认有 build/pegas 文件
+⚠️注:如果遇到无法启动的状况，请确认
 
-然后
-
-> cd .. && ./bundle.sh
-
-build 目录下会出现 `pegas.app`，最后在用户目录下创建 `~/.pegasrc`，写入 json 格式的配置文件。
-
-更多参数修改可以手动修改 `bundle.sh` 作出适合自己的调整。
-
-如果遇到无法启动的状况，请确认系统安装了 libevent 和 json-c (brew install libevent json-c)
+1. 系统安装了 libevent 和 json-c (brew install libevent json-c)
+2. 是否有配置文件，app bundle 会检测 ** `~/.config/.pegasrc` **
 
 
 ## 开发计划
