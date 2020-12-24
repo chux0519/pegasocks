@@ -949,6 +949,7 @@ static void do_v2ray_ws_local_write(pgs_bev_t *bev, void *ctx)
 						"failed to decode vmess payload");
 					on_v2ray_ws_remote_event(
 						bev, BEV_EVENT_ERROR, ctx);
+					return;
 				}
 			}
 
@@ -1013,6 +1014,7 @@ static void on_v2ray_tcp_remote_read(pgs_bev_t *bev, void *ctx)
 	if (!pgs_vmess_parse(data, data_len, v2ray_s_ctx, inboundw)) {
 		pgs_session_error(session, "failed to decode vmess payload");
 		on_v2ray_tcp_remote_event(bev, BEV_EVENT_ERROR, ctx);
+		return;
 	}
 
 	pgs_evbuffer_drain(outboundr, data_len);
@@ -1052,7 +1054,7 @@ static void on_v2ray_tcp_local_read(pgs_bev_t *bev, void *ctx)
 
 static void on_session_metrics_recv(pgs_session_t *session, pgs_size_t len)
 {
-	if (!session || !session->metrics)
+	if (!session->metrics)
 		return;
 	session->metrics->recv += len;
 }
