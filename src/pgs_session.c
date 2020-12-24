@@ -1052,7 +1052,7 @@ static void on_v2ray_tcp_local_read(pgs_bev_t *bev, void *ctx)
 
 static void on_session_metrics_recv(pgs_session_t *session, pgs_size_t len)
 {
-	if (!session->metrics)
+	if (!session || !session->metrics)
 		return;
 	session->metrics->recv += len;
 }
