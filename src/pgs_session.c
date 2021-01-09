@@ -384,9 +384,11 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 	// fire request
 	pgs_logger_debug(logger, "connect: %s:%d", config->server_address,
 			 config->server_port);
+
 	pgs_bev_socket_connect_hostname(ptr->bev, dns_base, AF_INET,
 					config->server_address,
 					config->server_port);
+
 	return ptr;
 
 error:
@@ -425,7 +427,8 @@ static void on_local_event(pgs_bev_t *bev, short events, void *ctx)
 	// free buffer event and related session
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	if (events & BEV_EVENT_ERROR)
-		pgs_session_error(session, "Error from bufferevent");
+		pgs_session_error(session,
+				  "Error from bufferevent: on_local_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		pgs_bev_free(bev);
 		pgs_session_free(session);
@@ -512,7 +515,9 @@ static void on_trojan_ws_remote_event(pgs_bev_t *bev, short events, void *ctx)
 	if (events & BEV_EVENT_CONNECTED)
 		do_trojan_ws_remote_request(bev, ctx);
 	if (events & BEV_EVENT_ERROR)
-		pgs_session_error(session, "Error from bufferevent");
+		pgs_session_error(
+			session,
+			"Error from bufferevent: on_trojan_ws_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		pgs_ssl_t *ssl = pgs_bev_openssl_get_ssl(bev);
 		if (ssl)
@@ -699,7 +704,9 @@ static void on_trojan_gfw_remote_event(pgs_bev_t *bev, short events, void *ctx)
 		do_trojan_gfw_remote_write(bev, ctx);
 	}
 	if (events & BEV_EVENT_ERROR)
-		pgs_session_error(session, "Error from bufferevent");
+		pgs_session_error(
+			session,
+			"Error from bufferevent: on_trojan_gfw_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		pgs_ssl_t *ssl = pgs_bev_openssl_get_ssl(bev);
 		if (ssl)
@@ -814,7 +821,9 @@ static void on_v2ray_ws_remote_event(pgs_bev_t *bev, short events, void *ctx)
 	if (events & BEV_EVENT_CONNECTED)
 		do_v2ray_ws_remote_request(bev, ctx);
 	if (events & BEV_EVENT_ERROR)
-		pgs_session_error(session, "Error from bufferevent");
+		pgs_session_error(
+			session,
+			"Error from bufferevent: on_v2ray_ws_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		pgs_ssl_t *ssl = pgs_bev_openssl_get_ssl(bev);
 		if (ssl)
@@ -989,7 +998,9 @@ static void on_v2ray_tcp_remote_event(pgs_bev_t *bev, short events, void *ctx)
 		on_v2ray_tcp_local_read(session->inbound->bev, ctx);
 	}
 	if (events & BEV_EVENT_ERROR)
-		pgs_session_error(session, "Error from bufferevent");
+		pgs_session_error(
+			session,
+			"Error from bufferevent: on_v2ray_tcp_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		pgs_bev_free(bev);
 		pgs_session_free(session);

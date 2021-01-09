@@ -118,6 +118,10 @@ if(APPLE)
 endif()
 add_compile_definitions(WITH_APPLET=$WITH_APPLET)
 endif(DEFINED WITH_APPLET)
+if(DEFINED DEBUG_EVENT)
+  add_compile_definitions(DEBUG_EVENT=$DEBUG_EVENT)
+endif(DEFINED DEBUG_EVENT)
+
 
 install(TARGETS pegas RUNTIME DESTINATION bin)
 

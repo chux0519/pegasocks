@@ -133,6 +133,10 @@ static int init_control_fd(const pgs_config_t *config, int *fd)
 
 int main(int argc, char **argv)
 {
+#ifdef DEBUG_EVENT
+	event_enable_debug_logging(EVENT_DBG_ALL);
+#endif
+
 	// default settings
 	int server_threads = 4;
 	char *config_path = NULL;
