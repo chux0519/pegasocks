@@ -48,8 +48,8 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 
 	ptr->dns_base = pgs_ev_dns_base_new(ptr->base,
 					    EVDNS_BASE_INITIALIZE_NAMESERVERS);
-	evdns_base_set_option(ptr->dns_base, "max-prob-timeout:", "5");
-	evdns_base_set_option(ptr->dns_base, "prob-backoff-factor:", "1");
+	evdns_base_set_option(ptr->dns_base, "max-probe-timeout:", "5");
+	evdns_base_set_option(ptr->dns_base, "probe-backoff-factor:", "1");
 
 	ptr->config = ctx->config;
 	ptr->sm = ctx->sm;
