@@ -1,27 +1,29 @@
 #include "pgs_local_server.h"
 #include "pgs_session.h"
+
 #include <stdlib.h>
 #include <signal.h>
 #include <pthread.h>
+#include <netinet/in.h>
 
-static void accept_error_cb(pgs_listener_t *listener, void *ctx)
+static void accept_error_cb(struct evconnlistener *listener, void *ctx)
 {
 	pgs_local_server_t *local = (pgs_local_server_t *)ctx;
 
 	struct event_base *base = local->base;
-	int err = PGS_EVUTIL_SOCKET_ERROR();
+	int err = EVUTIL_SOCKET_ERROR();
 
 	pgs_logger_debug(local->logger,
 			 "Got an error %d (%s) on the listener."
 			 "Shutting down \n",
-			 err, pgs_evutil_socket_error_to_string(err));
+			 err, evutil_socket_error_to_string(err));
 
 	// after loop exit, outter process have to free the local_server
-	pgs_ev_base_loopexit(base, NULL);
+	event_base_loopexit(base, NULL);
 }
 
-static void accept_conn_cb(pgs_listener_t *listener, pgs_socket_t fd,
-			   pgs_sockaddr_t *address, int socklen, void *ctx)
+static void accept_conn_cb(struct evconnlistener *listener, int fd,
+			   struct sockaddr *address, int socklen, void *ctx)
 {
 	pgs_local_server_t *local = (pgs_local_server_t *)ctx;
 	struct sockaddr_in *sin = (struct sockaddr_in *)address;
@@ -44,20 +46,20 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 	ptr->tid = (pgs_tid)pthread_self();
 	ptr->logger = pgs_logger_new(ctx->mpsc, ctx->config->log_level,
 				     ctx->config->log_isatty);
-	ptr->base = pgs_ev_base_new();
+	ptr->base = event_base_new();
 
-	ptr->dns_base = pgs_ev_dns_base_new(ptr->base,
-					    EVDNS_BASE_INITIALIZE_NAMESERVERS);
+	ptr->dns_base =
+		evdns_base_new(ptr->base, EVDNS_BASE_INITIALIZE_NAMESERVERS);
 	evdns_base_set_option(ptr->dns_base, "max-probe-timeout:", "5");
 	evdns_base_set_option(ptr->dns_base, "probe-backoff-factor:", "1");
 
 	ptr->config = ctx->config;
 	ptr->sm = ctx->sm;
 	ptr->listener =
-		pgs_listener_new(ptr->base, accept_conn_cb, ptr,
-				 LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE, -1,
-				 ctx->fd);
-	pgs_listener_set_error_cb(ptr->listener, accept_error_cb);
+		evconnlistener_new(ptr->base, accept_conn_cb, ptr,
+				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
+				   -1, ctx->fd);
+	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
 
 	return ptr;
 }
@@ -67,17 +69,17 @@ void pgs_local_server_run(pgs_local_server_t *local)
 {
 	// ignore SIGPIPE
 	signal(SIGPIPE, SIG_IGN);
-	pgs_ev_base_dispatch(local->base);
+	event_base_dispatch(local->base);
 }
 
 // Destroy local server
 void pgs_local_server_destroy(pgs_local_server_t *local)
 {
-	pgs_listener_free(local->listener);
-	pgs_ev_base_free(local->base);
-	pgs_ev_dns_base_free(local->dns_base, 0);
+	evconnlistener_free(local->listener);
+	event_base_free(local->base);
+	evdns_base_free(local->dns_base, 0);
 	pgs_logger_free(local->logger);
-	pgs_free(local);
+	free(local);
 }
 
 /*

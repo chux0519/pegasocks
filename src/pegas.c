@@ -8,6 +8,8 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/un.h>
+#include <netinet/in.h>
+
 #include "pgs_local_server.h"
 #include "pgs_config.h"
 #include "pgs_server_manager.h"

@@ -7,7 +7,7 @@ pgs_aes_cryptor_t *pgs_aes_cryptor_new(const EVP_CIPHER *cipher,
 				       const pgs_buf_t *iv,
 				       pgs_cryptor_direction_t dir)
 {
-	pgs_aes_cryptor_t *ptr = pgs_malloc(sizeof(pgs_aes_cryptor_t));
+	pgs_aes_cryptor_t *ptr = malloc(sizeof(pgs_aes_cryptor_t));
 	ptr->key = key;
 	ptr->iv = iv;
 
@@ -43,7 +43,7 @@ void pgs_aes_cryptor_free(pgs_aes_cryptor_t *ptr)
 {
 	if (ptr->ctx)
 		EVP_CIPHER_CTX_free(ptr->ctx);
-	pgs_free(ptr);
+	free(ptr);
 	ptr = NULL;
 }
 
@@ -96,14 +96,14 @@ pgs_aead_cryptor_t *pgs_aead_cryptor_new(const EVP_CIPHER *cipher,
 					 const pgs_buf_t *iv,
 					 pgs_cryptor_direction_t dir)
 {
-	pgs_aead_cryptor_t *ptr = pgs_malloc(sizeof(pgs_aead_cryptor_t));
+	pgs_aead_cryptor_t *ptr = malloc(sizeof(pgs_aead_cryptor_t));
 	ptr->key = key;
 	ptr->counter = 0;
 	// vmess using 12 bytes iv aead cipher
-	ptr->iv = pgs_malloc(sizeof(pgs_buf_t) * 12);
+	ptr->iv = malloc(sizeof(pgs_buf_t) * 12);
 	ptr->dir = dir;
-	pgs_memzero(ptr->iv, 12);
-	pgs_memcpy(ptr->iv + 2, iv + 2, 10);
+	memzero(ptr->iv, 12);
+	memcpy(ptr->iv + 2, iv + 2, 10);
 
 	switch (dir) {
 	case PGS_ENCRYPT: {
@@ -152,8 +152,8 @@ void pgs_aead_cryptor_free(pgs_aead_cryptor_t *ptr)
 	if (ptr->ctx)
 		EVP_CIPHER_CTX_free(ptr->ctx);
 	if (ptr->iv)
-		pgs_free(ptr->iv);
-	pgs_free(ptr);
+		free(ptr->iv);
+	free(ptr);
 	ptr = NULL;
 }
 
@@ -226,4 +226,3 @@ void pgs_aead_cryptor_increase_iv(pgs_aead_cryptor_t *ptr)
 		break;
 	}
 }
-

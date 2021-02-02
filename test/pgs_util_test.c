@@ -14,7 +14,7 @@ void test_sha224()
 	pgs_buf_t *hexstring = to_hexstring((const pgs_buf_t *)buf, 28);
 	assert(res_len == 28);
 	assert(strcmp(result, (const char *)hexstring) == 0);
-	pgs_free(hexstring);
+	free(hexstring);
 }
 
 void test_shake128()
@@ -29,7 +29,7 @@ void test_shake128()
 		 res_len);
 	pgs_buf_t *hexstring = to_hexstring((const pgs_buf_t *)buf, res_len);
 	assert(strcmp(result, (const char *)hexstring) == 0);
-	pgs_free(hexstring);
+	free(hexstring);
 }
 
 void test_hmac_md5()
@@ -53,7 +53,7 @@ void test_hmac_md5()
 	pgs_buf_t *hexstring = to_hexstring((const pgs_buf_t *)buf, res_len);
 	assert(res_len == 16);
 	assert(strcmp(result, (const char *)hexstring) == 0);
-	pgs_free(hexstring);
+	free(hexstring);
 }
 
 void test_md5()
@@ -65,7 +65,7 @@ void test_md5()
 	md5((const pgs_buf_t *)input, 8, (pgs_buf_t *)buf);
 	pgs_buf_t *hexstring = to_hexstring((const pgs_buf_t *)buf, MD5_LEN);
 	assert(strcmp(result, (const char *)hexstring) == 0);
-	pgs_free(hexstring);
+	free(hexstring);
 }
 
 void test_fnv1a()
@@ -92,7 +92,7 @@ void test_aes_128_cfb_encrypt()
 	pgs_buf_t *hexstring =
 		to_hexstring((const pgs_buf_t *)output, output_len);
 	assert(strcmp(result, (const char *)hexstring) == 0);
-	pgs_free(hexstring);
+	free(hexstring);
 }
 
 void test_aes_128_cfb_decrypt()
@@ -179,6 +179,8 @@ void test_crypto_aead_encrypt()
 			assert(out[i] == result2[i]);
 		}
 	}
+
+	pgs_aead_cryptor_free(encryptor);
 }
 
 void test_crypto_aead_decrypt()
@@ -231,6 +233,8 @@ void test_crypto_aead_decrypt()
 			assert(out[i] == plaintext[i]);
 		}
 	}
+
+	pgs_aead_cryptor_free(decryptor);
 }
 
 int main()

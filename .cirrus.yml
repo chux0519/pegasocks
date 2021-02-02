@@ -1,0 +1,41 @@
+freebsd_task:
+    matrix:
+        - name: FreeBSD 11.4
+          freebsd_instance:
+            image: freebsd-11-4-release-amd64
+        - name: FreeBSD 12.2
+          freebsd_instance:
+            image: freebsd-12-2-release-amd64
+    env:
+        HOME: /home/testuser
+
+    install_script:
+        - sed -i.bak -e 's,pkg+http://pkg.FreeBSD.org/\${ABI}/quarterly,pkg+http://pkg.FreeBSD.org/\${ABI}/latest,' /etc/pkg/FreeBSD.conf        
+        - pkg update -f
+        - pkg upgrade -y
+        - pkg install -y gmake cmake json-c openssl libevent
+    setup_script:
+        - pw groupadd testgroup
+        - pw useradd testuser -g testgroup -w none -m
+        - cp -R . $HOME
+        - chown -R testuser:testgroup $HOME
+    build_script: su testuser -c 'mkdir -p ~/build && cd ~/build && cmake .. && gmake --jobs=5'
+    test_script: su testuser -c 'cd ~/build && gmake test'
+
+linux_task:
+    container:
+      matrix:
+          - image: ubuntu:18.04
+          - image: ubuntu:20.04
+
+    install_script:
+        - apt update && apt upgrade -y
+        - DEBIAN_FRONTEND=noninteractive apt install -y cmake build-essential libjson-c-dev libevent-dev libssl-dev
+    build_script:
+        - mkdir -p build
+        - cd build
+        - cmake ..
+        - make
+    test_script:
+        - cd build
+        - make test

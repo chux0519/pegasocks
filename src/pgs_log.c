@@ -11,15 +11,15 @@ static char *log_colors[] = { "\e[01;32m", "\e[01;32m", "\e[01;35m",
 
 pgs_logger_msg_t *pgs_logger_msg_new(char *msg, pgs_tid tid)
 {
-	pgs_logger_msg_t *ptr = pgs_malloc(sizeof(pgs_logger_msg_t));
+	pgs_logger_msg_t *ptr = malloc(sizeof(pgs_logger_msg_t));
 	ptr->msg = msg;
 	ptr->tid = tid;
 	return ptr;
 }
 void pgs_logger_msg_free(pgs_logger_msg_t *lmsg)
 {
-	pgs_free(lmsg->msg);
-	pgs_free(lmsg);
+	free(lmsg->msg);
+	free(lmsg);
 }
 
 void pgs_logger_debug_buffer(pgs_logger_t *logger, unsigned char *buf, int size)
@@ -34,7 +34,7 @@ void pgs_logger_debug_buffer(pgs_logger_t *logger, unsigned char *buf, int size)
 
 pgs_logger_t *pgs_logger_new(pgs_mpsc_t *mpsc, LOG_LEVEL level, bool isatty)
 {
-	pgs_logger_t *ptr = pgs_malloc(sizeof(pgs_logger_t));
+	pgs_logger_t *ptr = malloc(sizeof(pgs_logger_t));
 	ptr->level = level;
 	ptr->mpsc = mpsc;
 	ptr->tid = (pgs_tid)pthread_self();
@@ -44,7 +44,7 @@ pgs_logger_t *pgs_logger_new(pgs_mpsc_t *mpsc, LOG_LEVEL level, bool isatty)
 
 void pgs_logger_free(pgs_logger_t *logger)
 {
-	pgs_free(logger);
+	free(logger);
 }
 
 void pgs_logger_log(LOG_LEVEL level, pgs_logger_t *logger, const char *fmt, ...)
@@ -69,7 +69,7 @@ void pgs_logger_log(LOG_LEVEL level, pgs_logger_t *logger, const char *fmt, ...)
 	now = localtime(&t);
 	strftime(datetime, sizeof(datetime), TIME_FORMAT, now);
 
-	char *m = pgs_malloc(sizeof(char) * MAX_MSG_LEN);
+	char *m = malloc(sizeof(char) * MAX_MSG_LEN);
 
 	if (logger->isatty) {
 		sprintf(m, "%s%s [thread-%04d] %s: \e[0m%s", log_colors[level],

@@ -77,9 +77,8 @@ void pgs_tray_init(pgs_tray_context_t *ctx)
 	pgs_logger_info(ctx->logger, "current server: %d, server length: %d",
 			ctx->sm->cur_server_index, ctx->sm->server_len);
 	pgs_tray_menu_t *servers_submenu =
-		pgs_malloc(sizeof(pgs_tray_menu_t) * ctx->sm->server_len * 3);
-	ctx->metrics_label =
-		pgs_malloc(sizeof(char) * 256 * ctx->sm->server_len);
+		malloc(sizeof(pgs_tray_menu_t) * ctx->sm->server_len * 3);
+	ctx->metrics_label = malloc(sizeof(char) * 256 * ctx->sm->server_len);
 	pgs_tray_submenu_update(ctx, servers_submenu);
 	tray.menu[0].submenu = servers_submenu;
 	tray.menu[0].context = ctx;
@@ -88,10 +87,10 @@ void pgs_tray_init(pgs_tray_context_t *ctx)
 void pgs_tray_clean()
 {
 	if (tray.menu[0].submenu)
-		pgs_free(tray.menu[0].submenu);
+		free(tray.menu[0].submenu);
 	pgs_tray_context_t *ctx = tray.menu[0].context;
 	if (ctx->metrics_label)
-		pgs_free(ctx->metrics_label);
+		free(ctx->metrics_label);
 }
 
 void pgs_tray_start(pgs_tray_context_t *ctx)

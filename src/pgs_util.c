@@ -59,7 +59,7 @@ int fnv1a(void *input, pgs_size_t input_len)
 
 pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size)
 {
-	pgs_buf_t *hexbuf = pgs_malloc(sizeof(pgs_buf_t) * (2 * size + 1));
+	pgs_buf_t *hexbuf = malloc(sizeof(pgs_buf_t) * (2 * size + 1));
 	for (int i = 0; i < size; i++) {
 		sprintf((char *)hexbuf + i * 2, "%02x", (int)buf[i]);
 	}
@@ -196,7 +196,7 @@ void hextobin(const char *str, uint8_t *bytes, size_t blen)
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // ........
 	};
 
-	pgs_memzero(bytes, blen);
+	memzero(bytes, blen);
 	for (pos = 0; (pos < (blen * 2)); pos += 2) {
 		idx0 = (uint8_t)str[pos + 0];
 		idx1 = (uint8_t)str[pos + 1];
@@ -213,7 +213,7 @@ char *socks5_dest_addr_parse(const pgs_buf_t *cmd, pgs_size_t cmd_len)
 	switch (atyp) {
 	case 0x01: {
 		assert(cmd_len > 8);
-		dest = pgs_malloc(sizeof(char) * 32);
+		dest = malloc(sizeof(char) * 32);
 		sprintf(dest, "%d.%d.%d.%d", cmd[offset], cmd[offset + 1],
 			cmd[offset + 2], cmd[offset + 3]);
 		break;
@@ -222,14 +222,14 @@ char *socks5_dest_addr_parse(const pgs_buf_t *cmd, pgs_size_t cmd_len)
 		offset = 5;
 		int len = cmd[4];
 		assert(cmd_len > len + 4);
-		dest = pgs_malloc(sizeof(char) * (len + 1));
-		pgs_memcpy(dest, cmd + 5, len);
+		dest = malloc(sizeof(char) * (len + 1));
+		memcpy(dest, cmd + 5, len);
 		dest[len] = '\0';
 		break;
 	}
 	case 0x04: {
 		assert(cmd_len > 20);
-		dest = pgs_malloc(sizeof(char) * 32);
+		dest = malloc(sizeof(char) * 32);
 		sprintf(dest, "%x:%x:%x:%x:%x:%x:%x:%x",
 			cmd[offset] << 8 | cmd[offset + 1],
 			cmd[offset + 2] << 8 | cmd[offset + 3],

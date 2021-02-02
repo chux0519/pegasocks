@@ -2,7 +2,9 @@
 #include "pgs_core.h"
 #include "pgs_metrics.h"
 #include "pgs_control.h"
+
 #include <assert.h>
+#include <signal.h>
 
 static void pgs_timer_cb(evutil_socket_t fd, short event, void *data);
 
@@ -16,7 +18,7 @@ static void pgs_timer_cb(evutil_socket_t fd, short event, void *data)
 	pgs_logger_tryrecv(arg->ctx->logger, arg->ctx->config->log_file);
 	arg->tv.tv_sec = 1;
 	arg->tv.tv_usec = 0;
-	pgs_evtimer_add(arg->ev, &arg->tv);
+	evtimer_add(arg->ev, &arg->tv);
 }
 
 static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
@@ -28,28 +30,27 @@ static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 	}
 	arg->tv.tv_sec = arg->ctx->config->ping_interval;
 	arg->tv.tv_usec = 0;
-	pgs_evtimer_add(arg->ev, &arg->tv);
+	evtimer_add(arg->ev, &arg->tv);
 }
 
 void pgs_timer_init(int interval, pgs_timer_cb_t cb,
 		    pgs_helper_thread_ctx_t *ptr)
 {
 	// FIXME: leaks
-	pgs_timer_cb_arg_t *arg = pgs_malloc(sizeof(pgs_timer_cb_arg_t));
+	pgs_timer_cb_arg_t *arg = malloc(sizeof(pgs_timer_cb_arg_t));
 	arg->tv.tv_sec = interval;
 	arg->tv.tv_usec = 0;
 	arg->ctx = ptr;
-	arg->ev = pgs_evtimer_new(ptr->base, cb, (void *)arg);
+	arg->ev = evtimer_new(ptr->base, cb, (void *)arg);
 
-	pgs_evtimer_add(arg->ev, &arg->tv);
+	evtimer_add(arg->ev, &arg->tv);
 }
 
 pgs_helper_thread_ctx_t *pgs_helper_thread_ctx_new(pgs_helper_thread_arg_t *arg)
 {
-	pgs_helper_thread_ctx_t *ptr =
-		pgs_malloc(sizeof(pgs_helper_thread_ctx_t));
+	pgs_helper_thread_ctx_t *ptr = malloc(sizeof(pgs_helper_thread_ctx_t));
 	ptr->tid = (pgs_tid)pthread_self();
-	ptr->base = pgs_ev_base_new();
+	ptr->base = event_base_new();
 	ptr->config = arg->config;
 	ptr->logger = arg->logger;
 	ptr->sm = arg->sm;
@@ -59,12 +60,14 @@ pgs_helper_thread_ctx_t *pgs_helper_thread_ctx_new(pgs_helper_thread_arg_t *arg)
 void pgs_helper_thread_ctx_free(pgs_helper_thread_ctx_t *ptr)
 {
 	if (ptr->base)
-		pgs_ev_base_free(ptr->base);
-	pgs_free(ptr);
+		event_base_free(ptr->base);
+	free(ptr);
 }
 
 void *pgs_helper_thread_start(void *data)
 {
+	signal(SIGPIPE, SIG_IGN);
+
 	pgs_helper_thread_arg_t *arg = (pgs_helper_thread_arg_t *)data;
 
 	pgs_helper_thread_ctx_t *ctx = pgs_helper_thread_ctx_new(arg);
@@ -78,7 +81,7 @@ void *pgs_helper_thread_start(void *data)
 	pgs_control_server_start(arg->ctrl_fd, ctx->base, ctx->sm, ctx->logger,
 				 ctx->config);
 
-	pgs_ev_base_dispatch(ctx->base);
+	event_base_dispatch(ctx->base);
 
 	pgs_helper_thread_ctx_free(ctx);
 

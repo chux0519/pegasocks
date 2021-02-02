@@ -30,8 +30,8 @@ typedef enum {
 	INBOUND_PROXY,
 	INBOUND_ERR
 } pgs_session_inbound_state;
-typedef void(on_event_cb)(pgs_bev_t *bev, short events, void *ctx);
-typedef void(on_read_cb)(pgs_bev_t *bev, void *ctx);
+typedef void(on_event_cb)(struct bufferevent *bev, short events, void *ctx);
+typedef void(on_read_cb)(struct bufferevent *bev, void *ctx);
 typedef void(free_ctx_fn)(void *ctx);
 typedef struct pgs_session_outbound_cbs_s pgs_session_outbound_cbs_t;
 typedef struct pgs_session_inbound_cbs_s pgs_session_inbound_cbs_t;
@@ -44,14 +44,14 @@ struct pgs_session_s {
 };
 
 struct pgs_session_inbound_s {
-	pgs_bev_t *bev;
+	struct bufferevent *bev;
 	pgs_session_inbound_state state;
 	pgs_buf_t *cmd;
 	pgs_size_t cmdlen;
 };
 
 struct pgs_session_outbound_s {
-	pgs_bev_t *bev;
+	struct bufferevent *bev;
 	const pgs_server_config_t *config;
 	int config_idx;
 	char *dest;
@@ -91,10 +91,10 @@ struct pgs_vmess_ctx_s {
 	char key[AES_128_CFB_KEY_LEN];
 	char riv[AES_128_CFB_IV_LEN];
 	char rkey[AES_128_CFB_KEY_LEN];
-	pgs_buf_t local_rbuf[_PGS_BUFSIZE];
-	pgs_buf_t local_wbuf[_PGS_BUFSIZE];
-	pgs_buf_t remote_rbuf[_PGS_BUFSIZE];
-	pgs_buf_t remote_wbuf[_PGS_BUFSIZE];
+	pgs_buf_t local_rbuf[BUFSIZE_16K];
+	pgs_buf_t local_wbuf[BUFSIZE_16K];
+	pgs_buf_t remote_rbuf[BUFSIZE_16K];
+	pgs_buf_t remote_wbuf[BUFSIZE_16K];
 	// for ws state
 	bool connected;
 	// for request header
@@ -130,23 +130,22 @@ pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen,
 void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr);
 
 // inbound
-pgs_session_inbound_t *pgs_session_inbound_new(pgs_bev_t *bev);
+pgs_session_inbound_t *pgs_session_inbound_new(struct bufferevent *bev);
 void pgs_session_inbound_free(pgs_session_inbound_t *sb);
 
 // outbound
 pgs_session_outbound_t *
 pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 			 const pgs_buf_t *cmd, pgs_size_t cmd_len,
-			 pgs_logger_t *logger, pgs_ev_base_t *base,
-			 pgs_ev_dns_base_t *dns_base, pgs_bev_t *inbev,
+			 pgs_logger_t *logger, struct event_base *base,
+			 struct evdns_base *dns_base, struct bufferevent *inbev,
 			 pgs_session_inbound_cbs_t inbound_cbs,
 			 pgs_session_outbound_cbs_t outbound_cbs, void *cb_ctx,
 			 free_ctx_fn *free_cb_ctx);
 void pgs_session_outbound_free(pgs_session_outbound_t *outbound);
 
 // session
-pgs_session_t *pgs_session_new(pgs_socket_t fd,
-			       pgs_local_server_t *local_server);
+pgs_session_t *pgs_session_new(int fd, pgs_local_server_t *local_server);
 void pgs_session_free(pgs_session_t *session);
 void pgs_session_start(pgs_session_t *session);
 

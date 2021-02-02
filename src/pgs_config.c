@@ -35,7 +35,7 @@ pgs_config_t *pgs_config_load(const char *config)
 	json_object *jobj = json_tokener_parse(fcontent);
 
 	// Release buffer and fd
-	pgs_free(fcontent);
+	free(fcontent);
 	fclose(fp);
 
 	// Parse content
@@ -156,7 +156,7 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 				else
 					j++;
 			}
-			pgs_buf_t *uuid = pgs_malloc(16 * sizeof(pgs_buf_t));
+			pgs_buf_t *uuid = malloc(16 * sizeof(pgs_buf_t));
 			hextobin(uuid_hex, uuid, 16);
 			ptr[i].password = uuid;
 		}
@@ -194,7 +194,7 @@ void *pgs_server_config_parse_extra(pgs_config_t *config,
 
 pgs_config_t *pgs_config_new()
 {
-	pgs_config_t *ptr = pgs_malloc(sizeof(pgs_config_t));
+	pgs_config_t *ptr = malloc(sizeof(pgs_config_t));
 	ptr->servers = NULL;
 	ptr->servers_count = 0;
 	ptr->local_address = NULL;
@@ -209,8 +209,7 @@ pgs_config_t *pgs_config_new()
 
 pgs_server_config_t *pgs_servers_config_new(pgs_size_t len)
 {
-	pgs_server_config_t *ptr =
-		pgs_malloc(sizeof(pgs_server_config_t) * len);
+	pgs_server_config_t *ptr = malloc(sizeof(pgs_server_config_t) * len);
 	for (int i = 0; i < len; i++) {
 		ptr[i].server_address = NULL;
 		ptr[i].server_port = 0;
@@ -233,9 +232,9 @@ void pgs_servers_config_free(pgs_server_config_t *ptr, pgs_size_t len)
 		    (strcmp(ptr[i].server_type, "trojan") == 0 ||
 		     strcmp(ptr[i].server_type, "v2ray") == 0) &&
 		    ptr[i].password != NULL)
-			pgs_free(ptr[i].password);
+			free(ptr[i].password);
 	}
-	pgs_free(ptr);
+	free(ptr);
 	ptr = NULL;
 }
 
@@ -246,7 +245,7 @@ void pgs_config_free(pgs_config_t *config)
 	if (config->servers)
 		pgs_servers_config_free(config->servers, config->servers_count);
 
-	pgs_free(config);
+	free(config);
 
 	config = NULL;
 }
@@ -298,7 +297,7 @@ error:
 pgs_trojanserver_config_t *pgs_trojanserver_config_new()
 {
 	pgs_trojanserver_config_t *ptr =
-		pgs_malloc(sizeof(pgs_trojanserver_config_t));
+		malloc(sizeof(pgs_trojanserver_config_t));
 	ptr->ssl.enabled = true;
 	ptr->ssl.cert = NULL;
 	ptr->websocket.enabled = false;
@@ -313,7 +312,7 @@ void pgs_trojanserver_config_free(pgs_trojanserver_config_t *ptr)
 {
 	if (ptr->ssl_ctx != NULL)
 		SSL_CTX_free(ptr->ssl_ctx);
-	pgs_free(ptr);
+	free(ptr);
 	ptr = NULL;
 }
 
@@ -375,7 +374,7 @@ error:
 pgs_v2rayserver_config_t *pgs_v2rayserver_config_new()
 {
 	pgs_v2rayserver_config_t *ptr =
-		pgs_malloc(sizeof(pgs_v2rayserver_config_t));
+		malloc(sizeof(pgs_v2rayserver_config_t));
 	ptr->ssl.enabled = false;
 	ptr->ssl.cert = NULL;
 	ptr->websocket.enabled = false;
@@ -390,6 +389,6 @@ void pgs_v2rayserver_config_free(pgs_v2rayserver_config_t *ptr)
 {
 	if (ptr->ssl_ctx != NULL)
 		SSL_CTX_free(ptr->ssl_ctx);
-	pgs_free(ptr);
+	free(ptr);
 	ptr = NULL;
 }

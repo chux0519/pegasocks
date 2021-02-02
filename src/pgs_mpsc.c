@@ -3,20 +3,20 @@
 
 pgs_mpsc_t *pgs_mpsc_new(long size)
 {
-	pgs_mpsc_t *ptr = pgs_malloc(sizeof(pgs_mpsc_t));
+	pgs_mpsc_t *ptr = malloc(sizeof(pgs_mpsc_t));
 	ptr->count = ATOMIC_VAR_INIT(0);
 	ptr->in_pos = ATOMIC_VAR_INIT(0);
 
 	ptr->out_pos = 0;
 	ptr->max = size;
-	ptr->slots = pgs_calloc(size, sizeof(void *));
+	ptr->slots = calloc(size, sizeof(void *));
 	return ptr;
 }
 
 void pgs_mpsc_free(pgs_mpsc_t *mpsc)
 {
-	pgs_free(mpsc->slots);
-	pgs_free(mpsc);
+	free(mpsc->slots);
+	free(mpsc);
 }
 
 bool pgs_mpsc_send(pgs_mpsc_t *mpsc, void *data)
@@ -51,4 +51,3 @@ void *pgs_mpsc_recv(pgs_mpsc_t *mpsc)
 	assert(r > 0);
 	return ret;
 }
-

@@ -23,4 +23,3 @@ bool pgs_mpsc_send(pgs_mpsc_t *mpsc, void *data);
 void *pgs_mpsc_recv(pgs_mpsc_t *mpsc);
 
 #endif
-

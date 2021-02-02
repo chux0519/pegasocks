@@ -1,8 +1,8 @@
 #include "pgs_core.h"
 
-pgs_ssl_ctx_t *pgs_ssl_ctx_new()
+SSL_CTX *pgs_ssl_ctx_new()
 {
-	pgs_ssl_ctx_t *ctx = NULL;
+	SSL_CTX *ctx = NULL;
 
 	SSL_load_error_strings();
 	SSL_library_init();
@@ -18,16 +18,16 @@ pgs_ssl_ctx_t *pgs_ssl_ctx_new()
 	return ctx;
 }
 
-pgs_ssl_t *pgs_ssl_new(pgs_ssl_ctx_t *ctx, void *hostname)
+SSL *pgs_ssl_new(SSL_CTX *ctx, void *hostname)
 {
-	pgs_ssl_t *ssl = NULL;
+	SSL *ssl = NULL;
 	if ((ssl = SSL_new(ctx)))
 		SSL_set_tlsext_host_name(ssl, hostname);
 
 	return ssl;
 }
 
-void pgs_ssl_close(pgs_ssl_t *ssl)
+void pgs_ssl_close(SSL *ssl)
 {
 	SSL_shutdown(ssl);
 	SSL_clear(ssl);

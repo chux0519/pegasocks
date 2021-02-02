@@ -68,14 +68,14 @@ struct pgs_server_ws_config_base_s {
 struct pgs_trojanserver_config_s {
 	pgs_trojanserver_ssl_t ssl;
 	pgs_trojanserver_ws_t websocket;
-	pgs_ssl_ctx_t *ssl_ctx;
+	SSL_CTX *ssl_ctx;
 };
 
 struct pgs_v2rayserver_config_s {
 	pgs_v2rayserver_ssl_t ssl;
 	pgs_v2rayserver_ws_t websocket;
 	pgs_v2rayserver_secure_t secure;
-	pgs_ssl_ctx_t *ssl_ctx;
+	SSL_CTX *ssl_ctx;
 };
 
 /* common */
