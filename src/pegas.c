@@ -135,6 +135,13 @@ static int init_control_fd(const pgs_config_t *config, int *fd)
 
 int main(int argc, char **argv)
 {
+	signal(SIGPIPE, SIG_IGN);
+
+	sigset_t set;
+	sigemptyset(&set);
+	sigaddset(&set, SIGPIPE);
+	pthread_sigmask(SIG_BLOCK, &set, NULL);
+
 #ifdef DEBUG_EVENT
 	event_enable_debug_logging(EVENT_DBG_ALL);
 #endif

@@ -66,8 +66,6 @@ void pgs_helper_thread_ctx_free(pgs_helper_thread_ctx_t *ptr)
 
 void *pgs_helper_thread_start(void *data)
 {
-	signal(SIGPIPE, SIG_IGN);
-
 	pgs_helper_thread_arg_t *arg = (pgs_helper_thread_arg_t *)data;
 
 	pgs_helper_thread_ctx_t *ctx = pgs_helper_thread_ctx_new(arg);
