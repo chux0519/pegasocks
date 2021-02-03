@@ -1,6 +1,6 @@
 <img src="./logo/icon.svg" width="150" align="left" />
 
-# pegasocks 
+# pegasocks [![Cirrus CI Build Status](https://api.cirrus-ci.com/github/chux0519/pegasocks.svg)](https://cirrus-ci.com/github/chux0519/pegasocks)
 
 is a (socks5)proxy client written in C, intended to support multiple types of proxy protocols(trojan, v2ray, ..).
 It is lightweight and supports unix-like systems.

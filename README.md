@@ -1,6 +1,6 @@
 <img src="./logo/icon.svg" width="150" align="left" />
 
-# pegasocks 
+# pegasocks [![Cirrus CI Build Status](https://api.cirrus-ci.com/github/chux0519/pegasocks.svg)](https://cirrus-ci.com/github/chux0519/pegasocks)
 
 是一个基于 socks5 协议的代理客户端，意图在于支持多种类型的代理服务。
 C 语言编写，轻量，支持类 unix 系统。
