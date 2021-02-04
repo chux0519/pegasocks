@@ -124,6 +124,7 @@ endif(DEFINED DEBUG_EVENT)
 
 
 install(TARGETS pegas RUNTIME DESTINATION bin)
+install(DIRECTORY logo DESTINATION share/pegasocks)
 
 # tests
 enable_testing()

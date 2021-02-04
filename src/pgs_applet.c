@@ -4,6 +4,8 @@
 
 static pgs_tray_t tray;
 
+static char full_icon_path[512] = { 0 };
+
 void pgs_tray_submenu_update(pgs_tray_context_t *ctx,
 			     pgs_tray_menu_t *servers_submenu);
 
@@ -26,7 +28,7 @@ static void pick_server_cb(pgs_tray_menu_t *item)
 }
 
 static pgs_tray_t tray = {
-	.icon = TRAY_ICON1,
+	.icon = TRAY_ICON,
 	.menu = (pgs_tray_menu_t[]){ {
 					     .text = "servers",
 				     },
@@ -80,6 +82,13 @@ void pgs_tray_init(pgs_tray_context_t *ctx)
 		malloc(sizeof(pgs_tray_menu_t) * ctx->sm->server_len * 3);
 	ctx->metrics_label = malloc(sizeof(char) * 256 * ctx->sm->server_len);
 	pgs_tray_submenu_update(ctx, servers_submenu);
+
+	char *local_icon_path = "/usr/local/share/pegasocks/logo";
+	if (access(local_icon_path, F_OK) == 0) {
+		sprintf(full_icon_path, "%s/%s", local_icon_path, TRAY_ICON);
+		tray.icon = full_icon_path;
+	}
+
 	tray.menu[0].submenu = servers_submenu;
 	tray.menu[0].context = ctx;
 }

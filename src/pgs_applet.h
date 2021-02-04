@@ -35,14 +35,11 @@ struct pgs_tray_context_s {
 #include "tray/tray.h"
 
 #if TRAY_APPINDICATOR
-#define TRAY_ICON1 "icon.svg"
-#define TRAY_ICON2 "icon.svg"
+#define TRAY_ICON "icon.svg"
 #elif TRAY_APPKIT
-#define TRAY_ICON1 "icon.png"
-#define TRAY_ICON2 "icon.png"
+#define TRAY_ICON "icon.png"
 #elif TRAY_WINAPI
-#define TRAY_ICON1 "icon.ico"
-#define TRAY_ICON2 "icon.ico"
+#define TRAY_ICON "icon.ico"
 #endif
 
 typedef struct tray pgs_tray_t;
