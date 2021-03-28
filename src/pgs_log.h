@@ -1,8 +1,12 @@
 #ifndef _PGS_LOG
 #define _PGS_LOG
 
+#include <stdint.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdlib.h>
+
 #include "pgs_mpsc.h"
-#include "stdio.h"
 
 typedef struct pgs_logger_s pgs_logger_t;
 typedef enum { DEBUG, INFO, WARN, ERROR } LOG_LEVEL;
@@ -26,13 +30,13 @@ void pgs_logger_debug_buffer(pgs_logger_t *logger, unsigned char *buf,
 struct pgs_logger_s {
 	pgs_mpsc_t *mpsc;
 	LOG_LEVEL level;
-	pgs_tid tid;
+	uint32_t tid;
 	bool isatty;
 };
 
 struct pgs_logger_msg_s {
 	char *msg;
-	pgs_tid tid;
+	uint32_t tid;
 };
 
 struct pgs_logger_server_s {
@@ -53,7 +57,7 @@ void pgs_logger_main_log(LOG_LEVEL level, FILE *output, const char *fmt, ...);
 // logger thread functions
 void pgs_logger_tryrecv(pgs_logger_t *logger, FILE *output);
 
-pgs_logger_msg_t *pgs_logger_msg_new(char *msg, pgs_tid tid);
+pgs_logger_msg_t *pgs_logger_msg_new(char *msg, uint32_t tid);
 void pgs_logger_msg_free(pgs_logger_msg_t *lmsg);
 
 #endif

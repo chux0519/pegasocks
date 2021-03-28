@@ -1,10 +1,13 @@
 #ifndef _PGS_CONFIG
 #define _PGS_CONFIG
 
-#include "pgs_core.h"
 #include "pgs_log.h"
+#include "pgs_ssl.h"
+
 #include <stdbool.h>
+#include <stdint.h>
 #include <json-c/json.h>
+#include <openssl/ssl.h>
 
 typedef struct pgs_config_s pgs_config_t;
 typedef struct pgs_server_config_s pgs_server_config_t;
@@ -46,7 +49,7 @@ struct pgs_server_config_s {
 	const char *server_address;
 	const char *server_type;
 	int server_port;
-	pgs_buf_t *password;
+	uint8_t *password;
 	void *extra; // type specific
 };
 
@@ -84,9 +87,9 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 					      json_object *jobj);
 pgs_config_t *pgs_config_new();
 void pgs_config_free(pgs_config_t *config);
-pgs_server_config_t *pgs_servers_config_new(pgs_size_t len);
+pgs_server_config_t *pgs_servers_config_new(uint64_t len);
 void pgs_servers_config_free(pgs_server_config_t *servers,
-			     pgs_size_t servers_count);
+			     uint64_t servers_count);
 void *pgs_server_config_parse_extra(pgs_config_t *config,
 				    const char *server_type, json_object *jobj);
 void pgs_server_config_free_extra(const char *server_type, void *ptr);

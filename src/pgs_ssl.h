@@ -1,6 +1,10 @@
-#include "pgs_core.h"
+#ifndef _PGS_CORE
+#define _PGS_CORE
 
-SSL_CTX *pgs_ssl_ctx_new()
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
+static SSL_CTX *pgs_ssl_ctx_new()
 {
 	SSL_CTX *ctx = NULL;
 
@@ -18,7 +22,7 @@ SSL_CTX *pgs_ssl_ctx_new()
 	return ctx;
 }
 
-SSL *pgs_ssl_new(SSL_CTX *ctx, void *hostname)
+static SSL *pgs_ssl_new(SSL_CTX *ctx, void *hostname)
 {
 	SSL *ssl = NULL;
 	if ((ssl = SSL_new(ctx)))
@@ -27,8 +31,10 @@ SSL *pgs_ssl_new(SSL_CTX *ctx, void *hostname)
 	return ssl;
 }
 
-void pgs_ssl_close(SSL *ssl)
+static void pgs_ssl_close(SSL *ssl)
 {
 	SSL_shutdown(ssl);
 	SSL_clear(ssl);
 }
+
+#endif

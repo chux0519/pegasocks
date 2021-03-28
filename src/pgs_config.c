@@ -127,7 +127,7 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 					goto error;
 			} else if (strcmp(key, "password") == 0) {
 				ptr[i].password =
-					(pgs_buf_t *)json_object_get_string(
+					(uint8_t *)json_object_get_string(
 						val);
 				if (ptr[i].password == NULL)
 					goto error;
@@ -135,15 +135,15 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 		}
 		if (strcmp(ptr[i].server_type, "trojan") == 0) {
 			// password = to_hexstring(sha224(password))
-			pgs_buf_t encoded_pass[SHA224_LEN];
-			pgs_size_t encoded_len = 0;
-			sha224((const pgs_buf_t *)ptr[i].password,
+			uint8_t encoded_pass[SHA224_LEN];
+			uint64_t encoded_len = 0;
+			sha224((const uint8_t *)ptr[i].password,
 			       strlen((const char *)ptr[i].password),
 			       encoded_pass, &encoded_len);
 			if (encoded_len != SHA224_LEN)
 				goto error;
 
-			pgs_buf_t *hexpass =
+			uint8_t *hexpass =
 				to_hexstring(encoded_pass, encoded_len);
 
 			ptr[i].password = hexpass;
@@ -156,7 +156,7 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 				else
 					j++;
 			}
-			pgs_buf_t *uuid = malloc(16 * sizeof(pgs_buf_t));
+			uint8_t *uuid = malloc(16 * sizeof(uint8_t));
 			hextobin(uuid_hex, uuid, 16);
 			ptr[i].password = uuid;
 		}
@@ -207,7 +207,7 @@ pgs_config_t *pgs_config_new()
 	return ptr;
 }
 
-pgs_server_config_t *pgs_servers_config_new(pgs_size_t len)
+pgs_server_config_t *pgs_servers_config_new(uint64_t len)
 {
 	pgs_server_config_t *ptr = malloc(sizeof(pgs_server_config_t) * len);
 	for (int i = 0; i < len; i++) {
@@ -220,7 +220,7 @@ pgs_server_config_t *pgs_servers_config_new(pgs_size_t len)
 	return ptr;
 }
 
-void pgs_servers_config_free(pgs_server_config_t *ptr, pgs_size_t len)
+void pgs_servers_config_free(pgs_server_config_t *ptr, uint64_t len)
 {
 	if (ptr == NULL || len == 0)
 		return;

@@ -1,7 +1,9 @@
 #ifndef _PGS_UTIL
 #define _PGS_UTIL
 
-#include "pgs_core.h"
+#include "pgs_defs.h"
+
+#include <stdint.h>
 
 #define SHA224_LEN 28
 #define MD5_LEN 16
@@ -11,31 +13,31 @@
 	while (isspace(*addr))                                                 \
 		addr++;
 
-void sha224(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res,
-	    pgs_size_t *res_len);
+void sha224(const uint8_t *input, uint64_t input_len, uint8_t *res,
+	    uint64_t *res_len);
 
-void shake128(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *out,
-	      pgs_size_t out_len);
+void shake128(const uint8_t *input, uint64_t input_len, uint8_t *out,
+	      uint64_t out_len);
 
-void md5(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res);
+void md5(const uint8_t *input, uint64_t input_len, uint8_t *res);
 
-void hmac_md5(const pgs_buf_t *key, pgs_size_t key_len, const pgs_buf_t *data,
-	      pgs_size_t data_len, pgs_buf_t *out, pgs_size_t *out_len);
+void hmac_md5(const uint8_t *key, uint64_t key_len, const uint8_t *data,
+	      uint64_t data_len, uint8_t *out, uint64_t *out_len);
 
-int fnv1a(void *input, pgs_size_t input_len);
+int fnv1a(void *input, uint64_t input_len);
 
-int aes_128_cfb_encrypt(const pgs_buf_t *plaintext, int plaintext_len,
-			const pgs_buf_t *key, const pgs_buf_t *iv,
-			pgs_buf_t *ciphertext);
+int aes_128_cfb_encrypt(const uint8_t *plaintext, int plaintext_len,
+			const uint8_t *key, const uint8_t *iv,
+			uint8_t *ciphertext);
 
-int aes_128_cfb_decrypt(const pgs_buf_t *ciphertext, int ciphertext_len,
-			const pgs_buf_t *key, const pgs_buf_t *iv,
-			pgs_buf_t *plaintext);
+int aes_128_cfb_decrypt(const uint8_t *ciphertext, int ciphertext_len,
+			const uint8_t *key, const uint8_t *iv,
+			uint8_t *plaintext);
 
-pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size);
+uint8_t *to_hexstring(const uint8_t *buf, uint64_t size);
 
 void hextobin(const char *str, uint8_t *bytes, size_t blen);
 
-char *socks5_dest_addr_parse(const pgs_buf_t *cmd, pgs_size_t cmd_len);
+char *socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len);
 
 #endif

@@ -5,6 +5,8 @@
 #include "pgs_session.h"
 #include "pgs_codec.h"
 
+#include <stdint.h>
+
 typedef struct pgs_metrics_task_ctx_s pgs_metrics_task_ctx_t;
 
 struct pgs_metrics_task_ctx_s {

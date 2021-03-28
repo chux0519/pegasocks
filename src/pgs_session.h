@@ -2,10 +2,13 @@
 #define _PGS_SESSION
 
 #include "pgs_util.h"
-#include "pgs_core.h"
 #include "pgs_local_server.h"
 #include "pgs_server_manager.h"
 #include "pgs_crypto.h"
+#include "pgs_defs.h"
+#include "pgs_ssl.h"
+
+#include <stdint.h>
 
 #define pgs_session_debug(session, ...)                                        \
 	pgs_logger_debug(session->local_server->logger, __VA_ARGS__)
@@ -46,8 +49,8 @@ struct pgs_session_s {
 struct pgs_session_inbound_s {
 	struct bufferevent *bev;
 	pgs_session_inbound_state state;
-	pgs_buf_t *cmd;
-	pgs_size_t cmdlen;
+	uint8_t *cmd;
+	uint64_t cmdlen;
 };
 
 struct pgs_session_outbound_s {
@@ -81,7 +84,7 @@ struct pgs_session_inbound_cbs_s {
 struct pgs_trojansession_ctx_s {
 	// sha224(password) + "\r\n" + cmd[1] + cmd.substr(3) + "\r\n"
 	char *head;
-	pgs_size_t head_len;
+	uint64_t head_len;
 	bool connected;
 };
 
@@ -91,15 +94,15 @@ struct pgs_vmess_ctx_s {
 	char key[AES_128_CFB_KEY_LEN];
 	char riv[AES_128_CFB_IV_LEN];
 	char rkey[AES_128_CFB_KEY_LEN];
-	pgs_buf_t local_rbuf[BUFSIZE_16K];
-	pgs_buf_t local_wbuf[BUFSIZE_16K];
-	pgs_buf_t remote_rbuf[BUFSIZE_16K];
-	pgs_buf_t remote_wbuf[BUFSIZE_16K];
+	uint8_t local_rbuf[BUFSIZE_16K];
+	uint8_t local_wbuf[BUFSIZE_16K];
+	uint8_t remote_rbuf[BUFSIZE_16K];
+	uint8_t remote_wbuf[BUFSIZE_16K];
 	// for ws state
 	bool connected;
 	// for request header
-	const pgs_buf_t *cmd;
-	pgs_size_t cmdlen;
+	const uint8_t *cmd;
+	uint64_t cmdlen;
 	bool header_sent;
 	// for resp header
 	bool header_recved;
@@ -109,8 +112,8 @@ struct pgs_vmess_ctx_s {
 		uint8_t cmd;
 		uint8_t m;
 	} resp_meta;
-	pgs_size_t resp_len;
-	pgs_size_t remote_rbuf_pos;
+	uint64_t resp_len;
+	uint64_t remote_rbuf_pos;
 	uint32_t resp_hash;
 	pgs_base_cryptor_t *encryptor;
 	pgs_base_cryptor_t *decryptor;
@@ -118,14 +121,14 @@ struct pgs_vmess_ctx_s {
 };
 
 // trojan session context
-pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const pgs_buf_t *encodepass,
-						   pgs_size_t passlen,
-						   const pgs_buf_t *cmd,
-						   pgs_size_t cmdlen);
+pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const uint8_t *encodepass,
+						   uint64_t passlen,
+						   const uint8_t *cmd,
+						   uint64_t cmdlen);
 void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx);
 
 // vmess context
-pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen,
+pgs_vmess_ctx_t *pgs_vmess_ctx_new(const uint8_t *cmd, uint64_t cmdlen,
 				   pgs_v2rayserver_secure_t secure);
 void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr);
 
@@ -136,7 +139,7 @@ void pgs_session_inbound_free(pgs_session_inbound_t *sb);
 // outbound
 pgs_session_outbound_t *
 pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
-			 const pgs_buf_t *cmd, pgs_size_t cmd_len,
+			 const uint8_t *cmd, uint64_t cmd_len,
 			 pgs_logger_t *logger, struct event_base *base,
 			 struct evdns_base *dns_base, struct bufferevent *inbev,
 			 pgs_session_inbound_cbs_t inbound_cbs,

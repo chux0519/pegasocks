@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 
 static void accept_error_cb(struct evconnlistener *listener, void *ctx)
 {
@@ -43,7 +44,7 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 
 {
 	pgs_local_server_t *ptr = malloc(sizeof(pgs_local_server_t));
-	ptr->tid = (pgs_tid)pthread_self();
+	ptr->tid = (uint32_t)pthread_self();
 	ptr->logger = pgs_logger_new(ctx->mpsc, ctx->config->log_level,
 				     ctx->config->log_isatty);
 	ptr->base = event_base_new();

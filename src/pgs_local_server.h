@@ -5,7 +5,8 @@
 #include <event2/bufferevent.h>
 #include <event2/dns.h>
 
-#include "pgs_core.h"
+#include <stdint.h>
+
 #include "pgs_log.h"
 #include "pgs_config.h"
 #include "pgs_server_manager.h"
@@ -14,7 +15,7 @@ typedef struct pgs_local_server_s pgs_local_server_t;
 typedef struct pgs_local_server_ctx_s pgs_local_server_ctx_t;
 
 struct pgs_local_server_s {
-	pgs_tid tid;
+	uint32_t tid;
 	int server_fd;
 	struct event_base *base;
 	struct evdns_base *dns_base;

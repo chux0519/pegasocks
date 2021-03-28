@@ -31,7 +31,7 @@ bool pgs_socks5_handshake(pgs_session_t *session)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	pgs_size_t len = evbuffer_get_length(input);
+	uint64_t len = evbuffer_get_length(input);
 	unsigned char *rdata = evbuffer_pullup(input, len);
 
 	pgs_session_debug_buffer(session, rdata, len);
@@ -79,7 +79,7 @@ bool pgs_socks5_handshake(pgs_session_t *session)
 			// Set cmd
 			session->inbound->cmdlen = 4 + addr_len + 2;
 			session->inbound->cmd = malloc(
-				sizeof(pgs_buf_t) * session->inbound->cmdlen);
+				sizeof(uint8_t) * session->inbound->cmdlen);
 			memcpy(session->inbound->cmd, rdata,
 			       session->inbound->cmdlen);
 
@@ -133,7 +133,7 @@ bool pgs_ws_upgrade_check(const char *data)
 	       !strstr(data, ws_accept);
 }
 
-void pgs_ws_write(struct evbuffer *buf, pgs_buf_t *msg, pgs_size_t len,
+void pgs_ws_write(struct evbuffer *buf, uint8_t *msg, uint64_t len,
 		  int opcode)
 {
 	pgs_ws_write_head(buf, len, opcode);
@@ -141,7 +141,7 @@ void pgs_ws_write(struct evbuffer *buf, pgs_buf_t *msg, pgs_size_t len,
 	evbuffer_add(buf, msg, len);
 }
 
-void pgs_ws_write_head(struct evbuffer *buf, pgs_size_t len, int opcode)
+void pgs_ws_write_head(struct evbuffer *buf, uint64_t len, int opcode)
 {
 	uint8_t a = 0;
 	a |= 1 << 7; //fin
@@ -178,7 +178,7 @@ void pgs_ws_write_head(struct evbuffer *buf, pgs_size_t len, int opcode)
 	evbuffer_add(buf, &mask_key, 4);
 }
 
-bool pgs_ws_parse_head(pgs_buf_t *data, pgs_size_t data_len,
+bool pgs_ws_parse_head(uint8_t *data, uint64_t data_len,
 		       pgs_ws_resp_t *meta)
 {
 	meta->fin = !!(*data & 0x80);
@@ -217,16 +217,16 @@ bool pgs_ws_parse_head(pgs_buf_t *data, pgs_size_t data_len,
 	return true;
 }
 
-pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
+uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx)
 {
-	pgs_buf_t *buf = ctx->remote_wbuf;
-	pgs_buf_t *socks5_cmd = (pgs_buf_t *)ctx->cmd;
-	pgs_size_t socks5_cmd_len = ctx->cmdlen;
+	uint8_t *buf = ctx->remote_wbuf;
+	uint8_t *socks5_cmd = (uint8_t *)ctx->cmd;
+	uint64_t socks5_cmd_len = ctx->cmdlen;
 	time_t now = time(NULL);
 	unsigned long ts = htonll(now);
-	pgs_buf_t header_auth[16];
-	pgs_size_t header_auth_len = 0;
-	hmac_md5(uuid, 16, (const pgs_buf_t *)&ts, 8, header_auth,
+	uint8_t header_auth[16];
+	uint64_t header_auth_len = 0;
+	hmac_md5(uuid, 16, (const uint8_t *)&ts, 8, header_auth,
 		 &header_auth_len);
 	assert(header_auth_len == 16);
 	memcpy(buf, header_auth, header_auth_len);
@@ -241,10 +241,10 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 	// vmess header
 	int n = socks5_cmd_len - 4 - 2;
 	int p = 0;
-	pgs_size_t header_cmd_len =
+	uint64_t header_cmd_len =
 		1 + 16 + 16 + 1 + 1 + 1 + 1 + 1 + 2 + 1 + n + p + 4;
-	pgs_buf_t header_cmd_raw[header_cmd_len];
-	pgs_buf_t header_cmd_encoded[header_cmd_len];
+	uint8_t header_cmd_raw[header_cmd_len];
+	uint8_t header_cmd_encoded[header_cmd_len];
 	memzero(header_cmd_raw, header_cmd_len);
 	memzero(header_cmd_encoded, header_cmd_len);
 
@@ -263,15 +263,15 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 		switch (ctx->secure) {
 		case V2RAY_SECURE_CFB:
 			ctx->encryptor = pgs_aes_cryptor_new(
-				EVP_aes_128_cfb(), (const pgs_buf_t *)ctx->key,
-				(const pgs_buf_t *)ctx->iv, PGS_ENCRYPT);
+				EVP_aes_128_cfb(), (const uint8_t *)ctx->key,
+				(const uint8_t *)ctx->iv, PGS_ENCRYPT);
 			break;
 		case V2RAY_SECURE_GCM:
 			ctx->encryptor =
 				(pgs_base_cryptor_t *)pgs_aead_cryptor_new(
 					EVP_aes_128_gcm(),
-					(const pgs_buf_t *)ctx->key,
-					(const pgs_buf_t *)ctx->iv,
+					(const uint8_t *)ctx->key,
+					(const uint8_t *)ctx->iv,
 					PGS_ENCRYPT);
 			break;
 		default:
@@ -281,22 +281,22 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 	}
 
 	if (!ctx->decryptor) {
-		md5((const pgs_buf_t *)ctx->iv, AES_128_CFB_IV_LEN,
-		    (pgs_buf_t *)ctx->riv);
-		md5((const pgs_buf_t *)ctx->key, AES_128_CFB_KEY_LEN,
-		    (pgs_buf_t *)ctx->rkey);
+		md5((const uint8_t *)ctx->iv, AES_128_CFB_IV_LEN,
+		    (uint8_t *)ctx->riv);
+		md5((const uint8_t *)ctx->key, AES_128_CFB_KEY_LEN,
+		    (uint8_t *)ctx->rkey);
 		switch (ctx->secure) {
 		case V2RAY_SECURE_CFB:
 			ctx->decryptor = pgs_aes_cryptor_new(
-				EVP_aes_128_cfb(), (const pgs_buf_t *)ctx->rkey,
-				(const pgs_buf_t *)ctx->riv, PGS_DECRYPT);
+				EVP_aes_128_cfb(), (const uint8_t *)ctx->rkey,
+				(const uint8_t *)ctx->riv, PGS_DECRYPT);
 			break;
 		case V2RAY_SECURE_GCM:
 			ctx->decryptor =
 				(pgs_base_cryptor_t *)pgs_aead_cryptor_new(
 					EVP_aes_128_gcm(),
-					(const pgs_buf_t *)ctx->rkey,
-					(const pgs_buf_t *)ctx->riv,
+					(const uint8_t *)ctx->rkey,
+					(const uint8_t *)ctx->riv,
 					PGS_DECRYPT);
 			break;
 		default:
@@ -343,20 +343,20 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 	header_cmd_raw[offset + 2] = f >> 8;
 	header_cmd_raw[offset + 3] = f;
 
-	pgs_buf_t k_md5_input[16 + 36];
+	uint8_t k_md5_input[16 + 36];
 	memcpy(k_md5_input, uuid, 16);
 	memcpy(k_md5_input + 16, vmess_key_suffix, 36);
-	pgs_buf_t cmd_k[AES_128_CFB_KEY_LEN];
+	uint8_t cmd_k[AES_128_CFB_KEY_LEN];
 	md5(k_md5_input, 16 + 36, cmd_k);
 
-	pgs_buf_t iv_md5_input[32];
+	uint8_t iv_md5_input[32];
 	now = time(NULL);
 	ts = htonll(now);
 	memcpy(iv_md5_input, (const unsigned char *)&ts, 8);
 	memcpy(iv_md5_input + 8, (const unsigned char *)&ts, 8);
 	memcpy(iv_md5_input + 16, (const unsigned char *)&ts, 8);
 	memcpy(iv_md5_input + 24, (const unsigned char *)&ts, 8);
-	pgs_buf_t cmd_iv[AES_128_CFB_IV_LEN];
+	uint8_t cmd_iv[AES_128_CFB_IV_LEN];
 	md5(iv_md5_input, 32, cmd_iv);
 
 	aes_128_cfb_encrypt(header_cmd_raw, header_cmd_len, cmd_k, cmd_iv,
@@ -366,17 +366,17 @@ pgs_size_t pgs_vmess_write_head(const pgs_buf_t *uuid, pgs_vmess_ctx_t *ctx)
 	return header_auth_len + header_cmd_len;
 }
 
-pgs_size_t pgs_vmess_write_body(const pgs_buf_t *data, pgs_size_t data_len,
-				pgs_size_t head_len, pgs_vmess_ctx_t *ctx,
+uint64_t pgs_vmess_write_body(const uint8_t *data, uint64_t data_len,
+				uint64_t head_len, pgs_vmess_ctx_t *ctx,
 				struct evbuffer *writer,
 				pgs_vmess_write_body_cb cb)
 {
-	pgs_buf_t *localr = ctx->local_rbuf;
-	pgs_buf_t *buf = ctx->remote_wbuf + head_len;
-	pgs_size_t sent = 0;
-	pgs_size_t offset = 0;
-	pgs_size_t remains = data_len;
-	pgs_size_t frame_data_len = data_len;
+	uint8_t *localr = ctx->local_rbuf;
+	uint8_t *buf = ctx->remote_wbuf + head_len;
+	uint64_t sent = 0;
+	uint64_t offset = 0;
+	uint64_t remains = data_len;
+	uint64_t frame_data_len = data_len;
 
 	while (remains > 0) {
 		buf = ctx->remote_wbuf + head_len;
@@ -447,22 +447,22 @@ pgs_size_t pgs_vmess_write_body(const pgs_buf_t *data, pgs_size_t data_len,
 	return sent;
 }
 
-pgs_size_t pgs_vmess_write(const pgs_buf_t *password, const pgs_buf_t *data,
-			   pgs_size_t data_len, pgs_vmess_ctx_t *ctx,
+uint64_t pgs_vmess_write(const uint8_t *password, const uint8_t *data,
+			   uint64_t data_len, pgs_vmess_ctx_t *ctx,
 			   struct evbuffer *writer, pgs_vmess_write_body_cb cb)
 {
-	pgs_size_t head_len = 0;
+	uint64_t head_len = 0;
 	if (!ctx->header_sent) {
 		head_len = pgs_vmess_write_head(password, ctx);
 		ctx->header_sent = true;
 	}
 
-	pgs_size_t body_len =
+	uint64_t body_len =
 		pgs_vmess_write_body(data, data_len, head_len, ctx, writer, cb);
 	return body_len + head_len;
 }
 
-bool pgs_vmess_parse(const pgs_buf_t *data, pgs_size_t data_len,
+bool pgs_vmess_parse(const uint8_t *data, uint64_t data_len,
 		     pgs_vmess_ctx_t *ctx, struct evbuffer *writer)
 {
 	switch (ctx->secure) {
@@ -478,12 +478,12 @@ bool pgs_vmess_parse(const pgs_buf_t *data, pgs_size_t data_len,
 }
 
 /* symmetric cipher will eat all the data put in */
-bool pgs_vmess_parse_cfb(const pgs_buf_t *data, pgs_size_t data_len,
+bool pgs_vmess_parse_cfb(const uint8_t *data, uint64_t data_len,
 			 pgs_vmess_ctx_t *ctx, struct evbuffer *writer)
 {
 	pgs_vmess_resp_t *meta = &ctx->resp_meta;
-	pgs_buf_t *rrbuf = ctx->remote_rbuf;
-	pgs_buf_t *lwbuf = ctx->local_wbuf;
+	uint8_t *rrbuf = ctx->remote_rbuf;
+	uint8_t *lwbuf = ctx->local_wbuf;
 	pgs_aes_cryptor_t *decryptor = ctx->decryptor;
 
 	if (!ctx->header_recved) {
@@ -534,7 +534,7 @@ bool pgs_vmess_parse_cfb(const pgs_buf_t *data, pgs_size_t data_len,
 	if (data_len <= 0) // need more data
 		return true;
 
-	pgs_size_t data_to_decrypt =
+	uint64_t data_to_decrypt =
 		ctx->resp_len < data_len ? ctx->resp_len : data_len;
 	if (!pgs_aes_cryptor_decrypt(decryptor, data, data_to_decrypt, lwbuf))
 		return false;
@@ -547,19 +547,19 @@ bool pgs_vmess_parse_cfb(const pgs_buf_t *data, pgs_size_t data_len,
 }
 
 /* AEAD cipher */
-bool pgs_vmess_parse_gcm(const pgs_buf_t *data, pgs_size_t data_len,
+bool pgs_vmess_parse_gcm(const uint8_t *data, uint64_t data_len,
 			 pgs_vmess_ctx_t *ctx, struct evbuffer *writer)
 {
 	pgs_vmess_resp_t *meta = &ctx->resp_meta;
-	pgs_buf_t *rrbuf = ctx->remote_rbuf;
-	pgs_buf_t *lwbuf = ctx->local_wbuf;
+	uint8_t *rrbuf = ctx->remote_rbuf;
+	uint8_t *lwbuf = ctx->local_wbuf;
 	pgs_aead_cryptor_t *decryptor = (pgs_aead_cryptor_t *)ctx->decryptor;
 
 	if (!ctx->header_recved) {
 		if (data_len < 4)
 			return false;
-		if (!aes_128_cfb_decrypt(data, 4, (const pgs_buf_t *)ctx->rkey,
-					 (const pgs_buf_t *)ctx->riv, rrbuf))
+		if (!aes_128_cfb_decrypt(data, 4, (const uint8_t *)ctx->rkey,
+					 (const uint8_t *)ctx->riv, rrbuf))
 			return false;
 		meta->v = rrbuf[0];
 		meta->opt = rrbuf[1];
@@ -598,7 +598,7 @@ bool pgs_vmess_parse_gcm(const pgs_buf_t *data, pgs_size_t data_len,
 
 	if (ctx->remote_rbuf_pos == 0) {
 		// enough data for decoding and no cache
-		pgs_size_t data_to_decrypt = ctx->resp_len;
+		uint64_t data_to_decrypt = ctx->resp_len;
 		int decrypt_len = 0;
 		if (!pgs_aead_cryptor_decrypt(decryptor, data, ctx->resp_len,
 					      data + ctx->resp_len, lwbuf,
@@ -614,7 +614,7 @@ bool pgs_vmess_parse_gcm(const pgs_buf_t *data, pgs_size_t data_len,
 	} else {
 		// have some cache in last chunk
 		// read more and do the rest
-		pgs_size_t data_to_read =
+		uint64_t data_to_read =
 			ctx->resp_len + 16 - ctx->remote_rbuf_pos;
 		memcpy(rrbuf + ctx->remote_rbuf_pos, data, data_to_read);
 

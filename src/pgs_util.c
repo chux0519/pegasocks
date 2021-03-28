@@ -3,10 +3,12 @@
 #include "../3rd-party/fnv.h"
 #include <openssl/evp.h>
 #include <openssl/md5.h>
+#include <openssl/ssl.h>
+
 #include <assert.h>
 
-void sha224(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res,
-	    pgs_size_t *res_len)
+void sha224(const uint8_t *input, uint64_t input_len, uint8_t *res,
+	    uint64_t *res_len)
 {
 	EVP_MD_CTX *ctx;
 	if ((ctx = EVP_MD_CTX_new()) == NULL)
@@ -28,8 +30,8 @@ error:
 	*res_len = 0;
 }
 
-void shake128(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *out,
-	      pgs_size_t out_len)
+void shake128(const uint8_t *input, uint64_t input_len, uint8_t *out,
+	      uint64_t out_len)
 {
 	sha3_ctx_t sha3;
 	shake128_init(&sha3);
@@ -39,27 +41,27 @@ void shake128(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *out,
 	return;
 }
 
-void hmac_md5(const pgs_buf_t *key, pgs_size_t key_len, const pgs_buf_t *data,
-	      pgs_size_t data_len, pgs_buf_t *out, pgs_size_t *out_len)
+void hmac_md5(const uint8_t *key, uint64_t key_len, const uint8_t *data,
+	      uint64_t data_len, uint8_t *out, uint64_t *out_len)
 {
 	HMAC(EVP_md5(), key, key_len, data, data_len, out,
 	     (unsigned int *)out_len);
 	assert(*out_len == 16);
 }
 
-void md5(const pgs_buf_t *input, pgs_size_t input_len, pgs_buf_t *res)
+void md5(const uint8_t *input, uint64_t input_len, uint8_t *res)
 {
 	MD5(input, input_len, res);
 }
 
-int fnv1a(void *input, pgs_size_t input_len)
+int fnv1a(void *input, uint64_t input_len)
 {
 	return fnv_32a_buf(input, input_len, FNV1_32A_INIT);
 }
 
-pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size)
+uint8_t *to_hexstring(const uint8_t *buf, uint64_t size)
 {
-	pgs_buf_t *hexbuf = malloc(sizeof(pgs_buf_t) * (2 * size + 1));
+	uint8_t *hexbuf = malloc(sizeof(uint8_t) * (2 * size + 1));
 	for (int i = 0; i < size; i++) {
 		sprintf((char *)hexbuf + i * 2, "%02x", (int)buf[i]);
 	}
@@ -67,9 +69,9 @@ pgs_buf_t *to_hexstring(const pgs_buf_t *buf, pgs_size_t size)
 	return hexbuf;
 }
 
-int aes_128_cfb_encrypt(const pgs_buf_t *plaintext, int plaintext_len,
-			const pgs_buf_t *key, const pgs_buf_t *iv,
-			pgs_buf_t *ciphertext)
+int aes_128_cfb_encrypt(const uint8_t *plaintext, int plaintext_len,
+			const uint8_t *key, const uint8_t *iv,
+			uint8_t *ciphertext)
 {
 	EVP_CIPHER_CTX *ctx;
 
@@ -118,9 +120,9 @@ error:
 	return -1;
 }
 
-int aes_128_cfb_decrypt(const pgs_buf_t *ciphertext, int ciphertext_len,
-			const pgs_buf_t *key, const pgs_buf_t *iv,
-			pgs_buf_t *plaintext)
+int aes_128_cfb_decrypt(const uint8_t *ciphertext, int ciphertext_len,
+			const uint8_t *key, const uint8_t *iv,
+			uint8_t *plaintext)
 {
 	EVP_CIPHER_CTX *ctx;
 
@@ -205,7 +207,7 @@ void hextobin(const char *str, uint8_t *bytes, size_t blen)
 }
 
 // need to be freed by caller
-char *socks5_dest_addr_parse(const pgs_buf_t *cmd, pgs_size_t cmd_len)
+char *socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len)
 {
 	int atyp = cmd[3];
 	int offset = 4;

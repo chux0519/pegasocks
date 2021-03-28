@@ -31,8 +31,8 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 			      int idx, pgs_logger_t *logger)
 {
 	const pgs_server_config_t *config = &sm->server_configs[idx];
-	const pgs_buf_t *cmd = g204_cmd;
-	pgs_size_t cmd_len = 20;
+	const uint8_t *cmd = g204_cmd;
+	uint64_t cmd_len = 20;
 	pgs_metrics_task_ctx_t *mctx =
 		pgs_metrics_task_ctx_new(base, sm, idx, logger, NULL);
 
@@ -72,7 +72,7 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	pgs_size_t data_len = evbuffer_get_length(input);
+	uint64_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	pgs_trojansession_ctx_t *trojan_s_ctx = mctx->outbound->ctx;
@@ -94,8 +94,8 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 			mctx->sm->server_stats[mctx->server_idx].connect_delay =
 				connect_time;
 
-			pgs_size_t len = strlen(g204_http_req);
-			pgs_size_t head_len = trojan_s_ctx->head_len;
+			uint64_t len = strlen(g204_http_req);
+			uint64_t head_len = trojan_s_ctx->head_len;
 
 			if (head_len > 0)
 				len += head_len;
@@ -117,8 +117,8 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 	}
 }
 
-static void v2ray_ws_vmess_write_cb(struct evbuffer *writer, pgs_buf_t *data,
-				    pgs_size_t len)
+static void v2ray_ws_vmess_write_cb(struct evbuffer *writer, uint8_t *data,
+				    uint64_t len)
 {
 	pgs_ws_write_bin(writer, data, len);
 }
@@ -129,7 +129,7 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	pgs_size_t data_len = evbuffer_get_length(input);
+	uint64_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	pgs_vmess_ctx_t *v2ray_s_ctx = mctx->outbound->ctx;
@@ -150,10 +150,10 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 					 connect_time);
 			mctx->sm->server_stats[mctx->server_idx].connect_delay =
 				connect_time;
-			pgs_size_t total_len = pgs_vmess_write(
-				(const pgs_buf_t *)
+			uint64_t total_len = pgs_vmess_write(
+				(const uint8_t *)
 					mctx->outbound->config->password,
-				(const pgs_buf_t *)g204_http_req,
+				(const uint8_t *)g204_http_req,
 				strlen(g204_http_req), v2ray_s_ctx, output,
 				(pgs_vmess_write_body_cb)&v2ray_ws_vmess_write_cb);
 		}
@@ -187,8 +187,8 @@ static void on_trojan_gfw_g204_event(struct bufferevent *bev, short events,
 			connect_time;
 		// write request
 		struct evbuffer *output = bufferevent_get_output(bev);
-		pgs_size_t len = strlen(g204_http_req);
-		pgs_size_t head_len = sctx->head_len;
+		uint64_t len = strlen(g204_http_req);
+		uint64_t head_len = sctx->head_len;
 		if (head_len > 0)
 			len += head_len;
 
@@ -229,9 +229,9 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 			connect_time;
 		// write request
 		struct evbuffer *output = bufferevent_get_output(bev);
-		pgs_size_t total_len = pgs_vmess_write(
-			(const pgs_buf_t *)mctx->outbound->config->password,
-			(const pgs_buf_t *)g204_http_req, strlen(g204_http_req),
+		uint64_t total_len = pgs_vmess_write(
+			(const uint8_t *)mctx->outbound->config->password,
+			(const uint8_t *)g204_http_req, strlen(g204_http_req),
 			sctx, output, (pgs_vmess_write_body_cb)&evbuffer_add);
 	}
 	if (events & BEV_EVENT_ERROR)

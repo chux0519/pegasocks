@@ -50,8 +50,8 @@ static void on_v2ray_ws_local_read(struct bufferevent *bev, void *ctx);
 static void do_v2ray_ws_remote_request(struct bufferevent *bev, void *ctx);
 static void do_v2ray_ws_remote_write(struct bufferevent *bev, void *ctx);
 static void do_v2ray_ws_local_write(struct bufferevent *bev, void *ctx);
-static void v2ray_ws_vmess_write_cb(struct evbuffer *writer, pgs_buf_t *data,
-				    pgs_size_t len);
+static void v2ray_ws_vmess_write_cb(struct evbuffer *writer, uint8_t *data,
+				    uint64_t len);
 
 /*
  * v2ray tcp session handler
@@ -64,8 +64,8 @@ static void on_v2ray_tcp_local_read(struct bufferevent *bev, void *ctx);
 /*
  * metrics
  */
-static void on_session_metrics_recv(pgs_session_t *session, pgs_size_t len);
-static void on_session_metrics_send(pgs_session_t *session, pgs_size_t len);
+static void on_session_metrics_recv(pgs_session_t *session, uint64_t len);
+static void on_session_metrics_send(pgs_session_t *session, uint64_t len);
 
 /**
  * Create New Sesson
@@ -159,10 +159,10 @@ void pgs_session_inbound_free(pgs_session_inbound_t *ptr)
 	free(ptr);
 }
 
-pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const pgs_buf_t *encodepass,
-						   pgs_size_t passlen,
-						   const pgs_buf_t *cmd,
-						   pgs_size_t cmdlen)
+pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const uint8_t *encodepass,
+						   uint64_t passlen,
+						   const uint8_t *cmd,
+						   uint64_t cmdlen)
 {
 	if (passlen != SHA224_LEN * 2 || cmdlen < 3)
 		return NULL;
@@ -192,7 +192,7 @@ void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx)
 	ctx = NULL;
 }
 
-pgs_vmess_ctx_t *pgs_vmess_ctx_new(const pgs_buf_t *cmd, pgs_size_t cmdlen,
+pgs_vmess_ctx_t *pgs_vmess_ctx_new(const uint8_t *cmd, uint64_t cmdlen,
 				   pgs_v2rayserver_secure_t secure)
 {
 	pgs_vmess_ctx_t *ptr = malloc(sizeof(pgs_vmess_ctx_t));
@@ -243,7 +243,7 @@ void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr)
 
 pgs_session_outbound_t *
 pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
-			 const pgs_buf_t *cmd, pgs_size_t cmd_len,
+			 const uint8_t *cmd, uint64_t cmd_len,
 			 pgs_logger_t *logger, struct event_base *base,
 			 struct evdns_base *dns_base, struct bufferevent *inbev,
 			 pgs_session_inbound_cbs_t inbound_cbs,
@@ -472,8 +472,8 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			}
 		}
 
-		const pgs_buf_t *cmd = session->inbound->cmd;
-		pgs_size_t cmd_len = session->inbound->cmdlen;
+		const uint8_t *cmd = session->inbound->cmd;
+		uint64_t cmd_len = session->inbound->cmdlen;
 
 		pgs_session_inbound_cbs_t inbound_cbs = {
 			on_local_event, on_trojan_ws_local_read,
@@ -543,7 +543,7 @@ static void on_trojan_ws_remote_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	pgs_size_t data_len = evbuffer_get_length(input);
+	uint64_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
@@ -619,11 +619,11 @@ static void do_trojan_ws_remote_write(struct bufferevent *bev, void *ctx)
 	struct evbuffer *inboundr = bufferevent_get_input(inbev);
 
 	struct evbuffer *buf = outboundw;
-	pgs_size_t len = evbuffer_get_length(inboundr);
+	uint64_t len = evbuffer_get_length(inboundr);
 	unsigned char *msg = evbuffer_pullup(inboundr, len);
 
 	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-	pgs_size_t head_len = trojan_s_ctx->head_len;
+	uint64_t head_len = trojan_s_ctx->head_len;
 	if (head_len > 0)
 		len += head_len;
 
@@ -656,7 +656,7 @@ static void do_trojan_ws_local_write(struct bufferevent *bev, void *ctx)
 	struct evbuffer *outboundr = bufferevent_get_input(outbev);
 	struct evbuffer *inboundw = bufferevent_get_output(inbev);
 
-	pgs_size_t data_len = evbuffer_get_length(outboundr);
+	uint64_t data_len = evbuffer_get_length(outboundr);
 	if (data_len < 2)
 		return;
 
@@ -732,7 +732,7 @@ static void on_trojan_gfw_remote_read(struct bufferevent *bev, void *ctx)
 
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	pgs_size_t data_len = evbuffer_get_length(input);
+	uint64_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	do_trojan_gfw_local_write(bev, ctx);
@@ -771,11 +771,11 @@ static void do_trojan_gfw_remote_write(struct bufferevent *bev, void *ctx)
 	struct evbuffer *inboundr = bufferevent_get_input(inbev);
 
 	struct evbuffer *buf = outboundw;
-	pgs_size_t len = evbuffer_get_length(inboundr);
+	uint64_t len = evbuffer_get_length(inboundr);
 	unsigned char *msg = evbuffer_pullup(inboundr, len);
 
 	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-	pgs_size_t head_len = trojan_s_ctx->head_len;
+	uint64_t head_len = trojan_s_ctx->head_len;
 	if (head_len > 0)
 		len += head_len;
 
@@ -805,7 +805,7 @@ static void do_trojan_gfw_local_write(struct bufferevent *bev, void *ctx)
 	struct evbuffer *outboundr = bufferevent_get_input(outbev);
 	struct evbuffer *inboundw = bufferevent_get_output(inbev);
 
-	pgs_size_t data_len = evbuffer_get_length(outboundr);
+	uint64_t data_len = evbuffer_get_length(outboundr);
 	unsigned char *data = evbuffer_pullup(outboundr, data_len);
 
 	pgs_session_debug(session, "remote -> local: %d", data_len);
@@ -844,7 +844,7 @@ static void on_v2ray_ws_remote_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	pgs_size_t data_len = evbuffer_get_length(input);
+	uint64_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
@@ -879,8 +879,8 @@ static void on_v2ray_ws_local_read(struct bufferevent *bev, void *ctx)
 	do_v2ray_ws_remote_write(bev, ctx);
 }
 
-static void v2ray_ws_vmess_write_cb(struct evbuffer *writer, pgs_buf_t *data,
-				    pgs_size_t len)
+static void v2ray_ws_vmess_write_cb(struct evbuffer *writer, uint8_t *data,
+				    uint64_t len)
 {
 	pgs_ws_write_bin(writer, data, len);
 }
@@ -911,11 +911,11 @@ static void do_v2ray_ws_remote_write(struct bufferevent *bev, void *ctx)
 
 	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
 
-	pgs_size_t data_len = evbuffer_get_length(inboundr);
-	const pgs_buf_t *data = evbuffer_pullup(inboundr, data_len);
+	uint64_t data_len = evbuffer_get_length(inboundr);
+	const uint8_t *data = evbuffer_pullup(inboundr, data_len);
 
-	pgs_size_t total_len = pgs_vmess_write(
-		(const pgs_buf_t *)session->outbound->config->password, data,
+	uint64_t total_len = pgs_vmess_write(
+		(const uint8_t *)session->outbound->config->password, data,
 		data_len, v2ray_s_ctx, outboundw,
 		(pgs_vmess_write_body_cb)&v2ray_ws_vmess_write_cb);
 
@@ -934,7 +934,7 @@ static void do_v2ray_ws_local_write(struct bufferevent *bev, void *ctx)
 	struct evbuffer *outboundr = bufferevent_get_input(outbev);
 	struct evbuffer *inboundw = bufferevent_get_output(inbev);
 
-	pgs_size_t data_len = evbuffer_get_length(outboundr);
+	uint64_t data_len = evbuffer_get_length(outboundr);
 	if (data_len < 2)
 		return;
 
@@ -1022,7 +1022,7 @@ static void on_v2ray_tcp_remote_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *outboundr = bufferevent_get_input(outbev);
 	struct evbuffer *inboundw = bufferevent_get_output(inbev);
 
-	pgs_size_t data_len = evbuffer_get_length(outboundr);
+	uint64_t data_len = evbuffer_get_length(outboundr);
 	unsigned char *data = evbuffer_pullup(outboundr, data_len);
 
 	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
@@ -1054,12 +1054,12 @@ static void on_v2ray_tcp_local_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *outboundw = bufferevent_get_output(outbev);
 	struct evbuffer *inboundr = bufferevent_get_input(inbev);
 
-	pgs_size_t data_len = evbuffer_get_length(inboundr);
+	uint64_t data_len = evbuffer_get_length(inboundr);
 	if (data_len <= 0)
 		return;
-	const pgs_buf_t *data = evbuffer_pullup(inboundr, data_len);
-	pgs_size_t total_len = pgs_vmess_write(
-		(const pgs_buf_t *)session->outbound->config->password, data,
+	const uint8_t *data = evbuffer_pullup(inboundr, data_len);
+	uint64_t total_len = pgs_vmess_write(
+		(const uint8_t *)session->outbound->config->password, data,
 		data_len, v2ray_s_ctx, outboundw,
 		(pgs_vmess_write_body_cb)&evbuffer_add);
 
@@ -1067,14 +1067,14 @@ static void on_v2ray_tcp_local_read(struct bufferevent *bev, void *ctx)
 	on_session_metrics_send(session, total_len);
 }
 
-static void on_session_metrics_recv(pgs_session_t *session, pgs_size_t len)
+static void on_session_metrics_recv(pgs_session_t *session, uint64_t len)
 {
 	if (!session->metrics)
 		return;
 	session->metrics->recv += len;
 }
 
-static void on_session_metrics_send(pgs_session_t *session, pgs_size_t len)
+static void on_session_metrics_send(pgs_session_t *session, uint64_t len)
 {
 	if (!session->metrics)
 		return;

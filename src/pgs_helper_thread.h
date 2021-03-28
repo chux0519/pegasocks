@@ -2,6 +2,7 @@
 #define _PGS_HELPER_THREAD
 
 #include <event2/util.h>
+#include <stdint.h>
 
 #include "pgs_server_manager.h"
 
@@ -17,7 +18,7 @@ struct pgs_timer_cb_arg_s {
 };
 
 struct pgs_helper_thread_ctx_s {
-	pgs_tid tid;
+	uint32_t tid;
 	struct event_base *base;
 	pgs_server_manager_t *sm;
 	pgs_logger_t *logger;
