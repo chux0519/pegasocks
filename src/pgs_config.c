@@ -1,10 +1,12 @@
 #include "pgs_config.h"
+#include "pgs_crypto.h"
+
 #include <stdio.h>
+#include <unistd.h>
+
 #include <json-c/json.h>
-#include "pgs_util.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include <unistd.h>
 
 /**
  * load config

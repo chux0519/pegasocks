@@ -1,5 +1,4 @@
-#include "pgs_util.h"
-#include "pgs_crypto.h"
+#include "../src/pgs_crypto.h"
 #include "assert.h"
 
 void test_sha224()

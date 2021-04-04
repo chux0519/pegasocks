@@ -27,6 +27,7 @@ struct pgs_ws_resp_s {
 
 /* socks5 */
 bool pgs_socks5_handshake(pgs_session_t *session);
+char *socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len);
 
 /* websocket */
 void pgs_ws_req(struct evbuffer *out, const char *hostname,

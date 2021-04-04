@@ -1,7 +1,6 @@
 #ifndef _PGS_SESSION
 #define _PGS_SESSION
 
-#include "pgs_util.h"
 #include "pgs_local_server.h"
 #include "pgs_server_manager.h"
 #include "pgs_crypto.h"

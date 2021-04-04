@@ -3,9 +3,8 @@
 #include "pgs_session.h"
 #include "pgs_server_manager.h"
 #include "pgs_log.h"
-#include "unistd.h" // close
-#include "pgs_util.h"
 
+#include <unistd.h>
 #include <assert.h>
 #include <ctype.h>
 

@@ -1,6 +1,6 @@
 #include "pgs_codec.h"
-#include "pgs_util.h"
 #include "pgs_crypto.h"
+
 #include <assert.h>
 #include <openssl/rand.h>
 
@@ -109,6 +109,48 @@ bool pgs_socks5_handshake(pgs_session_t *session)
 	}
 
 	return false;
+}
+
+char *socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len)
+{
+	int atyp = cmd[3];
+	int offset = 4;
+	char *dest = NULL;
+	switch (atyp) {
+	case 0x01: {
+		assert(cmd_len > 8);
+		dest = (char *)malloc(sizeof(char) * 32);
+		sprintf(dest, "%d.%d.%d.%d", cmd[offset], cmd[offset + 1],
+			cmd[offset + 2], cmd[offset + 3]);
+		break;
+	}
+	case 0x03: {
+		offset = 5;
+		int len = cmd[4];
+		assert(cmd_len > len + 4);
+		dest = (char *)malloc(sizeof(char) * (len + 1));
+		memcpy(dest, cmd + 5, len);
+		dest[len] = '\0';
+		break;
+	}
+	case 0x04: {
+		assert(cmd_len > 20);
+		dest = (char *)malloc(sizeof(char) * 32);
+		sprintf(dest, "%x:%x:%x:%x:%x:%x:%x:%x",
+			cmd[offset] << 8 | cmd[offset + 1],
+			cmd[offset + 2] << 8 | cmd[offset + 3],
+			cmd[offset + 4] << 8 | cmd[offset + 5],
+			cmd[offset + 6] << 8 | cmd[offset + 7],
+			cmd[offset + 8] << 8 | cmd[offset + 9],
+			cmd[offset + 10] << 8 | cmd[offset + 11],
+			cmd[offset + 12] << 8 | cmd[offset + 13],
+			cmd[offset + 14] << 8 | cmd[offset + 15]);
+		break;
+	}
+	default:
+		break;
+	}
+	return dest;
 }
 
 void pgs_ws_req(struct evbuffer *out, const char *hostname,
