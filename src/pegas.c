@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #include <sys/un.h>
 #include <netinet/in.h>
@@ -42,10 +43,10 @@ static void kill_workers(pthread_t *threads, int server_threads)
 	}
 }
 
-static int init_local_server_fd(const pgs_config_t *config, int *fd)
+static int init_local_server_fd(const pgs_config_t *config, int *fd, int sock_type)
 {
 	int err = 0;
-	struct sockaddr_in sin;
+	struct sockaddr_in sin = {0};
 	int port = config->local_port;
 
 	memset(&sin, 0, sizeof(sin));
@@ -61,7 +62,7 @@ static int init_local_server_fd(const pgs_config_t *config, int *fd)
 	}
 	sin.sin_port = htons(port);
 
-	*fd = socket(AF_INET, SOCK_STREAM, 0);
+	*fd = socket(AF_INET, sock_type, 0);
 	int reuse_port = 1;
 
 	err = setsockopt(*fd, SOL_SOCKET, SO_REUSEPORT,
@@ -196,9 +197,13 @@ int main(int argc, char **argv)
 	pgs_config_info(config, "worker threads: %d, config: %s",
 			server_threads, config_path);
 
-	int server_fd, ctrl_fd;
-	if (init_local_server_fd(config, &server_fd) < 0) {
-		perror("failed to init local server");
+	int server_fd, udp_server_fd, ctrl_fd;
+	if (init_local_server_fd(config, &server_fd, SOCK_STREAM) < 0) {
+		perror("failed to init local tcp server");
+		return -1;
+	}
+	if (init_local_server_fd(config, &udp_server_fd, SOCK_DGRAM) < 0) {
+		perror("failed to init local udp server");
 		return -1;
 	}
 	if (init_control_fd(config, &ctrl_fd) < 0) {
@@ -206,7 +211,7 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	// mpsc with 64 message slots
+	// mpsc with MAX_LOG_MPSC_SIZE message slots
 	pgs_mpsc_t *mpsc = pgs_mpsc_new(MAX_LOG_MPSC_SIZE);
 	pgs_mpsc_t *statsq = pgs_mpsc_new(MAX_STATS_MPSC_SIZE);
 	// logger for logger server
@@ -216,7 +221,7 @@ int main(int argc, char **argv)
 	pgs_server_manager_t *sm = pgs_server_manager_new(
 		statsq, config->servers, config->servers_count);
 
-	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config, sm };
+	pgs_local_server_ctx_t ctx = { server_fd, udp_server_fd, mpsc, config, sm };
 
 	// TODO: init ctrl_fd
 	pgs_helper_thread_arg_t helper_thread_arg = { sm, logger, config,
