@@ -158,135 +158,15 @@ void pgs_session_inbound_free(pgs_session_inbound_t *ptr)
 	free(ptr);
 }
 
-pgs_trojansession_ctx_t *pgs_trojansession_ctx_new(const uint8_t *encodepass,
-						   uint64_t passlen,
-						   const uint8_t *cmd,
-						   uint64_t cmdlen)
+void pgs_session_inbound_update(const pgs_server_config_t *config,
+				pgs_logger_t *logger, struct bufferevent *inbev,
+				pgs_session_inbound_cbs_t inbound_cbs,
+				void *cb_ctx)
 {
-	if (passlen != SHA224_LEN * 2 || cmdlen < 3)
-		return NULL;
-	pgs_trojansession_ctx_t *ptr = malloc(sizeof(pgs_trojansession_ctx_t));
-	ptr->head_len = passlen + 2 + 1 + cmdlen - 3 + 2;
-	ptr->head = malloc(sizeof(char) * ptr->head_len);
-
-	// sha224(password) + "\r\n" + cmd[1] + cmd.substr(3) + "\r\n"
-	memcpy(ptr->head, encodepass, passlen);
-	ptr->head[passlen] = '\r';
-	ptr->head[passlen + 1] = '\n';
-	ptr->head[passlen + 2] = cmd[1];
-	memcpy(ptr->head + passlen + 3, cmd + 3, cmdlen - 3);
-	ptr->head[ptr->head_len - 2] = '\r';
-	ptr->head[ptr->head_len - 1] = '\n';
-
-	ptr->connected = false;
-	return ptr;
-}
-
-void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx)
-{
-	if (ctx->head)
-		free(ctx->head);
-	ctx->head = NULL;
-	free(ctx);
-	ctx = NULL;
-}
-
-pgs_vmess_ctx_t *pgs_vmess_ctx_new(const uint8_t *cmd, uint64_t cmdlen,
-				   pgs_v2rayserver_secure_t secure)
-{
-	pgs_vmess_ctx_t *ptr = malloc(sizeof(pgs_vmess_ctx_t));
-	ptr->connected = false;
-
-	memzero(ptr->local_rbuf, BUFSIZE_16K);
-	memzero(ptr->local_wbuf, BUFSIZE_16K);
-	memzero(ptr->remote_rbuf, BUFSIZE_16K);
-	memzero(ptr->remote_wbuf, BUFSIZE_16K);
-	ptr->cmd = cmd;
-	ptr->cmdlen = cmdlen;
-	ptr->header_sent = false;
-	ptr->header_recved = false;
-	memzero(&ptr->resp_meta, sizeof(pgs_vmess_resp_t));
-	ptr->resp_len = 0;
-	ptr->remote_rbuf_pos = 0;
-	ptr->resp_hash = 0;
-	ptr->encryptor = NULL;
-	ptr->decryptor = NULL;
-	ptr->secure = secure;
-
-	return ptr;
-}
-void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr)
-{
-	if (ptr->encryptor) {
-		if (ptr->secure == V2RAY_SECURE_CFB)
-			pgs_aes_cryptor_free(
-				(pgs_aes_cryptor_t *)ptr->encryptor);
-		else
-			pgs_aead_cryptor_free(
-				(pgs_aead_cryptor_t *)ptr->encryptor);
-	}
-	if (ptr->decryptor) {
-		if (ptr->secure == V2RAY_SECURE_CFB)
-			pgs_aes_cryptor_free(
-				(pgs_aes_cryptor_t *)ptr->decryptor);
-		else
-			pgs_aead_cryptor_free(
-				(pgs_aead_cryptor_t *)ptr->decryptor);
-	}
-	ptr->encryptor = NULL;
-	ptr->decryptor = NULL;
-	if (ptr)
-		free(ptr);
-	ptr = NULL;
-}
-
-pgs_session_outbound_t *
-pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
-			 const uint8_t *cmd, uint64_t cmd_len,
-			 pgs_logger_t *logger, struct event_base *base,
-			 struct evdns_base *dns_base, struct bufferevent *inbev,
-			 pgs_session_inbound_cbs_t inbound_cbs,
-			 pgs_session_outbound_cbs_t outbound_cbs, void *cb_ctx,
-			 free_ctx_fn *free_cb_ctx)
-{
-	pgs_session_outbound_t *ptr = malloc(sizeof(pgs_session_outbound_t));
-	ptr->config = config;
-	ptr->config_idx = config_idx;
-	ptr->bev = NULL;
-	ptr->ctx = NULL;
-
-	ptr->port = (cmd[cmd_len - 2] << 8) | cmd[cmd_len - 1];
-	ptr->dest = socks5_dest_addr_parse(cmd, cmd_len);
-
-	if (ptr->dest == NULL) {
-		pgs_logger_error(logger, "socks5_dest_addr_parse");
-		goto error;
-	}
-
 	if (strcmp(config->server_type, "trojan") == 0) {
-		pgs_trojanserver_config_t *trojanconf = config->extra;
-		ptr->ctx = pgs_trojansession_ctx_new(config->password, 56, cmd,
-						     cmd_len);
-
-		SSL *ssl = pgs_ssl_new(trojanconf->ssl_ctx,
-				       (void *)config->server_address);
-		if (ssl == NULL) {
-			pgs_logger_error(logger, "SSL_new");
-			goto error;
-		}
-		ptr->bev = bufferevent_openssl_socket_new(
-			base, -1, ssl, BUFFEREVENT_SSL_CONNECTING,
-			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-		bufferevent_openssl_set_allow_dirty_shutdown(ptr->bev, 1);
-
+		pgs_trojanserver_config_t *trojanconf =
+			(pgs_trojanserver_config_t *)config->extra;
 		if (trojanconf->websocket.enabled) {
-			// websocket support(trojan-go)
-			assert(outbound_cbs.on_trojan_ws_remote_event &&
-			       outbound_cbs.on_trojan_ws_remote_read);
-			bufferevent_setcb(
-				ptr->bev, outbound_cbs.on_trojan_ws_remote_read,
-				NULL, outbound_cbs.on_trojan_ws_remote_event,
-				cb_ctx);
 			if (inbev && inbound_cbs.on_local_event &&
 			    inbound_cbs.on_trojan_ws_local_read)
 				bufferevent_setcb(
@@ -294,16 +174,8 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 					inbound_cbs.on_trojan_ws_local_read,
 					NULL, inbound_cbs.on_local_event,
 					cb_ctx);
-			bufferevent_enable(ptr->bev, EV_READ);
 		} else {
 			// trojan-gfw
-			assert(outbound_cbs.on_trojan_gfw_remote_event &&
-			       outbound_cbs.on_trojan_gfw_remote_read);
-			bufferevent_setcb(
-				ptr->bev,
-				outbound_cbs.on_trojan_gfw_remote_read, NULL,
-				outbound_cbs.on_trojan_gfw_remote_event,
-				cb_ctx);
 			if (inbev && inbound_cbs.on_local_event &&
 			    inbound_cbs.on_trojan_gfw_local_read)
 				bufferevent_setcb(
@@ -311,26 +183,11 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 					inbound_cbs.on_trojan_gfw_local_read,
 					NULL, inbound_cbs.on_local_event,
 					cb_ctx);
-			bufferevent_enable(ptr->bev, EV_READ);
 		}
 	} else if (strcmp(config->server_type, "v2ray") == 0) {
 		pgs_v2rayserver_config_t *vconf = config->extra;
 		if (!vconf->websocket.enabled) {
 			// raw tcp vmess
-			ptr->ctx =
-				pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
-
-			ptr->bev = bufferevent_socket_new(
-				base, -1,
-				BEV_OPT_CLOSE_ON_FREE |
-					BEV_OPT_DEFER_CALLBACKS);
-
-			assert(outbound_cbs.on_v2ray_tcp_remote_event &&
-			       outbound_cbs.on_v2ray_tcp_remote_read);
-			bufferevent_setcb(
-				ptr->bev, outbound_cbs.on_v2ray_tcp_remote_read,
-				NULL, outbound_cbs.on_v2ray_tcp_remote_event,
-				cb_ctx);
 			if (inbev && inbound_cbs.on_local_event &&
 			    inbound_cbs.on_v2ray_tcp_local_read)
 				bufferevent_setcb(
@@ -340,37 +197,6 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 					cb_ctx);
 		} else {
 			// websocket can be protected by ssl
-			if (vconf->ssl.enabled && vconf->ssl_ctx) {
-				SSL *ssl = pgs_ssl_new(
-					vconf->ssl_ctx,
-					(void *)config->server_address);
-				if (ssl == NULL) {
-					pgs_logger_error(logger, "SSL_new");
-					goto error;
-				}
-				ptr->bev = bufferevent_openssl_socket_new(
-					base, -1, ssl,
-					BUFFEREVENT_SSL_CONNECTING,
-					BEV_OPT_CLOSE_ON_FREE |
-						BEV_OPT_DEFER_CALLBACKS);
-				bufferevent_openssl_set_allow_dirty_shutdown(
-					ptr->bev, 1);
-			} else {
-				ptr->bev = bufferevent_socket_new(
-					base, -1,
-					BEV_OPT_CLOSE_ON_FREE |
-						BEV_OPT_DEFER_CALLBACKS);
-			}
-			ptr->ctx =
-				pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
-
-			assert(outbound_cbs.on_v2ray_ws_remote_event &&
-			       outbound_cbs.on_v2ray_ws_remote_read);
-			bufferevent_setcb(ptr->bev,
-					  outbound_cbs.on_v2ray_ws_remote_read,
-					  NULL,
-					  outbound_cbs.on_v2ray_ws_remote_event,
-					  cb_ctx);
 			if (inbev && inbound_cbs.on_local_event &&
 			    inbound_cbs.on_v2ray_ws_local_read)
 				bufferevent_setcb(
@@ -379,45 +205,7 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 					NULL, inbound_cbs.on_local_event,
 					cb_ctx);
 		}
-		bufferevent_enable(ptr->bev, EV_READ);
 	}
-
-	// fire request
-	pgs_logger_debug(logger, "connect: %s:%d", config->server_address,
-			 config->server_port);
-
-	bufferevent_socket_connect_hostname(ptr->bev, dns_base, AF_INET,
-					    config->server_address,
-					    config->server_port);
-
-	return ptr;
-
-error:
-	pgs_session_outbound_free(ptr);
-	if (cb_ctx && free_cb_ctx)
-		free_cb_ctx(cb_ctx);
-	return NULL;
-}
-
-void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
-{
-	if (ptr->bev)
-		bufferevent_free(ptr->bev);
-	if (ptr->ctx) {
-		if (strcmp(ptr->config->server_type, "trojan") == 0) {
-			pgs_trojansession_ctx_free(ptr->ctx);
-		}
-		if (strcmp(ptr->config->server_type, "v2ray") == 0) {
-			pgs_vmess_ctx_free(ptr->ctx);
-		}
-	}
-	if (ptr->dest)
-		free(ptr->dest);
-	ptr->bev = NULL;
-	ptr->ctx = NULL;
-	ptr->dest = NULL;
-	free(ptr);
-	ptr = NULL;
 }
 
 /**
@@ -485,13 +273,16 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			on_trojan_ws_remote_read,  on_trojan_gfw_remote_read,
 			on_v2ray_ws_remote_read,   on_v2ray_tcp_remote_read
 		};
+		// create outbound
 		session->outbound = pgs_session_outbound_new(
 			config, config_idx, cmd, cmd_len,
 			session->local_server->logger,
 			session->local_server->base,
-			session->local_server->dns_base, session->inbound->bev,
-			inbound_cbs, outbound_cbs, session,
-			(free_ctx_fn *)pgs_session_free);
+			session->local_server->dns_base, outbound_cbs, session);
+		// update inbound cbs
+		pgs_session_inbound_update(config,
+					   session->local_server->logger, bev,
+					   inbound_cbs, session);
 
 		if (session && session->outbound) {
 			const char *addr = session->outbound->dest;

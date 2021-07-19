@@ -42,25 +42,40 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 
 static void udp_read_cb(int fd, short event, void *ctx)
 {
-	struct event *evt = ctx;
+	// all udp request would be handled here
+	// create udp session, forget about the socks5 tcp connection here
+	// TODO: udp session, just like tcp session
+	// each packet we create a new remote tcp connection
+	//
+	// pgs_local_server_t *local = ctx;
+	// struct event *evt = local->udp_event;
 
-	char buf[4096];
+	// TODO: 进一步抽象
+	// new session
+	// outbound 都一致
+	// 只是从 tcp socket 读变成了 从 udp socket 读
+	char buf[BUFSIZE_4K];
 	socklen_t size = sizeof(struct sockaddr);
 	struct sockaddr_in client_addr = { 0 };
+	// TODO:
 	int len = recvfrom(fd, buf, sizeof(buf), 0,
 			   (struct sockaddr *)&client_addr, &size);
 	if (0 == len) {
-		fprintf(stderr, "connection closed\n");
-		event_free(evt);
-		evt = NULL;
+		fprintf(stderr, "udp connection closed\n");
+		if (fd)
+			close(fd);
 	} else if (len > 0) {
-		sendto(fd, buf, len, 0, (struct sockaddr *)&client_addr, size);
+		// encode data and create a remote session
+		if (len >= BUFSIZE_4K) {
+			// read more and send
+			sendto(fd, buf, len, 0, (struct sockaddr *)&client_addr,
+			       size);
+		}
 	}
 }
 
 // New server
 pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
-
 {
 	pgs_local_server_t *ptr = malloc(sizeof(pgs_local_server_t));
 	ptr->tid = (uint32_t)pthread_self();
@@ -81,8 +96,15 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 				   -1, ctx->fd);
 	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
 	ptr->udp_fd = ctx->udp_fd;
+
+	// TODO: construct a new udp session add more context
+	// READ from udp fd(cache this fd) -> TROJAN/V2RAY -> REMOTE
+	// cache the udp fd with the tcp connection
+	//   - the new tcp connection should be closed when the socks5 socket is closed
+	// read from remote tcp -> decode -> write to local udp fd
+	// wait for tcp closed ?
 	ptr->udp_event = event_new(ptr->base, ctx->udp_fd, EV_READ | EV_PERSIST,
-				   udp_read_cb, ptr->udp_event);
+				   udp_read_cb, ptr);
 	return ptr;
 }
 

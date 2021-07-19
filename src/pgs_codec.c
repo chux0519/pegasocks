@@ -111,48 +111,6 @@ bool pgs_socks5_handshake(pgs_session_t *session)
 	return false;
 }
 
-char *socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len)
-{
-	int atyp = cmd[3];
-	int offset = 4;
-	char *dest = NULL;
-	switch (atyp) {
-	case 0x01: {
-		assert(cmd_len > 8);
-		dest = (char *)malloc(sizeof(char) * 32);
-		sprintf(dest, "%d.%d.%d.%d", cmd[offset], cmd[offset + 1],
-			cmd[offset + 2], cmd[offset + 3]);
-		break;
-	}
-	case 0x03: {
-		offset = 5;
-		int len = cmd[4];
-		assert(cmd_len > len + 4);
-		dest = (char *)malloc(sizeof(char) * (len + 1));
-		memcpy(dest, cmd + 5, len);
-		dest[len] = '\0';
-		break;
-	}
-	case 0x04: {
-		assert(cmd_len > 20);
-		dest = (char *)malloc(sizeof(char) * 32);
-		sprintf(dest, "%x:%x:%x:%x:%x:%x:%x:%x",
-			cmd[offset] << 8 | cmd[offset + 1],
-			cmd[offset + 2] << 8 | cmd[offset + 3],
-			cmd[offset + 4] << 8 | cmd[offset + 5],
-			cmd[offset + 6] << 8 | cmd[offset + 7],
-			cmd[offset + 8] << 8 | cmd[offset + 9],
-			cmd[offset + 10] << 8 | cmd[offset + 11],
-			cmd[offset + 12] << 8 | cmd[offset + 13],
-			cmd[offset + 14] << 8 | cmd[offset + 15]);
-		break;
-	}
-	default:
-		break;
-	}
-	return dest;
-}
-
 void pgs_ws_req(struct evbuffer *out, const char *hostname,
 		const char *server_address, int server_port, const char *path)
 {
@@ -175,8 +133,7 @@ bool pgs_ws_upgrade_check(const char *data)
 	       !strstr(data, ws_accept);
 }
 
-void pgs_ws_write(struct evbuffer *buf, uint8_t *msg, uint64_t len,
-		  int opcode)
+void pgs_ws_write(struct evbuffer *buf, uint8_t *msg, uint64_t len, int opcode)
 {
 	pgs_ws_write_head(buf, len, opcode);
 	// x ^ 0 = x
@@ -220,8 +177,7 @@ void pgs_ws_write_head(struct evbuffer *buf, uint64_t len, int opcode)
 	evbuffer_add(buf, &mask_key, 4);
 }
 
-bool pgs_ws_parse_head(uint8_t *data, uint64_t data_len,
-		       pgs_ws_resp_t *meta)
+bool pgs_ws_parse_head(uint8_t *data, uint64_t data_len, pgs_ws_resp_t *meta)
 {
 	meta->fin = !!(*data & 0x80);
 	meta->opcode = *data & 0x0F;
@@ -313,8 +269,7 @@ uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx)
 				(pgs_base_cryptor_t *)pgs_aead_cryptor_new(
 					EVP_aes_128_gcm(),
 					(const uint8_t *)ctx->key,
-					(const uint8_t *)ctx->iv,
-					PGS_ENCRYPT);
+					(const uint8_t *)ctx->iv, PGS_ENCRYPT);
 			break;
 		default:
 			// not support yet
@@ -338,8 +293,7 @@ uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx)
 				(pgs_base_cryptor_t *)pgs_aead_cryptor_new(
 					EVP_aes_128_gcm(),
 					(const uint8_t *)ctx->rkey,
-					(const uint8_t *)ctx->riv,
-					PGS_DECRYPT);
+					(const uint8_t *)ctx->riv, PGS_DECRYPT);
 			break;
 		default:
 			// not support yet
@@ -409,9 +363,9 @@ uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx)
 }
 
 uint64_t pgs_vmess_write_body(const uint8_t *data, uint64_t data_len,
-				uint64_t head_len, pgs_vmess_ctx_t *ctx,
-				struct evbuffer *writer,
-				pgs_vmess_write_body_cb cb)
+			      uint64_t head_len, pgs_vmess_ctx_t *ctx,
+			      struct evbuffer *writer,
+			      pgs_vmess_write_body_cb cb)
 {
 	uint8_t *localr = ctx->local_rbuf;
 	uint8_t *buf = ctx->remote_wbuf + head_len;
@@ -490,8 +444,8 @@ uint64_t pgs_vmess_write_body(const uint8_t *data, uint64_t data_len,
 }
 
 uint64_t pgs_vmess_write(const uint8_t *password, const uint8_t *data,
-			   uint64_t data_len, pgs_vmess_ctx_t *ctx,
-			   struct evbuffer *writer, pgs_vmess_write_body_cb cb)
+			 uint64_t data_len, pgs_vmess_ctx_t *ctx,
+			 struct evbuffer *writer, pgs_vmess_write_body_cb cb)
 {
 	uint64_t head_len = 0;
 	if (!ctx->header_sent) {

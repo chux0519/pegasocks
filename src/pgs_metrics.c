@@ -36,8 +36,6 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 	pgs_metrics_task_ctx_t *mctx =
 		pgs_metrics_task_ctx_new(base, sm, idx, logger, NULL);
 
-	pgs_session_inbound_cbs_t inbound_cbs = { NULL, NULL, NULL, NULL,
-						  NULL };
 	pgs_session_outbound_cbs_t outbound_cbs = {
 		on_ws_g204_event,	on_trojan_gfw_g204_event,
 		on_ws_g204_event,	on_v2ray_tcp_g204_event,
@@ -45,10 +43,10 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 		on_v2ray_ws_g204_read,	on_v2ray_tcp_g204_read
 	};
 
-	pgs_session_outbound_t *ptr = pgs_session_outbound_new(
-		config, idx, cmd, cmd_len, logger, base, mctx->dns_base, NULL,
-		inbound_cbs, outbound_cbs, mctx,
-		(free_ctx_fn *)pgs_metrics_task_ctx_free);
+	pgs_session_outbound_t *ptr =
+		pgs_session_outbound_new(config, idx, cmd, cmd_len, logger,
+					 base, mctx->dns_base, outbound_cbs,
+					 mctx);
 	mctx->outbound = ptr;
 }
 
