@@ -3,6 +3,7 @@
 
 #include "pgs_local_server.h"
 #include "pgs_outbound.h"
+#include <event2/event.h>
 //#include "pgs_server_manager.h"
 //#include "pgs_crypto.h"
 //#include "pgs_defs.h"
@@ -23,6 +24,7 @@ typedef enum {
 	INBOUND_AUTH,
 	INBOUND_CMD,
 	INBOUND_PROXY,
+	INBOUND_UDP_RELAY,
 	INBOUND_ERR
 } pgs_session_inbound_state;
 typedef void(free_ctx_fn)(void *ctx);
@@ -32,6 +34,10 @@ typedef struct pgs_session_inbound_s {
 	pgs_session_inbound_state state;
 	uint8_t *cmd;
 	uint64_t cmdlen;
+	// udp server and event for udp relay
+	int udp_fd;
+	struct event *udp_server_ev;
+	uint8_t *udp_read_buffer;
 } pgs_session_inbound_t;
 
 typedef struct pgs_session_s {

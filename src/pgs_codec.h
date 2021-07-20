@@ -25,9 +25,6 @@ struct pgs_ws_resp_s {
 	size_t header_len;
 };
 
-/* socks5 */
-bool pgs_socks5_handshake(pgs_session_t *session);
-
 /* websocket */
 void pgs_ws_req(struct evbuffer *out, const char *hostname,
 		const char *server_address, int server_port, const char *path);

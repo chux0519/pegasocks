@@ -1,5 +1,6 @@
 #include "pgs_local_server.h"
 #include "pgs_session.h"
+#include "pgs_udp_session.h"
 
 #include <stdlib.h>
 #include <signal.h>
@@ -40,39 +41,30 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 	pgs_session_start(session);
 }
 
-static void udp_read_cb(int fd, short event, void *ctx)
-{
-	// all udp request would be handled here
-	// create udp session, forget about the socks5 tcp connection here
-	// TODO: udp session, just like tcp session
-	// each packet we create a new remote tcp connection
-	//
-	// pgs_local_server_t *local = ctx;
-	// struct event *evt = local->udp_event;
-
-	// TODO: 进一步抽象
-	// new session
-	// outbound 都一致
-	// 只是从 tcp socket 读变成了 从 udp socket 读
-	char buf[BUFSIZE_4K];
-	socklen_t size = sizeof(struct sockaddr);
-	struct sockaddr_in client_addr = { 0 };
-	// TODO:
-	int len = recvfrom(fd, buf, sizeof(buf), 0,
-			   (struct sockaddr *)&client_addr, &size);
-	if (0 == len) {
-		fprintf(stderr, "udp connection closed\n");
-		if (fd)
-			close(fd);
-	} else if (len > 0) {
-		// encode data and create a remote session
-		if (len >= BUFSIZE_4K) {
-			// read more and send
-			sendto(fd, buf, len, 0, (struct sockaddr *)&client_addr,
-			       size);
-		}
-	}
-}
+//static void udp_read_cb(int fd, short event, void *ctx)
+//{
+//	pgs_local_server_t *local = (pgs_local_server_t *)ctx;
+//	pgs_udp_session_t *udp_session = pgs_udp_session_new(fd, local);
+//	pgs_udp_session_start(udp_session);
+//	//char buf[BUFSIZE_4K];
+//	//socklen_t size = sizeof(struct sockaddr);
+//	//struct sockaddr_in client_addr = { 0 };
+//	//// TODO:
+//	//int len = recvfrom(fd, buf, sizeof(buf), 0,
+//	//		   (struct sockaddr *)&client_addr, &size);
+//	//if (0 == len) {
+//	//	fprintf(stderr, "udp connection closed\n");
+//	//	if (fd)
+//	//		close(fd);
+//	//} else if (len > 0) {
+//	//	// encode data and create a remote session
+//	//	if (len >= BUFSIZE_4K) {
+//	//		// read more and send
+//	//		sendto(fd, buf, len, 0, (struct sockaddr *)&client_addr,
+//	//		       size);
+//	//	}
+//	//}
+//}
 
 // New server
 pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
@@ -95,7 +87,6 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
 				   -1, ctx->fd);
 	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
-	ptr->udp_fd = ctx->udp_fd;
 
 	// TODO: construct a new udp session add more context
 	// READ from udp fd(cache this fd) -> TROJAN/V2RAY -> REMOTE
@@ -103,15 +94,15 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 	//   - the new tcp connection should be closed when the socks5 socket is closed
 	// read from remote tcp -> decode -> write to local udp fd
 	// wait for tcp closed ?
-	ptr->udp_event = event_new(ptr->base, ctx->udp_fd, EV_READ | EV_PERSIST,
-				   udp_read_cb, ptr);
+	// ptr->udp_event = event_new(ptr->base, ctx->udp_fd, EV_READ | EV_PERSIST,
+	//			   udp_read_cb, ptr);
 	return ptr;
 }
 
 // Run the Loop
 void pgs_local_server_run(pgs_local_server_t *local)
 {
-	event_add(local->udp_event, NULL);
+	// event_add(local->udp_event, NULL);
 	event_base_dispatch(local->base);
 }
 
@@ -119,8 +110,6 @@ void pgs_local_server_run(pgs_local_server_t *local)
 void pgs_local_server_destroy(pgs_local_server_t *local)
 {
 	evconnlistener_free(local->listener);
-	if (local->udp_fd != 0)
-		close(local->udp_fd);
 	event_base_free(local->base);
 	evdns_base_free(local->dns_base, 0);
 	pgs_logger_free(local->logger);

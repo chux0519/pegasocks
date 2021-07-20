@@ -2,9 +2,11 @@
 #define _PGS_UDP_SESSION
 
 #include "pgs_local_server.h"
+#include "pgs_outbound.h"
 
 typedef struct pgs_udp_session_s {
 	int fd;
+	pgs_session_outbound_t *outbound;
 	pgs_local_server_t *local_server;
 } pgs_udp_session_t;
 

@@ -7,6 +7,9 @@
 #include <unistd.h>
 #include <assert.h>
 #include <ctype.h>
+#include <fcntl.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -36,7 +39,8 @@ static void on_trojan_gfw_remote_event(struct bufferevent *bev, short events,
 				       void *ctx);
 static void on_trojan_gfw_remote_read(struct bufferevent *bev, void *ctx);
 static void on_trojan_gfw_local_read(struct bufferevent *bev, void *ctx);
-static void do_trojan_gfw_remote_write(struct bufferevent *bev, void *ctx);
+static void do_trojan_gfw_remote_write(uint8_t *msg, uint64_t len,
+				       pgs_session_t *session);
 static void do_trojan_gfw_local_write(struct bufferevent *bev, void *ctx);
 
 /*
@@ -65,6 +69,201 @@ static void on_v2ray_tcp_local_read(struct bufferevent *bev, void *ctx);
  */
 static void on_session_metrics_recv(pgs_session_t *session, uint64_t len);
 static void on_session_metrics_send(pgs_session_t *session, uint64_t len);
+
+/*
+ * udp
+  */
+static int init_udp_fd(const pgs_config_t *config, int *fd, int *port);
+static int start_udp_server(const pgs_server_config_t *sconfig,
+			    pgs_session_t *session, int *port);
+//static void on_udp_read_v2ray_tcp(int fd, short event, void *ctx);
+//static void on_udp_read_v2ray_ws(int fd, short event, void *ctx);
+//static void on_udp_read_trojan_ws(int fd, short event, void *ctx);
+static void on_udp_read_trojan_gfw(int fd, short event, void *ctx);
+
+/*
+ * Socks5 5 handshake
+ * return false if error
+ * */
+static bool pgs_socks5_handshake(pgs_session_t *session)
+{
+	struct bufferevent *bev = session->inbound->bev;
+	pgs_session_inbound_state state = session->inbound->state;
+
+	struct evbuffer *output = bufferevent_get_output(bev);
+	struct evbuffer *input = bufferevent_get_input(bev);
+
+	uint64_t len = evbuffer_get_length(input);
+	unsigned char *rdata = evbuffer_pullup(input, len);
+
+	pgs_session_debug_buffer(session, rdata, len);
+
+	switch (state) {
+	case INBOUND_AUTH:
+		if (len < 2 || rdata[0] != 0x5) {
+			pgs_session_error(session, "socks5: auth");
+			return false;
+		}
+		evbuffer_add(output, "\x05\x00", 2);
+		evbuffer_drain(input, len);
+		session->inbound->state = INBOUND_CMD;
+		return true;
+	case INBOUND_CMD: {
+		if (len < 7 || rdata[0] != 0x5 || rdata[2] != 0x0) {
+			pgs_session_error(session, "socks5: cmd");
+			return false;
+		}
+		uint8_t atype = rdata[3];
+		// uint16_t port = rdata[len - 2] << 8 | rdata[len - 1];
+		int addr_len = 0;
+		switch (atype) {
+		case 0x01:
+			// IPv4
+			addr_len = 4;
+			break;
+		case 0x03:
+			// Domain
+			addr_len = rdata[4] + 1;
+			break;
+		case 0x04:
+			// IPv6
+			addr_len = 16;
+			break;
+		default:
+			pgs_session_error(session, "socks5: wrong atyp");
+			return false;
+		}
+		// parse and cache cmd
+		session->inbound->cmdlen = 4 + addr_len + 2;
+		session->inbound->cmd =
+			malloc(sizeof(uint8_t) * session->inbound->cmdlen);
+		memcpy(session->inbound->cmd, rdata, session->inbound->cmdlen);
+		switch (rdata[1]) {
+		case 0x01: {
+			// connect
+			session->inbound->state = INBOUND_PROXY;
+			return true;
+		}
+		case 0x02: // TODO: bind
+		case 0x03: {
+			session->inbound->state = INBOUND_UDP_RELAY;
+			return true;
+		}
+		default:
+			pgs_session_error(session,
+					  "socks5: cmd not supprt yet");
+			return false;
+		}
+	}
+	case INBOUND_PROXY: // unreachable
+		break;
+	default:
+		break;
+	}
+
+	return false;
+}
+
+static int init_udp_fd(const pgs_config_t *config, int *fd, int *port)
+{
+	int err = 0;
+	struct sockaddr_in sin = { 0 };
+
+	memset(&sin, 0, sizeof(sin));
+
+	sin.sin_family = AF_INET;
+	err = inet_pton(AF_INET, config->local_address, &sin.sin_addr);
+	if (err <= 0) {
+		if (err == 0)
+			pgs_config_error(config, "Not in presentation format");
+		else
+			perror("inet_pton");
+		return err;
+	}
+
+	*fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+	int flag = fcntl(*fd, F_GETFL, 0);
+	fcntl(*fd, F_SETFL, flag | O_NONBLOCK);
+
+	err = bind(*fd, (struct sockaddr *)&sin, sizeof(sin));
+
+	if (err < 0) {
+		perror("bind");
+		return err;
+	}
+	*port = ntohs(sin.sin_port);
+	return err;
+}
+
+/*
+ * Create UDP server for UDP ASSOCIATE
+ * Returns error
+ * Session should close the server fd and free the udp event when error occurred
+ * */
+static int start_udp_server(const pgs_server_config_t *config,
+			    pgs_session_t *session, int *port)
+{
+	int err = init_udp_fd(session->local_server->config,
+			      &session->inbound->udp_fd, port);
+	if (err != 0 || port == 0) {
+		// error
+		pgs_session_error(session, "failed to init udp server");
+		return err;
+	}
+	session->inbound->udp_read_buffer = (uint8_t *)malloc(BUFSIZE_4K);
+
+	if (strcmp(config->server_type, "trojan") == 0) {
+		pgs_trojanserver_config_t *trojanconf =
+			(pgs_trojanserver_config_t *)config->extra;
+		if (trojanconf->websocket.enabled) {
+			// trojan-go
+			session->inbound->udp_server_ev =
+				event_new(session->local_server->base,
+					  session->inbound->udp_fd,
+					  EV_READ | EV_PERSIST,
+					  on_udp_read_trojan_gfw, session);
+			event_add(session->inbound->udp_server_ev, NULL);
+			return 0;
+		} else {
+			// trojan-gfw
+			session->inbound->udp_server_ev =
+				event_new(session->local_server->base,
+					  session->inbound->udp_fd,
+					  EV_READ | EV_PERSIST,
+					  on_udp_read_trojan_gfw, session);
+			event_add(session->inbound->udp_server_ev, NULL);
+			return 0;
+		}
+	} else if (strcmp(config->server_type, "v2ray") == 0) {
+		pgs_v2rayserver_config_t *vconf = config->extra;
+		if (!vconf->websocket.enabled) {
+			// raw tcp vmess
+			session->inbound->udp_server_ev =
+				event_new(session->local_server->base,
+					  session->inbound->udp_fd,
+					  EV_READ | EV_PERSIST,
+					  on_udp_read_trojan_gfw, session);
+			event_add(session->inbound->udp_server_ev, NULL);
+			return 0;
+		} else {
+			// websocket can be protected by ssl
+			session->inbound->udp_server_ev =
+				event_new(session->local_server->base,
+					  session->inbound->udp_fd,
+					  EV_READ | EV_PERSIST,
+					  on_udp_read_trojan_gfw, session);
+			event_add(session->inbound->udp_server_ev, NULL);
+			return 0;
+		}
+	}
+	pgs_session_error(
+		session,
+		"failed to init udp server: server type(%s) not supported",
+		config->server_type);
+	// server type not supported
+	return -1;
+}
 
 /**
  * Create New Sesson
@@ -146,15 +345,33 @@ pgs_session_inbound_t *pgs_session_inbound_new(struct bufferevent *bev)
 	ptr->state = INBOUND_AUTH;
 	ptr->cmd = NULL;
 	ptr->cmdlen = 0;
+	ptr->udp_fd = -1;
+	ptr->udp_server_ev = NULL;
+	ptr->udp_read_buffer = NULL;
 	return ptr;
 }
 
 void pgs_session_inbound_free(pgs_session_inbound_t *ptr)
 {
-	if (ptr->bev)
+	if (ptr->bev != NULL) {
 		bufferevent_free(ptr->bev);
-	if (ptr->cmd)
+		ptr->bev = NULL;
+	}
+	if (ptr->cmd != NULL) {
 		free(ptr->cmd);
+		ptr->cmd = NULL;
+	}
+	if (ptr->udp_fd != -1) {
+		close(ptr->udp_fd);
+		ptr->udp_fd = -1;
+	}
+	if (ptr->udp_server_ev != NULL) {
+		event_free(ptr->udp_server_ev);
+	}
+	if (ptr->udp_read_buffer != NULL) {
+		free(ptr->udp_read_buffer);
+		ptr->udp_read_buffer = NULL;
+	}
 	free(ptr);
 }
 
@@ -247,6 +464,17 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 
 	// outbound should reset local read callback
 	if (session->inbound->state == INBOUND_PROXY) {
+		// socks5 response, BND.ADDR and BND.PORT should be 0
+		// only the UDP ASSOCIATE command will set this,
+		// otherwise it may cause some kind of error,
+		// e.g. using `nc -X 5 -x 127.0.0.1:1080 %h %p` to proxy the ssh connection
+		struct evbuffer *output = bufferevent_get_output(bev);
+		struct evbuffer *input = bufferevent_get_input(bev);
+		evbuffer_add(output, "\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00",
+			     10);
+		evbuffer_drain(input, session->inbound->cmdlen);
+
+		// get current server index
 		pgs_server_config_t *config = pgs_server_manager_get_config(
 			session->local_server->sm);
 		int config_idx = -1;
@@ -289,8 +517,50 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			pgs_session_info(session, "--> %s:%d", addr,
 					 session->outbound->port);
 		}
-	}
+	} else if (session->inbound->state == INBOUND_UDP_RELAY) {
+		// current server config
+		pgs_server_config_t *config = pgs_server_manager_get_config(
+			session->local_server->sm);
+		int config_idx = -1;
+		for (int i = 0;
+		     i < session->local_server->config->servers_count; i++) {
+			if (config ==
+			    &session->local_server->config->servers[i]) {
+				config_idx = i;
+				break;
+			}
+		}
+		int port = 0;
+		int err = start_udp_server(config, session, &port);
+		if (err != 0 || port == 0) {
+			goto error;
+		}
+		// create outbound and setup callbacks
+		const uint8_t *cmd = session->inbound->cmd;
+		uint64_t cmd_len = session->inbound->cmdlen;
 
+		pgs_session_outbound_cbs_t outbound_cbs = {
+			on_trojan_ws_remote_event, on_trojan_gfw_remote_event,
+			on_v2ray_ws_remote_event,  on_v2ray_tcp_remote_event,
+			on_trojan_ws_remote_read,  on_trojan_gfw_remote_read,
+			on_v2ray_ws_remote_read,   on_v2ray_tcp_remote_read
+		};
+		// create outbound
+		session->outbound = pgs_session_outbound_new(
+			config, config_idx, cmd, cmd_len,
+			session->local_server->logger,
+			session->local_server->base,
+			session->local_server->dns_base, outbound_cbs, session);
+
+		// reply
+		struct evbuffer *output = bufferevent_get_output(bev);
+		struct evbuffer *input = bufferevent_get_input(bev);
+		// FIXME: hardcoded ATYP and BND.ADDR
+		evbuffer_add(output, "\x05\x00\x00\x01\x00\x00\x00\x00", 8);
+		int ns_port = htons(port);
+		evbuffer_add(output, &ns_port, 2);
+		evbuffer_drain(input, session->inbound->cmdlen);
+	}
 	return;
 
 error:
@@ -494,7 +764,8 @@ static void on_trojan_gfw_remote_event(struct bufferevent *bev, short events,
 		pgs_session_debug(session, "connected");
 		pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
 		trojan_s_ctx->connected = true;
-		do_trojan_gfw_remote_write(bev, ctx);
+		// trigger a read by hand
+		on_trojan_gfw_local_read(session->inbound->bev, session);
 	}
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(
@@ -543,7 +814,12 @@ static void on_trojan_gfw_local_read(struct bufferevent *bev, void *ctx)
 		return;
 
 	pgs_session_debug(session, "write to remote");
-	do_trojan_gfw_remote_write(bev, ctx);
+	struct bufferevent *inbev = session->inbound->bev;
+	struct evbuffer *inboundr = bufferevent_get_input(inbev);
+	uint64_t len = evbuffer_get_length(inboundr);
+	uint8_t *msg = evbuffer_pullup(inboundr, len);
+	do_trojan_gfw_remote_write(msg, len, session);
+	evbuffer_drain(inboundr, len);
 }
 
 /*
@@ -551,34 +827,22 @@ static void on_trojan_gfw_local_read(struct bufferevent *bev, void *ctx)
  * from local to remote
  * local -> remote
  * */
-static void do_trojan_gfw_remote_write(struct bufferevent *bev, void *ctx)
+static void do_trojan_gfw_remote_write(uint8_t *msg, uint64_t len,
+				       pgs_session_t *session)
 {
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	struct bufferevent *inbev = session->inbound->bev;
 	struct bufferevent *outbev = session->outbound->bev;
-
 	struct evbuffer *outboundw = bufferevent_get_output(outbev);
-	struct evbuffer *inboundr = bufferevent_get_input(inbev);
-
 	struct evbuffer *buf = outboundw;
-	uint64_t len = evbuffer_get_length(inboundr);
-	unsigned char *msg = evbuffer_pullup(inboundr, len);
-
 	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
 	uint64_t head_len = trojan_s_ctx->head_len;
-	if (head_len > 0)
-		len += head_len;
-
 	if (head_len > 0) {
 		evbuffer_add(buf, trojan_s_ctx->head, head_len);
 		trojan_s_ctx->head_len = 0;
 	}
-	evbuffer_add(buf, msg, len - head_len);
+	evbuffer_add(buf, msg, len);
 
-	evbuffer_drain(inboundr, len - head_len);
-
-	pgs_session_debug(session, "local -> remote: %d", len);
-	on_session_metrics_send(session, len);
+	pgs_session_debug(session, "local -> remote: %d", len + head_len);
+	on_session_metrics_send(session, len + head_len);
 }
 
 /*
@@ -869,4 +1133,36 @@ static void on_session_metrics_send(pgs_session_t *session, uint64_t len)
 	if (!session->metrics)
 		return;
 	session->metrics->send += len;
+}
+
+/*
+ * udp relay
+ * */
+static void on_udp_read_trojan_gfw(int fd, short event, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "udp local read triggered");
+
+	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
+	if (!trojan_s_ctx->connected)
+		return;
+
+	uint8_t *buf = session->inbound->udp_read_buffer;
+	socklen_t size = sizeof(struct sockaddr);
+	struct sockaddr_in client_addr = { 0 };
+
+	int len = recvfrom(fd, buf, sizeof(buf), 0,
+			   (struct sockaddr *)&client_addr, &size);
+	if (0 == len) {
+		pgs_session_warn(session, "Udp connection closed");
+	} else if (len > 0) {
+		if (len == BUFSIZE_4K) {
+			// read all
+		} else {
+			// write buffer to remote
+			//sendto(fd, buf, len, 0, (struct sockaddr *)&client_addr,
+			//       size);
+		}
+	}
+	pgs_session_debug(session, "write to remote");
 }

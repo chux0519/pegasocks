@@ -43,10 +43,11 @@ static void kill_workers(pthread_t *threads, int server_threads)
 	}
 }
 
-static int init_local_server_fd(const pgs_config_t *config, int *fd, int sock_type)
+static int init_local_server_fd(const pgs_config_t *config, int *fd,
+				int sock_type)
 {
 	int err = 0;
-	struct sockaddr_in sin = {0};
+	struct sockaddr_in sin = { 0 };
 	int port = config->local_port;
 
 	memset(&sin, 0, sizeof(sin));
@@ -197,13 +198,9 @@ int main(int argc, char **argv)
 	pgs_config_info(config, "worker threads: %d, config: %s",
 			server_threads, config_path);
 
-	int server_fd, udp_server_fd, ctrl_fd;
+	int server_fd, ctrl_fd;
 	if (init_local_server_fd(config, &server_fd, SOCK_STREAM) < 0) {
 		perror("failed to init local tcp server");
-		return -1;
-	}
-	if (init_local_server_fd(config, &udp_server_fd, SOCK_DGRAM) < 0) {
-		perror("failed to init local udp server");
 		return -1;
 	}
 	if (init_control_fd(config, &ctrl_fd) < 0) {
@@ -221,9 +218,8 @@ int main(int argc, char **argv)
 	pgs_server_manager_t *sm = pgs_server_manager_new(
 		statsq, config->servers, config->servers_count);
 
-	pgs_local_server_ctx_t ctx = { server_fd, udp_server_fd, mpsc, config, sm };
+	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config, sm };
 
-	// TODO: init ctrl_fd
 	pgs_helper_thread_arg_t helper_thread_arg = { sm, logger, config,
 						      ctrl_fd };
 
