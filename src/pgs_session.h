@@ -36,8 +36,12 @@ typedef struct pgs_session_inbound_s {
 	uint64_t cmdlen;
 	// udp server and event for udp relay
 	int udp_fd;
+	struct sockaddr_in udp_client_addr;
+	socklen_t udp_client_addr_size;
 	struct event *udp_server_ev;
-	uint8_t *udp_read_buffer;
+	uint8_t *udp_rbuf;
+	uint8_t *udp_remote_wbuf;
+	uint16_t udp_remote_wbuf_pos;
 } pgs_session_inbound_t;
 
 typedef struct pgs_session_s {

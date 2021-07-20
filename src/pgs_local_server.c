@@ -1,6 +1,5 @@
 #include "pgs_local_server.h"
 #include "pgs_session.h"
-#include "pgs_udp_session.h"
 
 #include <stdlib.h>
 #include <signal.h>
@@ -40,31 +39,6 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 	// start session
 	pgs_session_start(session);
 }
-
-//static void udp_read_cb(int fd, short event, void *ctx)
-//{
-//	pgs_local_server_t *local = (pgs_local_server_t *)ctx;
-//	pgs_udp_session_t *udp_session = pgs_udp_session_new(fd, local);
-//	pgs_udp_session_start(udp_session);
-//	//char buf[BUFSIZE_4K];
-//	//socklen_t size = sizeof(struct sockaddr);
-//	//struct sockaddr_in client_addr = { 0 };
-//	//// TODO:
-//	//int len = recvfrom(fd, buf, sizeof(buf), 0,
-//	//		   (struct sockaddr *)&client_addr, &size);
-//	//if (0 == len) {
-//	//	fprintf(stderr, "udp connection closed\n");
-//	//	if (fd)
-//	//		close(fd);
-//	//} else if (len > 0) {
-//	//	// encode data and create a remote session
-//	//	if (len >= BUFSIZE_4K) {
-//	//		// read more and send
-//	//		sendto(fd, buf, len, 0, (struct sockaddr *)&client_addr,
-//	//		       size);
-//	//	}
-//	//}
-//}
 
 // New server
 pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
