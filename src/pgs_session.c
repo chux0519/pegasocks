@@ -389,7 +389,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 	uint64_t len = evbuffer_get_length(input);
 	unsigned char *rdata = evbuffer_pullup(input, len);
 
-	pgs_session_debug_buffer(session, rdata, len);
+	// pgs_session_debug_buffer(session, rdata, len);
 
 	switch (state) {
 	case INBOUND_AUTH:
@@ -788,6 +788,7 @@ static void on_trojan_gfw_remote_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *outboundr = bufferevent_get_input(outbev);
 	uint64_t data_len = evbuffer_get_length(outboundr);
 	unsigned char *data = evbuffer_pullup(outboundr, data_len);
+	// pgs_session_debug_buffer(session, data, data_len);
 
 	// write to local
 	do_trojan_gfw_local_write(data, data_len, session);
@@ -848,6 +849,7 @@ static void do_trojan_gfw_remote_write(uint8_t *msg, uint64_t len,
 static void do_trojan_gfw_local_write(uint8_t *msg, uint64_t len,
 				      pgs_session_t *session)
 {
+	uint8_t *udp_packet = NULL;
 	if (session->inbound->state == INBOUND_PROXY) {
 		struct bufferevent *inbev = session->inbound->bev;
 		struct evbuffer *inboundw = bufferevent_get_output(inbev);
@@ -856,10 +858,59 @@ static void do_trojan_gfw_local_write(uint8_t *msg, uint64_t len,
 		on_session_metrics_recv(session, len);
 	} else if (session->inbound->state == INBOUND_UDP_RELAY &&
 		   session->inbound->udp_fd != -1) {
-		sendto(session->inbound->udp_fd, msg, len, 0,
-		       (struct sockaddr *)&session->inbound->udp_client_addr,
-		       session->inbound->udp_client_addr_size);
+		uint8_t atype = msg[0];
+		uint16_t addr_len = 1 + 2; // atype + port
+		switch (atype) {
+		case 0x01: { /*ipv4*/
+			addr_len += 4;
+			break;
+		}
+		case 0x03: { /*domain*/
+			addr_len += 1;
+			addr_len += msg[1];
+		}
+		case 0x04: { /*ipv6*/
+			addr_len += 16;
+		}
+		default:
+			break;
+		}
+		uint16_t payload_len = msg[addr_len] << 8 | msg[addr_len + 1];
+		if (len < (addr_len + 2 + 2 + payload_len) ||
+		    msg[addr_len + 2] != '\r' || msg[addr_len + 3] != '\n') {
+			pgs_session_error(
+				session,
+				"payload too large or invalid response");
+			goto error;
+		}
+		uint16_t udp_packet_len = 2 + 1 + addr_len + payload_len;
+		udp_packet = malloc(udp_packet_len);
+		if (udp_packet == NULL) {
+			pgs_session_error(session, "out of memory");
+			goto error;
+		}
+		udp_packet[0] = 0x00;
+		udp_packet[1] = 0x00;
+		udp_packet[2] = 0x00;
+		memcpy(udp_packet + 3, msg, addr_len);
+		memcpy(udp_packet + 3 + addr_len, msg + addr_len + 4,
+		       payload_len);
+		int n = sendto(
+			session->inbound->udp_fd, udp_packet, udp_packet_len, 0,
+			(struct sockaddr *)&session->inbound->udp_client_addr,
+			session->inbound->udp_client_addr_size);
+		pgs_session_debug(session, "write %d bytes to local udp sock",
+				  n);
+		free(udp_packet);
 	}
+	return;
+
+error:
+	if (udp_packet != NULL) {
+		free(udp_packet);
+		udp_packet = NULL;
+	}
+	pgs_session_free(session);
 }
 
 /*
@@ -1142,14 +1193,14 @@ static void on_udp_read_trojan_gfw(int fd, short event, void *ctx)
 	struct sockaddr_in *client_addr = &session->inbound->udp_client_addr;
 	uint8_t *packet = NULL;
 
-	ssize_t len = recvfrom(fd, buf, sizeof(buf), 0,
+	ssize_t len = recvfrom(fd, buf, BUFSIZE_16K, 0,
 			       (struct sockaddr *)client_addr, size);
 	if (0 == len) {
 		pgs_session_warn(session, "udp connection closed");
 	} else if (len > 0) { /*Max read/cache buffer size is 16K*/
-		pgs_session_debug_buffer(session, buf, len);
+		// pgs_session_debug_buffer(session, buf, len);
 		if (len <= 3) { /*FRAG is not supported now*/
-			pgs_session_error(session, "invlaid udp datagram");
+			pgs_session_error(session, "invalid udp datagram");
 			goto error;
 		}
 		uint16_t addr_len = 1 + 2; // atype + port
@@ -1170,7 +1221,7 @@ static void on_udp_read_trojan_gfw(int fd, short event, void *ctx)
 			break;
 		}
 		if (len <= (2 + 1 + addr_len)) {
-			pgs_session_error(session, "invlaid udp datagram");
+			pgs_session_error(session, "invalid udp datagram");
 			goto error;
 		}
 		uint16_t data_len = len - 2 - 1 -
