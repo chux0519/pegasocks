@@ -23,27 +23,16 @@ static void on_local_event(struct bufferevent *bev, short events, void *ctx);
 static void on_local_read(struct bufferevent *bev, void *ctx);
 
 /*
- * trojan websocket session handler
+ * trojan session handlers
  */
-static void on_trojan_ws_remote_event(struct bufferevent *bev, short events,
-				      void *ctx);
-static void on_trojan_ws_remote_read(struct bufferevent *bev, void *ctx);
-static void on_trojan_ws_local_read(struct bufferevent *bev, void *ctx);
-static void do_trojan_ws_remote_request(struct bufferevent *bev, void *ctx);
-static void do_trojan_ws_remote_write(struct bufferevent *bev, void *ctx);
-static void do_trojan_ws_local_write(struct bufferevent *bev, void *ctx);
-
-/*
- * trojan gfw session handler
- */
-static void on_trojan_gfw_remote_event(struct bufferevent *bev, short events,
-				       void *ctx);
-static void on_trojan_gfw_remote_read(struct bufferevent *bev, void *ctx);
-static void on_trojan_gfw_local_read(struct bufferevent *bev, void *ctx);
-static void do_trojan_gfw_remote_write(uint8_t *msg, uint64_t len,
-				       pgs_session_t *session);
-static void do_trojan_gfw_local_write(uint8_t *msg, uint64_t len,
-				      pgs_session_t *session);
+static void on_trojan_remote_event(struct bufferevent *bev, short events,
+				   void *ctx);
+static void on_trojan_remote_read(struct bufferevent *bev, void *ctx);
+static void on_trojan_local_read(struct bufferevent *bev, void *ctx);
+static void do_trojan_local_write(uint8_t *msg, uint64_t len,
+				  pgs_session_t *session);
+static void do_trojan_remote_write(uint8_t *msg, uint64_t len,
+				   pgs_session_t *session);
 
 /*
  * v2ray websocket session handler
@@ -462,17 +451,17 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			uint64_t cmd_len = session->inbound->cmdlen;
 
 			pgs_session_inbound_cbs_t inbound_cbs = {
-				on_local_event, on_trojan_ws_local_read,
-				on_trojan_gfw_local_read,
-				on_v2ray_ws_local_read, on_v2ray_tcp_local_read
+				on_local_event, on_trojan_local_read,
+				on_trojan_local_read, on_v2ray_ws_local_read,
+				on_v2ray_tcp_local_read
 			};
 			pgs_session_outbound_cbs_t outbound_cbs = {
-				on_trojan_ws_remote_event,
-				on_trojan_gfw_remote_event,
+				on_trojan_remote_event,
+				on_trojan_remote_event,
 				on_v2ray_ws_remote_event,
 				on_v2ray_tcp_remote_event,
-				on_trojan_ws_remote_read,
-				on_trojan_gfw_remote_read,
+				on_trojan_remote_read,
+				on_trojan_remote_read,
 				on_v2ray_ws_remote_read,
 				on_v2ray_tcp_remote_read
 			};
@@ -511,12 +500,12 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			uint64_t cmd_len = session->inbound->cmdlen;
 
 			pgs_session_outbound_cbs_t outbound_cbs = {
-				on_trojan_ws_remote_event,
-				on_trojan_gfw_remote_event,
+				on_trojan_remote_event,
+				on_trojan_remote_event,
 				on_v2ray_ws_remote_event,
 				on_v2ray_tcp_remote_event,
-				on_trojan_ws_remote_read,
-				on_trojan_gfw_remote_read,
+				on_trojan_remote_read,
+				on_trojan_remote_read,
 				on_v2ray_ws_remote_read,
 				on_v2ray_tcp_remote_read
 			};
@@ -553,17 +542,55 @@ error:
 /**
  * outound event handler
  */
-static void on_trojan_ws_remote_event(struct bufferevent *bev, short events,
-				      void *ctx)
+static void on_trojan_remote_event(struct bufferevent *bev, short events,
+				   void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 
-	if (events & BEV_EVENT_CONNECTED)
-		do_trojan_ws_remote_request(bev, ctx);
+	if (events & BEV_EVENT_CONNECTED) {
+		pgs_session_t *session = (pgs_session_t *)ctx;
+		const pgs_server_config_t *config = session->outbound->config;
+		const pgs_trojanserver_config_t *trojanconfig = config->extra;
+		if (trojanconfig->websocket.enabled) {
+			// ws conenct
+			pgs_session_debug(session,
+					  "do_trojan_ws_remote_request");
+			pgs_ws_req(
+				bufferevent_get_output(session->outbound->bev),
+				trojanconfig->websocket.hostname,
+				config->server_address, config->server_port,
+				trojanconfig->websocket.path);
+			pgs_session_debug(session,
+					  "do_trojan_ws_remote_request done");
+		} else {
+			// trojan-gfw
+			// should trigger a local read manually
+			pgs_session_debug(session, "trojan-gfw connected");
+			pgs_trojansession_ctx_t *trojan_s_ctx =
+				session->outbound->ctx;
+			trojan_s_ctx->connected = true;
+			// manually trigger a read local event
+			if (session->inbound->state == INBOUND_PROXY) {
+				// TCP
+				on_trojan_local_read(session->inbound->bev,
+						     ctx);
+			} else if (session->inbound->state ==
+					   INBOUND_UDP_RELAY &&
+				   session->inbound->udp_remote_wbuf != NULL &&
+				   session->inbound->udp_remote_wbuf_pos > 0) {
+				// UDP
+				do_trojan_remote_write(
+					session->inbound->udp_remote_wbuf,
+					session->inbound->udp_remote_wbuf_pos,
+					session);
+				session->inbound->udp_remote_wbuf_pos = 0;
+			}
+		}
+	}
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(
 			session,
-			"Error from bufferevent: on_trojan_ws_remote_event");
+			"Error from bufferevent: on_trojan_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		SSL *ssl = bufferevent_openssl_get_ssl(bev);
 		if (ssl)
@@ -579,7 +606,7 @@ static void on_trojan_ws_remote_event(struct bufferevent *bev, short events,
  * it will handle websocket upgrade or 
  * remote -> decode(ws frame) -> local
  */
-static void on_trojan_ws_remote_read(struct bufferevent *bev, void *ctx)
+static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "remote read triggered");
@@ -589,6 +616,20 @@ static void on_trojan_ws_remote_read(struct bufferevent *bev, void *ctx)
 	uint64_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
+	const pgs_server_config_t *config = session->outbound->config;
+	if (config == NULL) {
+		pgs_session_error(session, "current server config not found");
+		goto error;
+	}
+	pgs_trojanserver_config_t *trojanconf =
+		(pgs_trojanserver_config_t *)config->extra;
+	if (!trojanconf->websocket.enabled) {
+		// trojan-gfw
+		do_trojan_local_write(data, data_len, session);
+		evbuffer_drain(input, data_len);
+		return;
+	}
+	// trojan ws
 	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
 	if (!trojan_s_ctx->connected) {
 		if (!strstr((const char *)data, "\r\n\r\n"))
@@ -596,212 +637,84 @@ static void on_trojan_ws_remote_read(struct bufferevent *bev, void *ctx)
 
 		if (pgs_ws_upgrade_check((const char *)data)) {
 			pgs_session_error(session, "websocket upgrade fail!");
-			on_trojan_ws_remote_event(bev, BEV_EVENT_ERROR, ctx);
+			on_trojan_remote_event(bev, BEV_EVENT_ERROR, ctx);
 		} else {
 			//drain
 			evbuffer_drain(input, data_len);
 			trojan_s_ctx->connected = true;
 			// local buffer should have data already
-			do_trojan_ws_remote_write(bev, ctx);
+			// manually trigger a read local event
+			if (session->inbound->state == INBOUND_PROXY) {
+				on_trojan_local_read(bev, ctx);
+			} else if (session->inbound->state ==
+					   INBOUND_UDP_RELAY &&
+				   session->inbound->udp_remote_wbuf != NULL &&
+				   session->inbound->udp_remote_wbuf_pos > 0) {
+				// should have data in cache already
+				do_trojan_remote_write(
+					session->inbound->udp_remote_wbuf,
+					session->inbound->udp_remote_wbuf_pos,
+					session);
+				session->inbound->udp_remote_wbuf_pos = 0;
+			}
 		}
 	} else {
 		// upgraded, decode it and write to local
-		do_trojan_ws_local_write(bev, ctx);
-	}
-}
+		// read from remote
+		pgs_session_debug(session, "remote -> decode -> local");
 
-/*
- * inbound read handler
- * it will be enanled after upgraded
- * local -> encode(ws frame) -> remote
- * */
-static void on_trojan_ws_local_read(struct bufferevent *bev, void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "local read triggered");
+		if (data_len < 2)
+			return; // wait next read
 
-	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-	if (!trojan_s_ctx->connected)
-		return;
+		while (data_len > 2) {
+			pgs_ws_resp_t ws_meta;
+			if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
+				// ignore opcode here
+				if (ws_meta.opcode == 0x01) {
+					// write to local
+					do_trojan_local_write(
+						data + ws_meta.header_len,
+						ws_meta.payload_len, session);
+				}
 
-	pgs_session_debug(session, "write to remote");
-	do_trojan_ws_remote_write(bev, ctx);
-}
+				if (!ws_meta.fin)
+					pgs_session_debug(
+						session,
+						"frame to be continued..");
 
-/*
- * outbound websocket handshake
- * */
-static void do_trojan_ws_remote_request(struct bufferevent *bev, void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	const pgs_server_config_t *config = session->outbound->config;
-	const pgs_trojanserver_config_t *trojanconfig = config->extra;
+				evbuffer_drain(input,
+					       ws_meta.header_len +
+						       ws_meta.payload_len);
 
-	pgs_session_debug(session, "do_trojan_ws_remote_request");
+				on_session_metrics_recv(
+					session, ws_meta.header_len +
+							 ws_meta.payload_len);
 
-	pgs_ws_req(bufferevent_get_output(session->outbound->bev),
-		   trojanconfig->websocket.hostname, config->server_address,
-		   config->server_port, trojanconfig->websocket.path);
-
-	pgs_session_debug(session, "do_trojan_ws_remote_request done");
-}
-
-/*
- * helper method to write data
- * from local to remote
- * local -> encode(ws frame) -> remote
- * */
-static void do_trojan_ws_remote_write(struct bufferevent *bev, void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "local -> encode -> remote");
-	struct bufferevent *inbev = session->inbound->bev;
-	struct bufferevent *outbev = session->outbound->bev;
-
-	struct evbuffer *outboundw = bufferevent_get_output(outbev);
-	struct evbuffer *inboundr = bufferevent_get_input(inbev);
-
-	struct evbuffer *buf = outboundw;
-	uint64_t len = evbuffer_get_length(inboundr);
-	unsigned char *msg = evbuffer_pullup(inboundr, len);
-
-	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-	uint64_t head_len = trojan_s_ctx->head_len;
-	if (head_len > 0)
-		len += head_len;
-
-	pgs_ws_write_head_text(buf, len);
-
-	if (head_len > 0) {
-		evbuffer_add(buf, trojan_s_ctx->head, head_len);
-		trojan_s_ctx->head_len = 0;
-	}
-	// x ^ 0 = x
-	evbuffer_add(buf, msg, len - head_len);
-
-	evbuffer_drain(inboundr, len - head_len);
-
-	on_session_metrics_send(session, len);
-}
-
-/*
- * helper method to write data
- * from remote to local
- * remote -> decode(ws frame) -> local
- * */
-static void do_trojan_ws_local_write(struct bufferevent *bev, void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "remote -> decode -> local");
-	struct bufferevent *inbev = session->inbound->bev;
-	struct bufferevent *outbev = session->outbound->bev;
-
-	struct evbuffer *outboundr = bufferevent_get_input(outbev);
-	struct evbuffer *inboundw = bufferevent_get_output(inbev);
-
-	uint64_t data_len = evbuffer_get_length(outboundr);
-	if (data_len < 2)
-		return;
-
-	unsigned char *data = evbuffer_pullup(outboundr, data_len);
-
-	while (data_len > 2) {
-		pgs_ws_resp_t ws_meta;
-		if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
-			// ignore opcode here
-			if (ws_meta.opcode == 0x01) {
-				// write to local
-				evbuffer_add(inboundw,
-					     data + ws_meta.header_len,
+				data_len -= (ws_meta.header_len +
 					     ws_meta.payload_len);
+				data += (ws_meta.header_len +
+					 ws_meta.payload_len);
+			} else {
+				pgs_session_warn(
+					session,
+					"Failed to parse ws header, wait for more data");
+
+				return;
 			}
-
-			if (!ws_meta.fin)
-				pgs_session_debug(session,
-						  "frame to be continue..");
-
-			evbuffer_drain(outboundr, ws_meta.header_len +
-							  ws_meta.payload_len);
-
-			on_session_metrics_recv(session,
-						ws_meta.header_len +
-							ws_meta.payload_len);
-
-			data_len -= (ws_meta.header_len + ws_meta.payload_len);
-			data += (ws_meta.header_len + ws_meta.payload_len);
-		} else {
-			return;
 		}
 	}
-}
+	return;
 
-/*
- * trojan gfw event handler
- */
-static void on_trojan_gfw_remote_event(struct bufferevent *bev, short events,
-				       void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-
-	if (events & BEV_EVENT_CONNECTED) {
-		pgs_session_debug(session, "connected");
-		pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-		trojan_s_ctx->connected = true;
-		// manually trigger a read local event
-		if (session->inbound->state == INBOUND_PROXY) {
-			on_trojan_gfw_local_read(session->inbound->bev, ctx);
-		} else if (session->inbound->state == INBOUND_UDP_RELAY &&
-			   session->inbound->udp_remote_wbuf != NULL &&
-			   session->inbound->udp_remote_wbuf_pos > 0) {
-			do_trojan_gfw_remote_write(
-				session->inbound->udp_remote_wbuf,
-				session->inbound->udp_remote_wbuf_pos, session);
-			session->inbound->udp_remote_wbuf_pos = 0;
-		}
-	}
-	if (events & BEV_EVENT_ERROR)
-		pgs_session_error(
-			session,
-			"Error from bufferevent: on_trojan_gfw_remote_event");
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		SSL *ssl = bufferevent_openssl_get_ssl(bev);
-		if (ssl)
-			pgs_ssl_close(ssl);
-		bufferevent_free(bev);
-		pgs_session_error(session, "EOF from remote, free session");
-		pgs_session_free(session);
-	}
-}
-
-/*
- * outound read handler
- * it will handle websocket upgrade or 
- * remote -> local
- */
-static void on_trojan_gfw_remote_read(struct bufferevent *bev, void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "remote read triggered");
-
-	// read from remote
-	struct bufferevent *outbev = session->outbound->bev;
-	struct evbuffer *outboundr = bufferevent_get_input(outbev);
-	uint64_t data_len = evbuffer_get_length(outboundr);
-	unsigned char *data = evbuffer_pullup(outboundr, data_len);
-	// pgs_session_debug_buffer(session, data, data_len);
-
-	// write to local
-	do_trojan_gfw_local_write(data, data_len, session);
-
-	evbuffer_drain(outboundr, data_len);
+error:
+	pgs_session_free(session);
 }
 
 /*
  * inbound read handler
  * it will be enanled after upgraded
- * local -> remote
+ * local -> encode(ws frame) -> remote
  * */
-static void on_trojan_gfw_local_read(struct bufferevent *bev, void *ctx)
+static void on_trojan_local_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "local read triggered");
@@ -810,13 +723,42 @@ static void on_trojan_gfw_local_read(struct bufferevent *bev, void *ctx)
 	if (!trojan_s_ctx->connected)
 		return;
 
-	pgs_session_debug(session, "write to remote");
-	struct bufferevent *inbev = session->inbound->bev;
-	struct evbuffer *inboundr = bufferevent_get_input(inbev);
+	struct evbuffer *inboundr = bufferevent_get_input(bev);
 	uint64_t len = evbuffer_get_length(inboundr);
 	uint8_t *msg = evbuffer_pullup(inboundr, len);
-	do_trojan_gfw_remote_write(msg, len, session);
+	pgs_session_debug(session, "local -> encode -> remote");
+	struct bufferevent *outbev = session->outbound->bev;
+	struct evbuffer *outboundw = bufferevent_get_output(outbev);
+	struct evbuffer *wbuf = outboundw;
+
+	const pgs_server_config_t *config = session->outbound->config;
+	if (config == NULL) {
+		pgs_session_error(session, "current server config not found");
+		goto error;
+	}
+	pgs_trojanserver_config_t *trojanconf =
+		(pgs_trojanserver_config_t *)config->extra;
+	if (trojanconf->websocket.enabled) {
+		//ws
+		uint64_t head_len = trojan_s_ctx->head_len;
+		uint64_t ws_len = len;
+		if (head_len > 0) {
+			ws_len += head_len;
+		}
+		// we only need to write ws header
+		// use all 0 for xor encode
+		// x ^ 0 = x, so no need for extra xor
+		pgs_ws_write_head_text(wbuf, ws_len);
+	}
+
+	do_trojan_remote_write(msg, len, session);
+
 	evbuffer_drain(inboundr, len);
+
+	return;
+
+error:
+	pgs_session_free(session);
 }
 
 /*
@@ -824,8 +766,8 @@ static void on_trojan_gfw_local_read(struct bufferevent *bev, void *ctx)
  * from local to remote
  * local -> remote
  * */
-static void do_trojan_gfw_remote_write(uint8_t *msg, uint64_t len,
-				       pgs_session_t *session)
+static void do_trojan_remote_write(uint8_t *msg, uint64_t len,
+				   pgs_session_t *session)
 {
 	struct bufferevent *outbev = session->outbound->bev;
 	struct evbuffer *outboundw = bufferevent_get_output(outbev);
@@ -846,8 +788,8 @@ static void do_trojan_gfw_remote_write(uint8_t *msg, uint64_t len,
  * helper method to write data
  * remote -> local
  * */
-static void do_trojan_gfw_local_write(uint8_t *msg, uint64_t len,
-				      pgs_session_t *session)
+static void do_trojan_local_write(uint8_t *msg, uint64_t len,
+				  pgs_session_t *session)
 {
 	uint8_t *udp_packet = NULL;
 	if (session->inbound->state == INBOUND_PROXY) {
@@ -1256,7 +1198,7 @@ static void on_udp_read_trojan_gfw(int fd, short event, void *ctx)
 			session->inbound->udp_remote_wbuf_pos += packet_len;
 		} else {
 			// Send data
-			do_trojan_gfw_remote_write(packet, packet_len, session);
+			do_trojan_remote_write(packet, packet_len, session);
 		}
 		if (packet != NULL) {
 			free(packet);
