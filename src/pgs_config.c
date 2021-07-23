@@ -43,8 +43,8 @@ pgs_config_t *pgs_config_load(const char *config)
 	// Parse content
 	pgs_config_t *ptr = pgs_config_new();
 
-	json_object *log_file_obj = json_object_object_get(jobj, "log_file");
-	if (log_file_obj) {
+	json_object *log_file_obj;
+	if (json_object_object_get_ex(jobj, "log_file", &log_file_obj)) {
 		const char *log_file = json_object_get_string(log_file_obj);
 		if (log_file != NULL) {
 			FILE *log_fd = fopen(log_file, "a+");
@@ -262,10 +262,8 @@ pgs_trojanserver_config_t *pgs_trojanserver_config_parse(pgs_config_t *config,
 		goto error;
 	}
 
-	json_object *ssl_obj = json_object_object_get(jobj, "ssl");
-	json_object *ws_obj = json_object_object_get(jobj, "websocket");
-
-	if (ssl_obj) {
+	json_object *ssl_obj;
+	if (json_object_object_get_ex(jobj, "ssl", &ssl_obj)) {
 		ptr->ssl.enabled = true;
 		json_object_object_foreach(ssl_obj, k, v)
 		{
@@ -275,7 +273,8 @@ pgs_trojanserver_config_t *pgs_trojanserver_config_parse(pgs_config_t *config,
 		}
 	}
 
-	if (ws_obj) {
+	json_object *ws_obj;
+	if (json_object_object_get_ex(jobj, "websocket", &ws_obj)) {
 		// parse websocket config
 		ptr->websocket.enabled = true;
 		json_object_object_foreach(ws_obj, k, v)
@@ -330,16 +329,16 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
 {
 	pgs_v2rayserver_config_t *ptr = pgs_v2rayserver_config_new();
 
-	json_object *secure_obj = json_object_object_get(jobj, "secure");
-	if (secure_obj) {
+	json_object *secure_obj;
+	if (json_object_object_get_ex(jobj, "secure", &secure_obj)) {
 		const char *secure = json_object_get_string(secure_obj);
 		if (secure && strcmp(secure, "aes-128-gcm") == 0) {
 			ptr->secure = V2RAY_SECURE_GCM;
 		}
 	}
 
-	json_object *ssl_obj = json_object_object_get(jobj, "ssl");
-	if (ssl_obj) {
+	json_object *ssl_obj;
+	if (json_object_object_get_ex(jobj, "ssl", &ssl_obj)) {
 		ptr->ssl.enabled = true;
 		ptr->ssl_ctx = pgs_ssl_ctx_new();
 		if (ptr->ssl_ctx == NULL) {
@@ -356,10 +355,8 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
 		ptr->ssl.enabled = false;
 		ptr->ssl_ctx = NULL;
 	}
-
-	json_object *ws_obj = json_object_object_get(jobj, "websocket");
-
-	if (ws_obj) {
+	json_object *ws_obj;
+	if (json_object_object_get_ex(jobj, "websocket", &ws_obj)) {
 		// parse websocket config
 		ptr->websocket.enabled = true;
 		json_object_object_foreach(ws_obj, k, v)
