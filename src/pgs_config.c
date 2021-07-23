@@ -129,8 +129,7 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 					goto error;
 			} else if (strcmp(key, "password") == 0) {
 				ptr[i].password =
-					(uint8_t *)json_object_get_string(
-						val);
+					(uint8_t *)json_object_get_string(val);
 				if (ptr[i].password == NULL)
 					goto error;
 			}
@@ -268,6 +267,12 @@ pgs_trojanserver_config_t *pgs_trojanserver_config_parse(pgs_config_t *config,
 
 	if (ssl_obj) {
 		ptr->ssl.enabled = true;
+		json_object_object_foreach(ssl_obj, k, v)
+		{
+			if (strcmp(k, "sni") == 0) {
+				ptr->ssl.sni = json_object_get_string(v);
+			}
+		}
 	}
 
 	if (ws_obj) {
@@ -302,6 +307,7 @@ pgs_trojanserver_config_t *pgs_trojanserver_config_new()
 		malloc(sizeof(pgs_trojanserver_config_t));
 	ptr->ssl.enabled = true;
 	ptr->ssl.cert = NULL;
+	ptr->ssl.sni = NULL;
 	ptr->websocket.enabled = false;
 	ptr->websocket.hostname = NULL;
 	ptr->websocket.path = NULL;
@@ -339,6 +345,12 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
 		if (ptr->ssl_ctx == NULL) {
 			pgs_config_error(config, "Error: pgs_ssl_ctx_new");
 			goto error;
+		}
+		json_object_object_foreach(ssl_obj, k, v)
+		{
+			if (strcmp(k, "sni") == 0) {
+				ptr->ssl.sni = json_object_get_string(v);
+			}
 		}
 	} else {
 		ptr->ssl.enabled = false;
@@ -379,6 +391,7 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_new()
 		malloc(sizeof(pgs_v2rayserver_config_t));
 	ptr->ssl.enabled = false;
 	ptr->ssl.cert = NULL;
+	ptr->ssl.sni = NULL;
 	ptr->websocket.enabled = false;
 	ptr->websocket.hostname = NULL;
 	ptr->websocket.path = NULL;

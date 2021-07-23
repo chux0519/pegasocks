@@ -255,9 +255,13 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 			(pgs_trojanserver_config_t *)config->extra;
 		ptr->ctx = pgs_trojansession_ctx_new(config->password, 56, cmd,
 						     cmd_len);
+		// sni
+		const char *sni = config->server_address;
+		if (trojanconf->ssl.sni != NULL) {
+			sni = trojanconf->ssl.sni;
+		}
+		SSL *ssl = pgs_ssl_new(trojanconf->ssl_ctx, (void *)sni);
 
-		SSL *ssl = pgs_ssl_new(trojanconf->ssl_ctx,
-				       (void *)config->server_address);
 		if (ssl == NULL) {
 			pgs_logger_error(logger, "SSL_new");
 			goto error;
@@ -311,9 +315,12 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 		} else {
 			// websocket can be protected by ssl
 			if (vconf->ssl.enabled && vconf->ssl_ctx) {
-				SSL *ssl = pgs_ssl_new(
-					vconf->ssl_ctx,
-					(void *)config->server_address);
+				const char *sni = config->server_address;
+				if (vconf->ssl.sni != NULL) {
+					sni = vconf->ssl.sni;
+				}
+				SSL *ssl = pgs_ssl_new(vconf->ssl_ctx,
+						       (void *)sni);
 				if (ssl == NULL) {
 					pgs_logger_error(logger, "SSL_new");
 					goto error;
