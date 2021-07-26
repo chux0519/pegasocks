@@ -272,8 +272,8 @@ uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx)
 
 uint64_t pgs_vmess_write_body(const uint8_t *data, uint64_t data_len,
 			      uint64_t head_len, pgs_vmess_ctx_t *ctx,
-			      struct evbuffer *writer,
-			      pgs_vmess_write_body_cb cb)
+			      pgs_session_t *session,
+			      pgs_session_write_fn flush)
 {
 	uint8_t *localr = ctx->local_rbuf;
 	uint8_t *buf = ctx->remote_wbuf + head_len;
@@ -308,8 +308,8 @@ uint64_t pgs_vmess_write_body(const uint8_t *data, uint64_t data_len,
 			pgs_aes_cryptor_encrypt(ctx->encryptor, localr,
 						frame_data_len + 6, buf);
 			sent += (frame_data_len + 6);
-			cb(writer, ctx->remote_wbuf,
-			   head_len + frame_data_len + 6);
+			flush(session, ctx->remote_wbuf,
+			      head_len + frame_data_len + 6);
 			break;
 		}
 		case V2RAY_SECURE_GCM: {
@@ -333,8 +333,8 @@ uint64_t pgs_vmess_write_body(const uint8_t *data, uint64_t data_len,
 
 			assert(ciphertext_len == frame_data_len);
 			sent += (frame_data_len + 18);
-			cb(writer, ctx->remote_wbuf,
-			   head_len + frame_data_len + 18);
+			flush(session, ctx->remote_wbuf,
+			      head_len + frame_data_len + 18);
 			break;
 		}
 		default:
@@ -353,7 +353,7 @@ uint64_t pgs_vmess_write_body(const uint8_t *data, uint64_t data_len,
 
 uint64_t pgs_vmess_write(const uint8_t *password, const uint8_t *data,
 			 uint64_t data_len, pgs_vmess_ctx_t *ctx,
-			 struct evbuffer *writer, pgs_vmess_write_body_cb cb)
+			 pgs_session_t *session, pgs_session_write_fn flush)
 {
 	uint64_t head_len = 0;
 	if (!ctx->header_sent) {
@@ -361,8 +361,8 @@ uint64_t pgs_vmess_write(const uint8_t *password, const uint8_t *data,
 		ctx->header_sent = true;
 	}
 
-	uint64_t body_len =
-		pgs_vmess_write_body(data, data_len, head_len, ctx, writer, cb);
+	uint64_t body_len = pgs_vmess_write_body(data, data_len, head_len, ctx,
+						 session, flush);
 	return body_len + head_len;
 }
 

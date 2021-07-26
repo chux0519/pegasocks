@@ -35,25 +35,13 @@ static void do_trojan_remote_write(uint8_t *msg, uint64_t len,
 				   pgs_session_t *session);
 
 /*
- * v2ray websocket session handler
+ * v2ray session handlers
  */
-static void on_v2ray_ws_remote_event(struct bufferevent *bev, short events,
-				     void *ctx);
-static void on_v2ray_ws_remote_read(struct bufferevent *bev, void *ctx);
-static void on_v2ray_ws_local_read(struct bufferevent *bev, void *ctx);
-static void do_v2ray_ws_remote_request(struct bufferevent *bev, void *ctx);
-static void do_v2ray_ws_remote_write(struct bufferevent *bev, void *ctx);
+static void on_v2ray_remote_event(struct bufferevent *bev, short events,
+				  void *ctx);
+static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx);
+static void on_v2ray_local_read(struct bufferevent *bev, void *ctx);
 static void do_v2ray_ws_local_write(struct bufferevent *bev, void *ctx);
-static void v2ray_ws_vmess_write_cb(struct evbuffer *writer, uint8_t *data,
-				    uint64_t len);
-
-/*
- * v2ray tcp session handler
- */
-static void on_v2ray_tcp_remote_event(struct bufferevent *bev, short events,
-				      void *ctx);
-static void on_v2ray_tcp_remote_read(struct bufferevent *bev, void *ctx);
-static void on_v2ray_tcp_local_read(struct bufferevent *bev, void *ctx);
 
 /*
  * metrics
@@ -452,18 +440,14 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 
 			pgs_session_inbound_cbs_t inbound_cbs = {
 				on_local_event, on_trojan_local_read,
-				on_trojan_local_read, on_v2ray_ws_local_read,
-				on_v2ray_tcp_local_read
+				on_trojan_local_read, on_v2ray_local_read,
+				on_v2ray_local_read
 			};
 			pgs_session_outbound_cbs_t outbound_cbs = {
-				on_trojan_remote_event,
-				on_trojan_remote_event,
-				on_v2ray_ws_remote_event,
-				on_v2ray_tcp_remote_event,
-				on_trojan_remote_read,
-				on_trojan_remote_read,
-				on_v2ray_ws_remote_read,
-				on_v2ray_tcp_remote_read
+				on_trojan_remote_event, on_trojan_remote_event,
+				on_v2ray_remote_event,	on_v2ray_remote_event,
+				on_trojan_remote_read,	on_trojan_remote_read,
+				on_v2ray_remote_read,	on_v2ray_remote_read
 			};
 			// create outbound
 			session->outbound = pgs_session_outbound_new(
@@ -500,14 +484,10 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			uint64_t cmd_len = session->inbound->cmdlen;
 
 			pgs_session_outbound_cbs_t outbound_cbs = {
-				on_trojan_remote_event,
-				on_trojan_remote_event,
-				on_v2ray_ws_remote_event,
-				on_v2ray_tcp_remote_event,
-				on_trojan_remote_read,
-				on_trojan_remote_read,
-				on_v2ray_ws_remote_read,
-				on_v2ray_tcp_remote_read
+				on_trojan_remote_event, on_trojan_remote_event,
+				on_v2ray_remote_event,	on_v2ray_remote_event,
+				on_trojan_remote_read,	on_trojan_remote_read,
+				on_v2ray_remote_read,	on_v2ray_remote_read
 			};
 			// create outbound
 			session->outbound = pgs_session_outbound_new(
@@ -858,17 +838,37 @@ error:
 /*
  * v2ray wss session handlers
  */
-static void on_v2ray_ws_remote_event(struct bufferevent *bev, short events,
-				     void *ctx)
+static void on_v2ray_remote_event(struct bufferevent *bev, short events,
+				  void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 
-	if (events & BEV_EVENT_CONNECTED)
-		do_v2ray_ws_remote_request(bev, ctx);
+	if (events & BEV_EVENT_CONNECTED) {
+		const pgs_server_config_t *config = session->outbound->config;
+		const pgs_v2rayserver_config_t *vconfig = config->extra;
+		if (vconfig->websocket.enabled) {
+			pgs_session_debug(session,
+					  "do_v2ray_ws_remote_request");
+
+			pgs_ws_req(
+				bufferevent_get_output(session->outbound->bev),
+				vconfig->websocket.hostname,
+				config->server_address, config->server_port,
+				vconfig->websocket.path);
+
+			pgs_session_debug(session,
+					  "do_v2ray_ws_remote_request done");
+		} else {
+			pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
+			v2ray_s_ctx->connected = true;
+			pgs_session_debug(session, "connected");
+			on_v2ray_local_read(session->inbound->bev, ctx);
+		}
+	}
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(
 			session,
-			"Error from bufferevent: on_v2ray_ws_remote_event");
+			"Error from bufferevent: on_v2ray_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		SSL *ssl = bufferevent_openssl_get_ssl(bev);
 		if (ssl)
@@ -878,10 +878,13 @@ static void on_v2ray_ws_remote_event(struct bufferevent *bev, short events,
 		pgs_session_free(session);
 	}
 }
-static void on_v2ray_ws_remote_read(struct bufferevent *bev, void *ctx)
+static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "remote read triggered");
+	const pgs_server_config_t *config = session->outbound->config;
+	const pgs_v2rayserver_config_t *vconfig = config->extra;
+
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
@@ -889,76 +892,64 @@ static void on_v2ray_ws_remote_read(struct bufferevent *bev, void *ctx)
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
+
+	if (!vconfig->websocket.enabled) {
+		struct bufferevent *inbev = session->inbound->bev;
+		struct evbuffer *inboundw = bufferevent_get_output(inbev);
+
+		if (!pgs_vmess_parse(data, data_len, v2ray_s_ctx, inboundw)) {
+			pgs_session_error(session,
+					  "failed to decode vmess payload");
+			on_v2ray_remote_event(bev, BEV_EVENT_ERROR, ctx);
+			return;
+		}
+		evbuffer_drain(input, data_len);
+		on_session_metrics_recv(session, data_len);
+		return;
+	}
+	// ws
 	if (!v2ray_s_ctx->connected) {
 		if (!strstr((const char *)data, "\r\n\r\n"))
 			return;
 
 		if (pgs_ws_upgrade_check((const char *)data)) {
 			pgs_session_error(session, "websocket upgrade fail!");
-			on_v2ray_ws_remote_event(bev, BEV_EVENT_ERROR, ctx);
+			on_v2ray_remote_event(bev, BEV_EVENT_ERROR, ctx);
 		} else {
 			//drain
 			evbuffer_drain(input, data_len);
 			v2ray_s_ctx->connected = true;
 			// local buffer should have data already
-			do_v2ray_ws_remote_write(bev, ctx);
+			// trigger a read manually
+			on_v2ray_local_read(bev, ctx);
 		}
 	} else {
 		do_v2ray_ws_local_write(bev, ctx);
 	}
 }
-static void on_v2ray_ws_local_read(struct bufferevent *bev, void *ctx)
+
+static void on_v2ray_local_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "local read triggered");
-
 	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
 	if (!v2ray_s_ctx->connected)
 		return;
 
 	pgs_session_debug(session, "write to remote");
-	do_v2ray_ws_remote_write(bev, ctx);
-}
-
-static void v2ray_ws_vmess_write_cb(struct evbuffer *writer, uint8_t *data,
-				    uint64_t len)
-{
-	pgs_ws_write_bin(writer, data, len);
-}
-
-static void do_v2ray_ws_remote_request(struct bufferevent *bev, void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	const pgs_server_config_t *config = session->outbound->config;
-	const pgs_v2rayserver_config_t *vconfig = config->extra;
-
-	pgs_session_debug(session, "do_v2ray_ws_remote_request");
-
-	pgs_ws_req(bufferevent_get_output(session->outbound->bev),
-		   vconfig->websocket.hostname, config->server_address,
-		   config->server_port, vconfig->websocket.path);
-
-	pgs_session_debug(session, "do_v2ray_ws_remote_request done");
-}
-static void do_v2ray_ws_remote_write(struct bufferevent *bev, void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "local -> encode -> remote");
 	struct bufferevent *inbev = session->inbound->bev;
 	struct bufferevent *outbev = session->outbound->bev;
 
 	struct evbuffer *outboundw = bufferevent_get_output(outbev);
 	struct evbuffer *inboundr = bufferevent_get_input(inbev);
-
-	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
-
 	uint64_t data_len = evbuffer_get_length(inboundr);
+	if (data_len <= 0)
+		return;
 	const uint8_t *data = evbuffer_pullup(inboundr, data_len);
-
 	uint64_t total_len = pgs_vmess_write(
 		(const uint8_t *)session->outbound->config->password, data,
-		data_len, v2ray_s_ctx, outboundw,
-		(pgs_vmess_write_body_cb)&v2ray_ws_vmess_write_cb);
+		data_len, v2ray_s_ctx, session,
+		(pgs_session_write_fn)&v2ray_write_out /*this will handle ws encode*/);
 
 	evbuffer_drain(inboundr, data_len);
 	on_session_metrics_send(session, total_len);
@@ -991,8 +982,7 @@ static void do_v2ray_ws_local_write(struct bufferevent *bev, void *ctx)
 				ws_meta.opcode);
 			// ignore opcode here
 			if (ws_meta.opcode == 0x02) {
-				// decode vmess protocol then write
-				// mount to ctx
+				// decode vmess protocol
 				pgs_vmess_ctx_t *v2ray_s_ctx =
 					session->outbound->ctx;
 				if (!pgs_vmess_parse(data + ws_meta.header_len,
@@ -1001,7 +991,7 @@ static void do_v2ray_ws_local_write(struct bufferevent *bev, void *ctx)
 					pgs_session_error(
 						session,
 						"failed to decode vmess payload");
-					on_v2ray_ws_remote_event(
+					on_v2ray_remote_event(
 						bev, BEV_EVENT_ERROR, ctx);
 					return;
 				}
@@ -1026,86 +1016,6 @@ static void do_v2ray_ws_local_write(struct bufferevent *bev, void *ctx)
 			return;
 		}
 	}
-}
-
-/*
- * v2ray tcp handlers
- */
-static void on_v2ray_tcp_remote_event(struct bufferevent *bev, short events,
-				      void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-
-	if (events & BEV_EVENT_CONNECTED) {
-		pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
-		v2ray_s_ctx->connected = true;
-		pgs_session_debug(session, "connected");
-		on_v2ray_tcp_local_read(session->inbound->bev, ctx);
-	}
-	if (events & BEV_EVENT_ERROR)
-		pgs_session_error(
-			session,
-			"Error from bufferevent: on_v2ray_tcp_remote_event");
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		bufferevent_free(bev);
-		pgs_session_free(session);
-	}
-}
-
-static void on_v2ray_tcp_remote_read(struct bufferevent *bev, void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "remote read triggered");
-
-	struct bufferevent *inbev = session->inbound->bev;
-	struct bufferevent *outbev = session->outbound->bev;
-
-	struct evbuffer *outboundr = bufferevent_get_input(outbev);
-	struct evbuffer *inboundw = bufferevent_get_output(inbev);
-
-	uint64_t data_len = evbuffer_get_length(outboundr);
-	unsigned char *data = evbuffer_pullup(outboundr, data_len);
-
-	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
-	if (!pgs_vmess_parse(data, data_len, v2ray_s_ctx, inboundw)) {
-		pgs_session_error(session, "failed to decode vmess payload");
-		on_v2ray_tcp_remote_event(bev, BEV_EVENT_ERROR, ctx);
-		return;
-	}
-
-	evbuffer_drain(outboundr, data_len);
-
-	on_session_metrics_recv(session, data_len);
-}
-
-static void on_v2ray_tcp_local_read(struct bufferevent *bev, void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "local read triggered");
-
-	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
-	if (!v2ray_s_ctx->connected)
-		return;
-
-	pgs_session_debug(session, "write to remote");
-
-	struct bufferevent *inbev = session->inbound->bev;
-	struct bufferevent *outbev = session->outbound->bev;
-
-	struct evbuffer *outboundw = bufferevent_get_output(outbev);
-	struct evbuffer *inboundr = bufferevent_get_input(inbev);
-
-	uint64_t data_len = evbuffer_get_length(inboundr);
-	if (data_len <= 0)
-		return;
-	const uint8_t *data = evbuffer_pullup(inboundr, data_len);
-	uint64_t total_len = pgs_vmess_write(
-		(const uint8_t *)session->outbound->config->password, data,
-		data_len, v2ray_s_ctx, outboundw,
-		(pgs_vmess_write_body_cb)&evbuffer_add);
-
-	evbuffer_drain(inboundr, data_len);
-	on_session_metrics_send(session, total_len);
 }
 
 static void on_session_metrics_recv(pgs_session_t *session, uint64_t len)
