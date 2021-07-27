@@ -33,23 +33,35 @@ void pgs_ws_write(struct evbuffer *buf, uint8_t *msg, uint64_t len, int opcode);
 bool pgs_ws_parse_head(uint8_t *data, uint64_t data_len, pgs_ws_resp_t *meta);
 
 /* vmess */
+// to remote
 uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx);
-
 uint64_t pgs_vmess_write_body(const uint8_t *data, uint64_t data_len,
 			      uint64_t head_len, pgs_vmess_ctx_t *ctx,
 			      pgs_session_t *session,
 			      pgs_session_write_fn flush);
-
 uint64_t pgs_vmess_write(const uint8_t *password, const uint8_t *data,
 			 uint64_t data_len, pgs_vmess_ctx_t *ctx,
 			 pgs_session_t *session, pgs_session_write_fn flush);
 
+// to local
 bool pgs_vmess_parse(const uint8_t *data, uint64_t data_len,
-		     pgs_vmess_ctx_t *ctx, struct evbuffer *writer);
+		     pgs_vmess_ctx_t *ctx, pgs_session_t *session,
+		     pgs_session_write_fn flush);
 bool pgs_vmess_parse_cfb(const uint8_t *data, uint64_t data_len,
-			 pgs_vmess_ctx_t *ctx, struct evbuffer *writer);
+			 pgs_vmess_ctx_t *ctx, pgs_session_t *session,
+			 pgs_session_write_fn flush);
 bool pgs_vmess_parse_gcm(const uint8_t *data, uint64_t data_len,
-			 pgs_vmess_ctx_t *ctx, struct evbuffer *writer);
+			 pgs_vmess_ctx_t *ctx, pgs_session_t *session,
+			 pgs_session_write_fn flush);
+
+static void v2ray_write_local(pgs_session_t *session, uint8_t *data,
+			      uint64_t len)
+{
+	struct bufferevent *inbev = session->inbound->bev;
+	struct evbuffer *inboundw = bufferevent_get_output(inbev);
+	// TODO: support udp
+	evbuffer_add(inboundw, data, len);
+}
 
 static void v2ray_write_out(pgs_session_t *session, uint8_t *data, uint64_t len)
 {

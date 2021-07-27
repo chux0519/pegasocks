@@ -897,7 +897,8 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 		struct bufferevent *inbev = session->inbound->bev;
 		struct evbuffer *inboundw = bufferevent_get_output(inbev);
 
-		if (!pgs_vmess_parse(data, data_len, v2ray_s_ctx, inboundw)) {
+		if (!pgs_vmess_parse(data, data_len, v2ray_s_ctx, session,
+				     (pgs_session_write_fn)v2ray_write_local)) {
 			pgs_session_error(session,
 					  "failed to decode vmess payload");
 			on_v2ray_remote_event(bev, BEV_EVENT_ERROR, ctx);
@@ -985,9 +986,13 @@ static void do_v2ray_ws_local_write(struct bufferevent *bev, void *ctx)
 				// decode vmess protocol
 				pgs_vmess_ctx_t *v2ray_s_ctx =
 					session->outbound->ctx;
-				if (!pgs_vmess_parse(data + ws_meta.header_len,
-						     ws_meta.payload_len,
-						     v2ray_s_ctx, inboundw)) {
+				// TODO: write function
+				if (!pgs_vmess_parse(
+					    data + ws_meta.header_len,
+					    ws_meta.payload_len, v2ray_s_ctx,
+					    session,
+					    (pgs_session_write_fn)
+						    v2ray_write_local)) {
 					pgs_session_error(
 						session,
 						"failed to decode vmess payload");
