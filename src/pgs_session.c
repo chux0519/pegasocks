@@ -29,10 +29,6 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 				   void *ctx);
 static void on_trojan_remote_read(struct bufferevent *bev, void *ctx);
 static void on_trojan_local_read(struct bufferevent *bev, void *ctx);
-static void do_trojan_local_write(uint8_t *msg, uint64_t len,
-				  pgs_session_t *session);
-static void do_trojan_remote_write(uint8_t *msg, uint64_t len,
-				   pgs_session_t *session);
 
 /*
  * v2ray session handlers
@@ -559,10 +555,10 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 				   session->inbound->udp_remote_wbuf != NULL &&
 				   session->inbound->udp_remote_wbuf_pos > 0) {
 				// UDP
-				do_trojan_remote_write(
+				trojan_write_remote(
+					session,
 					session->inbound->udp_remote_wbuf,
-					session->inbound->udp_remote_wbuf_pos,
-					session);
+					session->inbound->udp_remote_wbuf_pos);
 				session->inbound->udp_remote_wbuf_pos = 0;
 			}
 		}
@@ -605,7 +601,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 		(pgs_trojanserver_config_t *)config->extra;
 	if (!trojanconf->websocket.enabled) {
 		// trojan-gfw
-		do_trojan_local_write(data, data_len, session);
+		trojan_write_local(session, data, data_len);
 		evbuffer_drain(input, data_len);
 		return;
 	}
@@ -631,10 +627,10 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 				   session->inbound->udp_remote_wbuf != NULL &&
 				   session->inbound->udp_remote_wbuf_pos > 0) {
 				// should have data in cache already
-				do_trojan_remote_write(
+				trojan_write_remote(
+					session,
 					session->inbound->udp_remote_wbuf,
-					session->inbound->udp_remote_wbuf_pos,
-					session);
+					session->inbound->udp_remote_wbuf_pos);
 				session->inbound->udp_remote_wbuf_pos = 0;
 			}
 		}
@@ -652,9 +648,10 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 				// ignore opcode here
 				if (ws_meta.opcode == 0x01) {
 					// write to local
-					do_trojan_local_write(
+					trojan_write_local(
+						session,
 						data + ws_meta.header_len,
-						ws_meta.payload_len, session);
+						ws_meta.payload_len);
 				}
 
 				if (!ws_meta.fin)
@@ -731,107 +728,13 @@ static void on_trojan_local_read(struct bufferevent *bev, void *ctx)
 		pgs_ws_write_head_text(wbuf, ws_len);
 	}
 
-	do_trojan_remote_write(msg, len, session);
+	trojan_write_remote(session, msg, len);
 
 	evbuffer_drain(inboundr, len);
 
 	return;
 
 error:
-	pgs_session_free(session);
-}
-
-/*
- * helper method to write data
- * from local to remote
- * local -> remote
- * */
-static void do_trojan_remote_write(uint8_t *msg, uint64_t len,
-				   pgs_session_t *session)
-{
-	struct bufferevent *outbev = session->outbound->bev;
-	struct evbuffer *outboundw = bufferevent_get_output(outbev);
-	struct evbuffer *buf = outboundw;
-	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-	uint64_t head_len = trojan_s_ctx->head_len;
-	if (head_len > 0) {
-		evbuffer_add(buf, trojan_s_ctx->head, head_len);
-		trojan_s_ctx->head_len = 0;
-	}
-	evbuffer_add(buf, msg, len);
-
-	pgs_session_debug(session, "local -> remote: %d", len + head_len);
-	on_session_metrics_send(session, len + head_len);
-}
-
-/*
- * helper method to write data
- * remote -> local
- * */
-static void do_trojan_local_write(uint8_t *msg, uint64_t len,
-				  pgs_session_t *session)
-{
-	uint8_t *udp_packet = NULL;
-	if (session->inbound->state == INBOUND_PROXY) {
-		struct bufferevent *inbev = session->inbound->bev;
-		struct evbuffer *inboundw = bufferevent_get_output(inbev);
-		evbuffer_add(inboundw, msg, len);
-		pgs_session_debug(session, "remote -> local: %d", len);
-		on_session_metrics_recv(session, len);
-	} else if (session->inbound->state == INBOUND_UDP_RELAY &&
-		   session->inbound->udp_fd != -1) {
-		uint8_t atype = msg[0];
-		uint16_t addr_len = 1 + 2; // atype + port
-		switch (atype) {
-		case 0x01: { /*ipv4*/
-			addr_len += 4;
-			break;
-		}
-		case 0x03: { /*domain*/
-			addr_len += 1;
-			addr_len += msg[1];
-		}
-		case 0x04: { /*ipv6*/
-			addr_len += 16;
-		}
-		default:
-			break;
-		}
-		uint16_t payload_len = msg[addr_len] << 8 | msg[addr_len + 1];
-		if (len < (addr_len + 2 + 2 + payload_len) ||
-		    msg[addr_len + 2] != '\r' || msg[addr_len + 3] != '\n') {
-			pgs_session_error(
-				session,
-				"payload too large or invalid response");
-			goto error;
-		}
-		uint16_t udp_packet_len = 2 + 1 + addr_len + payload_len;
-		udp_packet = malloc(udp_packet_len);
-		if (udp_packet == NULL) {
-			pgs_session_error(session, "out of memory");
-			goto error;
-		}
-		udp_packet[0] = 0x00;
-		udp_packet[1] = 0x00;
-		udp_packet[2] = 0x00;
-		memcpy(udp_packet + 3, msg, addr_len);
-		memcpy(udp_packet + 3 + addr_len, msg + addr_len + 4,
-		       payload_len);
-		int n = sendto(
-			session->inbound->udp_fd, udp_packet, udp_packet_len, 0,
-			(struct sockaddr *)&session->inbound->udp_client_addr,
-			session->inbound->udp_client_addr_size);
-		pgs_session_debug(session, "write %d bytes to local udp sock",
-				  n);
-		free(udp_packet);
-	}
-	return;
-
-error:
-	if (udp_packet != NULL) {
-		free(udp_packet);
-		udp_packet = NULL;
-	}
 	pgs_session_free(session);
 }
 
@@ -897,8 +800,8 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 		struct bufferevent *inbev = session->inbound->bev;
 		struct evbuffer *inboundw = bufferevent_get_output(inbev);
 
-		if (!pgs_vmess_parse(data, data_len, v2ray_s_ctx, session,
-				     (pgs_session_write_fn)v2ray_write_local)) {
+		if (!pgs_vmess_parse(session, data, data_len,
+				     (pgs_session_write_fn)vmess_flush_local)) {
 			pgs_session_error(session,
 					  "failed to decode vmess payload");
 			on_v2ray_remote_event(bev, BEV_EVENT_ERROR, ctx);
@@ -947,10 +850,9 @@ static void on_v2ray_local_read(struct bufferevent *bev, void *ctx)
 	if (data_len <= 0)
 		return;
 	const uint8_t *data = evbuffer_pullup(inboundr, data_len);
-	uint64_t total_len = pgs_vmess_write(
-		(const uint8_t *)session->outbound->config->password, data,
-		data_len, v2ray_s_ctx, session,
-		(pgs_session_write_fn)&v2ray_write_out /*this will handle ws encode*/);
+	uint64_t total_len = pgs_vmess_write_remote(
+		session, data, data_len,
+		(pgs_session_write_fn)&vmess_flush_remote /*this will handle ws encode*/);
 
 	evbuffer_drain(inboundr, data_len);
 	on_session_metrics_send(session, total_len);
@@ -984,15 +886,11 @@ static void do_v2ray_ws_local_write(struct bufferevent *bev, void *ctx)
 			// ignore opcode here
 			if (ws_meta.opcode == 0x02) {
 				// decode vmess protocol
-				pgs_vmess_ctx_t *v2ray_s_ctx =
-					session->outbound->ctx;
-				// TODO: write function
 				if (!pgs_vmess_parse(
-					    data + ws_meta.header_len,
-					    ws_meta.payload_len, v2ray_s_ctx,
-					    session,
+					    session, data + ws_meta.header_len,
+					    ws_meta.payload_len,
 					    (pgs_session_write_fn)
-						    v2ray_write_local)) {
+						    vmess_flush_local)) {
 					pgs_session_error(
 						session,
 						"failed to decode vmess payload");
@@ -1113,7 +1011,7 @@ static void on_udp_read_trojan_gfw(int fd, short event, void *ctx)
 			session->inbound->udp_remote_wbuf_pos += packet_len;
 		} else {
 			// Send data
-			do_trojan_remote_write(packet, packet_len, session);
+			trojan_write_remote(session, packet, packet_len);
 		}
 		if (packet != NULL) {
 			free(packet);

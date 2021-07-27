@@ -150,12 +150,10 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 				connect_time;
 			pgs_session_t dummy = { 0 };
 			dummy.outbound = mctx->outbound;
-			uint64_t total_len = pgs_vmess_write(
-				(const uint8_t *)
-					mctx->outbound->config->password,
-				(const uint8_t *)g204_http_req,
-				strlen(g204_http_req), v2ray_s_ctx, &dummy,
-				(pgs_session_write_fn)&v2ray_write_out);
+			uint64_t total_len = pgs_vmess_write_remote(
+				&dummy, (const uint8_t *)g204_http_req,
+				strlen(g204_http_req),
+				(pgs_session_write_fn)&vmess_flush_remote);
 		}
 	} else {
 		double g204_time = elapse(mctx->start_at);
@@ -232,10 +230,10 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 		pgs_session_t dummy = { 0 };
 		dummy.outbound = mctx->outbound;
 		struct evbuffer *output = bufferevent_get_output(bev);
-		uint64_t total_len = pgs_vmess_write(
-			(const uint8_t *)mctx->outbound->config->password,
-			(const uint8_t *)g204_http_req, strlen(g204_http_req),
-			sctx, &dummy, (pgs_session_write_fn)&v2ray_write_out);
+		uint64_t total_len = pgs_vmess_write_remote(
+			&dummy, (const uint8_t *)g204_http_req,
+			strlen(g204_http_req),
+			(pgs_session_write_fn)&vmess_flush_remote);
 	}
 	if (events & BEV_EVENT_ERROR)
 		pgs_logger_error(mctx->logger, "Error from bufferevent");

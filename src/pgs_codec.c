@@ -137,13 +137,6 @@ uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx)
 	assert(header_auth_len == 16);
 	memcpy(buf, header_auth, header_auth_len);
 
-	// socks5 cmd
-	// +----+-----+-------+------+----------+----------+
-	// |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
-	// +----+-----+-------+------+----------+----------+
-	// | 1  |  1  | X'00' |  1   | Variable |    2     |
-	// +----+-----+-------+------+----------+----------+
-	//
 	// vmess header
 	int n = socks5_cmd_len - 4 - 2;
 	int p = 0;
@@ -270,11 +263,11 @@ uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx)
 	return header_auth_len + header_cmd_len;
 }
 
-uint64_t pgs_vmess_write_body(const uint8_t *data, uint64_t data_len,
-			      uint64_t head_len, pgs_vmess_ctx_t *ctx,
-			      pgs_session_t *session,
+uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
+			      uint64_t data_len, uint64_t head_len,
 			      pgs_session_write_fn flush)
 {
+	pgs_vmess_ctx_t *ctx = session->outbound->ctx;
 	uint8_t *localr = ctx->local_rbuf;
 	uint8_t *buf = ctx->remote_wbuf + head_len;
 	uint64_t sent = 0;
@@ -351,30 +344,32 @@ uint64_t pgs_vmess_write_body(const uint8_t *data, uint64_t data_len,
 	return sent;
 }
 
-uint64_t pgs_vmess_write(const uint8_t *password, const uint8_t *data,
-			 uint64_t data_len, pgs_vmess_ctx_t *ctx,
-			 pgs_session_t *session, pgs_session_write_fn flush)
+uint64_t pgs_vmess_write_remote(pgs_session_t *session, const uint8_t *data,
+				uint64_t data_len, pgs_session_write_fn flush)
 {
+	pgs_vmess_ctx_t *ctx = session->outbound->ctx;
+	const uint8_t *password = session->outbound->config->password;
 	uint64_t head_len = 0;
 	if (!ctx->header_sent) {
+		// will setup crytors and remote_wbuf
 		head_len = pgs_vmess_write_head(password, ctx);
 		ctx->header_sent = true;
 	}
 
-	uint64_t body_len = pgs_vmess_write_body(data, data_len, head_len, ctx,
-						 session, flush);
+	uint64_t body_len =
+		pgs_vmess_write_body(session, data, data_len, head_len, flush);
 	return body_len + head_len;
 }
 
-bool pgs_vmess_parse(const uint8_t *data, uint64_t data_len,
-		     pgs_vmess_ctx_t *ctx, pgs_session_t *session,
-		     pgs_session_write_fn flush)
+bool pgs_vmess_parse(pgs_session_t *session, const uint8_t *data,
+		     uint64_t data_len, pgs_session_write_fn flush)
 {
+	pgs_vmess_ctx_t *ctx = session->outbound->ctx;
 	switch (ctx->secure) {
 	case V2RAY_SECURE_CFB:
-		return pgs_vmess_parse_cfb(data, data_len, ctx, session, flush);
+		return pgs_vmess_parse_cfb(session, data, data_len, flush);
 	case V2RAY_SECURE_GCM:
-		return pgs_vmess_parse_gcm(data, data_len, ctx, session, flush);
+		return pgs_vmess_parse_gcm(session, data, data_len, flush);
 	default:
 		// not implement yet
 		break;
@@ -383,10 +378,10 @@ bool pgs_vmess_parse(const uint8_t *data, uint64_t data_len,
 }
 
 /* symmetric cipher will eat all the data put in */
-bool pgs_vmess_parse_cfb(const uint8_t *data, uint64_t data_len,
-			 pgs_vmess_ctx_t *ctx, pgs_session_t *session,
-			 pgs_session_write_fn flush)
+bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
+			 uint64_t data_len, pgs_session_write_fn flush)
 {
+	pgs_vmess_ctx_t *ctx = session->outbound->ctx;
 	pgs_vmess_resp_t *meta = &ctx->resp_meta;
 	uint8_t *rrbuf = ctx->remote_rbuf;
 	uint8_t *lwbuf = ctx->local_wbuf;
@@ -405,8 +400,7 @@ bool pgs_vmess_parse_cfb(const uint8_t *data, uint64_t data_len,
 			return false;
 		ctx->header_recved = true;
 		ctx->resp_len = 0;
-		return pgs_vmess_parse(data + 4, data_len - 4, ctx, session,
-				       flush);
+		return pgs_vmess_parse(session, data + 4, data_len - 4, flush);
 	}
 
 	if (ctx->resp_len == 0) {
@@ -425,8 +419,7 @@ bool pgs_vmess_parse_cfb(const uint8_t *data, uint64_t data_len,
 		ctx->resp_len = l - 4;
 		ctx->resp_hash = 0;
 		// skip fnv1a hash
-		return pgs_vmess_parse(data + 2, data_len - 2, ctx, session,
-				       flush);
+		return pgs_vmess_parse(session, data + 2, data_len - 2, flush);
 	}
 
 	if (ctx->resp_hash == 0) {
@@ -436,8 +429,7 @@ bool pgs_vmess_parse_cfb(const uint8_t *data, uint64_t data_len,
 			return false;
 		ctx->resp_hash = (uint32_t)rrbuf[0] << 24 | rrbuf[1] << 16 |
 				 rrbuf[2] << 8 | rrbuf[3];
-		return pgs_vmess_parse(data + 4, data_len - 4, ctx, session,
-				       flush);
+		return pgs_vmess_parse(session, data + 4, data_len - 4, flush);
 	}
 
 	if (data_len <= 0) // need more data
@@ -451,15 +443,15 @@ bool pgs_vmess_parse_cfb(const uint8_t *data, uint64_t data_len,
 	flush(session, lwbuf, data_to_decrypt);
 	ctx->resp_len -= data_to_decrypt;
 
-	return pgs_vmess_parse(data + data_to_decrypt,
-			       data_len - data_to_decrypt, ctx, session, flush);
+	return pgs_vmess_parse(session, data + data_to_decrypt,
+			       data_len - data_to_decrypt, flush);
 }
 
 /* AEAD cipher */
-bool pgs_vmess_parse_gcm(const uint8_t *data, uint64_t data_len,
-			 pgs_vmess_ctx_t *ctx, pgs_session_t *session,
-			 pgs_session_write_fn flush)
+bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
+			 uint64_t data_len, pgs_session_write_fn flush)
 {
+	pgs_vmess_ctx_t *ctx = session->outbound->ctx;
 	pgs_vmess_resp_t *meta = &ctx->resp_meta;
 	uint8_t *rrbuf = ctx->remote_rbuf;
 	uint8_t *lwbuf = ctx->local_wbuf;
@@ -479,7 +471,7 @@ bool pgs_vmess_parse_gcm(const uint8_t *data, uint64_t data_len,
 			return false;
 		ctx->header_recved = true;
 		ctx->resp_len = 0;
-		return pgs_vmess_parse_gcm(data + 4, data_len - 4, ctx, session,
+		return pgs_vmess_parse_gcm(session, data + 4, data_len - 4,
 					   flush);
 	}
 
@@ -497,7 +489,7 @@ bool pgs_vmess_parse_gcm(const uint8_t *data, uint64_t data_len,
 		ctx->resp_len = l - 16;
 		ctx->resp_hash = -1;
 		// skip fnv1a hash
-		return pgs_vmess_parse_gcm(data + 2, data_len - 2, ctx, session,
+		return pgs_vmess_parse_gcm(session, data + 2, data_len - 2,
 					   flush);
 	}
 
@@ -520,9 +512,9 @@ bool pgs_vmess_parse_gcm(const uint8_t *data, uint64_t data_len,
 		flush(session, lwbuf, data_to_decrypt);
 		ctx->resp_len -= data_to_decrypt;
 
-		return pgs_vmess_parse_gcm(data + data_to_decrypt + 16,
-					   data_len - data_to_decrypt - 16, ctx,
-					   session, flush);
+		return pgs_vmess_parse_gcm(session, data + data_to_decrypt + 16,
+					   data_len - data_to_decrypt - 16,
+					   flush);
 	} else {
 		// have some cache in last chunk
 		// read more and do the rest
@@ -540,8 +532,7 @@ bool pgs_vmess_parse_gcm(const uint8_t *data, uint64_t data_len,
 		ctx->resp_len = 0;
 		ctx->remote_rbuf_pos = 0;
 
-		return pgs_vmess_parse_gcm(data + data_to_read,
-					   data_len - data_to_read, ctx,
-					   session, flush);
+		return pgs_vmess_parse_gcm(session, data + data_to_read,
+					   data_len - data_to_read, flush);
 	}
 }
