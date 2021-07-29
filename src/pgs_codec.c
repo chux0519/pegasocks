@@ -123,8 +123,16 @@ bool pgs_ws_parse_head(uint8_t *data, uint64_t data_len, pgs_ws_resp_t *meta)
 	return true;
 }
 
-uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx)
+uint64_t pgs_vmess_write_head(pgs_session_t *session, pgs_vmess_ctx_t *ctx)
 {
+	const uint8_t *uuid = session->outbound->config->password;
+	int is_udp = (session->inbound != NULL &&
+		      session->inbound->state == INBOUND_UDP_RELAY);
+	const uint8_t *udp_rbuf = NULL;
+	if (is_udp) {
+		udp_rbuf = session->inbound->udp_rbuf;
+	}
+
 	uint8_t *buf = ctx->remote_wbuf;
 	uint8_t *socks5_cmd = (uint8_t *)ctx->cmd;
 	uint64_t socks5_cmd_len = ctx->cmdlen;
@@ -139,6 +147,9 @@ uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx)
 
 	// vmess header
 	int n = socks5_cmd_len - 4 - 2;
+	if (is_udp) {
+		n = pgs_get_addr_len(udp_rbuf + 3);
+	}
 	int p = 0;
 	uint64_t header_cmd_len =
 		1 + 16 + 16 + 1 + 1 + 1 + 1 + 1 + 2 + 1 + n + p + 4;
@@ -213,23 +224,45 @@ uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx)
 	// X
 	header_cmd_raw[offset] = 0x00;
 	offset += 1;
-	// tcp
-	header_cmd_raw[offset] = 0x01;
-	offset += 1;
-	// port
-	header_cmd_raw[offset] = socks5_cmd[socks5_cmd_len - 2];
-	header_cmd_raw[offset + 1] = socks5_cmd[socks5_cmd_len - 1];
-	offset += 2;
-	// atype
-	if (socks5_cmd[3] == 0x01) {
-		header_cmd_raw[offset] = 0x01;
+
+	if (is_udp) {
+		header_cmd_raw[offset] = 0x02;
 	} else {
-		header_cmd_raw[offset] = socks5_cmd[3] - 1;
+		header_cmd_raw[offset] = 0x01;
 	}
 	offset += 1;
-	// addr
-	memcpy(header_cmd_raw + offset, socks5_cmd + 4, n);
-	offset += n;
+
+	if (is_udp) {
+		// port
+		header_cmd_raw[offset] = udp_rbuf[3 + n];
+		header_cmd_raw[offset + 1] = udp_rbuf[3 + n + 1];
+		offset += 2;
+		// atype
+		if (udp_rbuf[3] == 0x01) {
+			header_cmd_raw[offset] = 0x01;
+		} else {
+			header_cmd_raw[offset] = udp_rbuf[3] - 1;
+		}
+		offset += 1;
+		// addr
+		memcpy(header_cmd_raw + offset, udp_rbuf + 4, n);
+		offset += n;
+	} else {
+		// port
+		header_cmd_raw[offset] = socks5_cmd[socks5_cmd_len - 2];
+		header_cmd_raw[offset + 1] = socks5_cmd[socks5_cmd_len - 1];
+		offset += 2;
+		// atype
+		if (socks5_cmd[3] == 0x01) {
+			header_cmd_raw[offset] = 0x01;
+		} else {
+			header_cmd_raw[offset] = socks5_cmd[3] - 1;
+		}
+		offset += 1;
+		// addr
+		memcpy(header_cmd_raw + offset, socks5_cmd + 4, n);
+		offset += n;
+	}
 
 	assert(offset + 4 == header_cmd_len);
 
@@ -348,11 +381,10 @@ uint64_t pgs_vmess_write_remote(pgs_session_t *session, const uint8_t *data,
 				uint64_t data_len, pgs_session_write_fn flush)
 {
 	pgs_vmess_ctx_t *ctx = session->outbound->ctx;
-	const uint8_t *password = session->outbound->config->password;
 	uint64_t head_len = 0;
 	if (!ctx->header_sent) {
 		// will setup crytors and remote_wbuf
-		head_len = pgs_vmess_write_head(password, ctx);
+		head_len = pgs_vmess_write_head(session, ctx);
 		ctx->header_sent = true;
 	}
 

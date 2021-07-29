@@ -33,7 +33,7 @@ bool pgs_ws_parse_head(uint8_t *data, uint64_t data_len, pgs_ws_resp_t *meta);
 
 /* vmess */
 // to remote
-uint64_t pgs_vmess_write_head(const uint8_t *uuid, pgs_vmess_ctx_t *ctx);
+uint64_t pgs_vmess_write_head(pgs_session_t *session, pgs_vmess_ctx_t *ctx);
 uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 			      uint64_t data_len, uint64_t head_len,
 			      pgs_session_write_fn flush);
@@ -155,4 +155,22 @@ static void vmess_flush_local(pgs_session_t *session, uint8_t *data,
 	// TODO: support udp
 	evbuffer_add(inboundw, data, len);
 }
+
+static inline int pgs_get_addr_len(const uint8_t *data)
+{
+	switch (data[0] /*atype*/) {
+	case 0x01:
+		// IPv4
+		return 4;
+	case 0x03:
+		return 1 + data[1];
+	case 0x04:
+		// IPv6
+		return 16;
+	default:
+		break;
+	}
+	return 0;
+}
+
 #endif

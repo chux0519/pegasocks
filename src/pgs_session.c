@@ -379,24 +379,9 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			pgs_session_error(session, "socks5: cmd");
 			goto error;
 		}
-		// parse cmd first
-		uint8_t atype = rdata[3];
 		// uint16_t port = rdata[len - 2] << 8 | rdata[len - 1];
-		int addr_len = 0;
-		switch (atype) {
-		case 0x01:
-			// IPv4
-			addr_len = 4;
-			break;
-		case 0x03:
-			// Domain
-			addr_len = rdata[4] + 1;
-			break;
-		case 0x04:
-			// IPv6
-			addr_len = 16;
-			break;
-		default:
+		int addr_len = pgs_get_addr_len(rdata + 3);
+		if (addr_len == 0) {
 			pgs_session_error(session, "socks5: wrong atyp");
 			goto error;
 		}
@@ -765,7 +750,43 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 			pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
 			v2ray_s_ctx->connected = true;
 			pgs_session_debug(session, "connected");
-			on_v2ray_local_read(session->inbound->bev, ctx);
+			if (session->inbound->state == INBOUND_PROXY) {
+				// TCP
+				on_v2ray_local_read(session->inbound->bev, ctx);
+			} else if (session->inbound->state ==
+					   INBOUND_UDP_RELAY &&
+				   session->inbound->udp_remote_wbuf != NULL &&
+				   session->inbound->udp_remote_wbuf_pos > 0) {
+				// UDP
+				const uint8_t *buf =
+					session->inbound->udp_remote_wbuf;
+				uint16_t len =
+					session->inbound->udp_remote_wbuf_pos;
+				if (len <= 3) { /*FRAG is not supported now*/
+					pgs_session_error(
+						session,
+						"invalid udp datagram");
+					return on_v2ray_remote_event(
+						bev, BEV_EVENT_ERROR, ctx);
+				}
+				uint16_t addr_len = 1 + 2; // atype + port
+				addr_len += pgs_get_addr_len(buf + 3);
+				if (len <= (2 + 1 + addr_len)) {
+					pgs_session_error(
+						session,
+						"invalid udp datagram");
+					return on_v2ray_remote_event(
+						bev, BEV_EVENT_ERROR, ctx);
+				}
+				uint16_t data_len =
+					len - 2 - 1 -
+					addr_len; /*RSV(2) | FRAG(1) | ADDR | DATA*/
+				uint64_t total_len = pgs_vmess_write_remote(
+					session, buf + 3 + addr_len, data_len,
+					(pgs_session_write_fn)&vmess_flush_remote);
+
+				session->inbound->udp_remote_wbuf_pos = 0;
+			}
 		}
 	}
 	if (events & BEV_EVENT_ERROR)
@@ -959,22 +980,7 @@ static void on_udp_read_trojan_gfw(int fd, short event, void *ctx)
 			goto error;
 		}
 		uint16_t addr_len = 1 + 2; // atype + port
-		uint8_t atype = buf[3];
-		switch (atype) {
-		case 0x01: { /*ipv4*/
-			addr_len += 4;
-			break;
-		}
-		case 0x03: { /*domain*/
-			addr_len += 1;
-			addr_len += buf[4];
-		}
-		case 0x04: { /*ipv6*/
-			addr_len += 16;
-		}
-		default:
-			break;
-		}
+		addr_len += pgs_get_addr_len(buf + 3);
 		if (len <= (2 + 1 + addr_len)) {
 			pgs_session_error(session, "invalid udp datagram");
 			goto error;
