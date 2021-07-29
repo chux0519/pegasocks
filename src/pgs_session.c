@@ -54,7 +54,7 @@ static int start_udp_server(const pgs_server_config_t *sconfig,
 //static void on_udp_read_v2ray_tcp(int fd, short event, void *ctx);
 //static void on_udp_read_v2ray_ws(int fd, short event, void *ctx);
 //static void on_udp_read_trojan_ws(int fd, short event, void *ctx);
-static void on_udp_read_trojan_gfw(int fd, short event, void *ctx);
+static void on_udp_read_trojan(int fd, short event, void *ctx);
 
 static int init_udp_fd(const pgs_config_t *config, int *fd, int *port)
 {
@@ -118,7 +118,7 @@ static int start_udp_server(const pgs_server_config_t *config,
 				event_new(session->local_server->base,
 					  session->inbound->udp_fd,
 					  EV_READ | EV_PERSIST,
-					  on_udp_read_trojan_gfw, session);
+					  on_udp_read_trojan, session);
 			event_add(session->inbound->udp_server_ev, NULL);
 			return 0;
 		} else {
@@ -127,7 +127,7 @@ static int start_udp_server(const pgs_server_config_t *config,
 				event_new(session->local_server->base,
 					  session->inbound->udp_fd,
 					  EV_READ | EV_PERSIST,
-					  on_udp_read_trojan_gfw, session);
+					  on_udp_read_trojan, session);
 			event_add(session->inbound->udp_server_ev, NULL);
 			return 0;
 		}
@@ -139,7 +139,7 @@ static int start_udp_server(const pgs_server_config_t *config,
 				event_new(session->local_server->base,
 					  session->inbound->udp_fd,
 					  EV_READ | EV_PERSIST,
-					  on_udp_read_trojan_gfw, session);
+					  on_udp_read_trojan, session);
 			event_add(session->inbound->udp_server_ev, NULL);
 			return 0;
 		} else {
@@ -148,7 +148,7 @@ static int start_udp_server(const pgs_server_config_t *config,
 				event_new(session->local_server->base,
 					  session->inbound->udp_fd,
 					  EV_READ | EV_PERSIST,
-					  on_udp_read_trojan_gfw, session);
+					  on_udp_read_trojan, session);
 			event_add(session->inbound->udp_server_ev, NULL);
 			return 0;
 		}
@@ -959,7 +959,7 @@ static void on_session_metrics_send(pgs_session_t *session, uint64_t len)
 /*
  * udp relay
  * */
-static void on_udp_read_trojan_gfw(int fd, short event, void *ctx)
+static void on_udp_read_trojan(int fd, short event, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "udp local read triggered");
