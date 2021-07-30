@@ -134,7 +134,7 @@ uint64_t pgs_vmess_write_head(pgs_session_t *session, pgs_vmess_ctx_t *ctx)
 	}
 
 	uint8_t *buf = ctx->remote_wbuf;
-	uint8_t *socks5_cmd = (uint8_t *)ctx->cmd;
+	const uint8_t *socks5_cmd = ctx->cmd;
 	uint64_t socks5_cmd_len = ctx->cmdlen;
 	time_t now = time(NULL);
 	unsigned long ts = htonll(now);
@@ -234,8 +234,8 @@ uint64_t pgs_vmess_write_head(pgs_session_t *session, pgs_vmess_ctx_t *ctx)
 
 	if (is_udp) {
 		// port
-		header_cmd_raw[offset] = udp_rbuf[3 + n];
-		header_cmd_raw[offset + 1] = udp_rbuf[3 + n + 1];
+		header_cmd_raw[offset] = udp_rbuf[4 + n];
+		header_cmd_raw[offset + 1] = udp_rbuf[4 + n + 1];
 		offset += 2;
 		// atype
 		if (udp_rbuf[3] == 0x01) {

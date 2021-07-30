@@ -79,21 +79,7 @@ static void trojan_write_local(pgs_session_t *session, uint8_t *msg,
 		// decode trojan udp packet
 		uint8_t atype = msg[0];
 		uint16_t addr_len = 1 + 2; // atype + port
-		switch (atype) {
-		case 0x01: { /*ipv4*/
-			addr_len += 4;
-			break;
-		}
-		case 0x03: { /*domain*/
-			addr_len += 1;
-			addr_len += msg[1];
-		}
-		case 0x04: { /*ipv6*/
-			addr_len += 16;
-		}
-		default:
-			break;
-		}
+		addr_len += pgs_get_addr_len(msg);
 		uint16_t payload_len = msg[addr_len] << 8 | msg[addr_len + 1];
 		if (len < (addr_len + 2 + 2 + payload_len) ||
 		    msg[addr_len + 2] != '\r' || msg[addr_len + 3] != '\n') {
@@ -152,25 +138,33 @@ static void vmess_flush_local(pgs_session_t *session, uint8_t *data,
 {
 	struct bufferevent *inbev = session->inbound->bev;
 	struct evbuffer *inboundw = bufferevent_get_output(inbev);
-	// TODO: support udp
-	evbuffer_add(inboundw, data, len);
-}
-
-static inline int pgs_get_addr_len(const uint8_t *data)
-{
-	switch (data[0] /*atype*/) {
-	case 0x01:
-		// IPv4
-		return 4;
-	case 0x03:
-		return 1 + data[1];
-	case 0x04:
-		// IPv6
-		return 16;
-	default:
-		break;
+	uint8_t *udp_packet = NULL;
+	if (session->inbound->state == INBOUND_PROXY) {
+		// TCP
+		evbuffer_add(inboundw, data, len);
+	} else if (session->inbound->state == INBOUND_UDP_RELAY &&
+		   session->inbound->udp_fd != -1) {
+		// pack to socks5 packet
+		pgs_vmess_ctx_t *ctx = session->outbound->ctx;
+		uint64_t udp_packet_len = 2 + 1 + ctx->target_addr_len + len;
+		udp_packet = malloc(udp_packet_len);
+		if (udp_packet == NULL) {
+			pgs_session_error(session, "out of memory");
+			return;
+		}
+		udp_packet[0] = 0x00;
+		udp_packet[1] = 0x00;
+		udp_packet[2] = 0x00;
+		memcpy(udp_packet + 3, ctx->target_addr, ctx->target_addr_len);
+		memcpy(udp_packet + 3 + ctx->target_addr_len, data, len);
+		int n = sendto(
+			session->inbound->udp_fd, udp_packet, udp_packet_len, 0,
+			(struct sockaddr *)&session->inbound->udp_client_addr,
+			session->inbound->udp_client_addr_size);
+		pgs_session_debug(session, "write %d bytes to local udp sock",
+				  n);
+		free(udp_packet);
 	}
-	return 0;
 }
 
 #endif

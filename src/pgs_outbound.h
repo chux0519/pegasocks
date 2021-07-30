@@ -58,6 +58,7 @@ typedef struct pgs_vmess_ctx_s {
 	uint8_t local_wbuf[BUFSIZE_16K];
 	uint8_t remote_rbuf[BUFSIZE_16K];
 	uint8_t remote_wbuf[BUFSIZE_16K];
+	uint8_t target_addr[BUFSIZE_512]; /*atype(1) | addr | port(2)*/
 	// for ws state
 	bool connected;
 	// for request header
@@ -68,12 +69,30 @@ typedef struct pgs_vmess_ctx_s {
 	bool header_recved;
 	pgs_vmess_resp_t resp_meta;
 	uint64_t resp_len;
+	uint64_t target_addr_len;
 	uint64_t remote_rbuf_pos;
 	uint32_t resp_hash;
 	pgs_base_cryptor_t *encryptor;
 	pgs_base_cryptor_t *decryptor;
 	pgs_v2rayserver_secure_t secure;
 } pgs_vmess_ctx_t;
+
+static inline int pgs_get_addr_len(const uint8_t *data)
+{
+	switch (data[0] /*atype*/) {
+	case 0x01:
+		// IPv4
+		return 4;
+	case 0x03:
+		return 1 + data[1];
+	case 0x04:
+		// IPv6
+		return 16;
+	default:
+		break;
+	}
+	return 0;
+}
 
 static char *socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len)
 {
@@ -169,6 +188,7 @@ static pgs_vmess_ctx_t *pgs_vmess_ctx_new(const uint8_t *cmd, uint64_t cmdlen,
 	ptr->header_recved = false;
 	memzero(&ptr->resp_meta, sizeof(pgs_vmess_resp_t));
 	ptr->resp_len = 0;
+	ptr->target_addr_len = 0;
 	ptr->remote_rbuf_pos = 0;
 	ptr->resp_hash = 0;
 	ptr->encryptor = NULL;

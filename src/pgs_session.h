@@ -28,8 +28,8 @@ typedef void(free_ctx_fn)(void *ctx);
 typedef struct pgs_session_inbound_s {
 	struct bufferevent *bev;
 	pgs_session_inbound_state state;
-	uint8_t *cmd;
-	uint64_t cmdlen;
+	uint8_t *cmd; /*socks5 cmd*/
+
 	// udp server and event for udp relay
 	int udp_fd;
 	struct sockaddr_in udp_client_addr;
