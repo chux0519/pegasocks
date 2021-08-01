@@ -55,6 +55,12 @@ execute_process(
     OUTPUT_VARIABLE
         SHORT_HASH)
 
+if(DEFINED STATIC)
+  set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+  set(BUILD_SHARED_LIBS OFF)
+  set(CMAKE_EXE_LINKER_FLAGS "-static")  
+endif()
+
 find_package(Libevent2 REQUIRED)
 include_directories(${LIBEVENT2_INCLUDE_DIR})
 
