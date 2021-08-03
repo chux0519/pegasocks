@@ -5,6 +5,9 @@
 #include "pgs_server_manager.h"
 #include "pgs_log.h"
 #include "pgs_local_server.h"
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 typedef struct pgs_tray_context_s pgs_tray_context_t;
 
