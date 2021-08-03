@@ -135,6 +135,7 @@ if(DEFINED DEBUG_EVENT)
 endif(DEFINED DEBUG_EVENT)
 
 
+cmake_policy(SET CMP0006 OLD)
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)
 

@@ -8,9 +8,9 @@ static SSL_CTX *pgs_ssl_ctx_new()
 {
 	SSL_CTX *ctx = NULL;
 
-	SSL_load_error_strings();
-	SSL_library_init();
-	OpenSSL_add_all_algorithms();
+	OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS |
+				 OPENSSL_INIT_LOAD_CRYPTO_STRINGS,
+			 NULL);
 
 	if ((ctx = SSL_CTX_new(SSLv23_client_method()))) {
 		SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
