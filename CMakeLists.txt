@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.12)
 
 project(pegasocks LANGUAGES C)
 
@@ -58,8 +58,14 @@ execute_process(
 if(DEFINED STATIC)
   set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
   set(BUILD_SHARED_LIBS OFF)
-  set(CMAKE_EXE_LINKER_FLAGS "-static")  
+  if(DEFINED APPLE)
+    message(WARNING "Static build on Apple is not supported, see: https://developer.apple.com/library/archive/qa/qa1118/_index.html")
+  else()
+    set(CMAKE_EXE_LINKER_FLAGS "-static")
+  endif()
 endif()
+
+cmake_policy(SET CMP0074 NEW)
 
 find_package(Libevent2 REQUIRED)
 include_directories(${LIBEVENT2_INCLUDE_DIR})

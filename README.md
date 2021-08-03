@@ -31,9 +31,11 @@ C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
 > cmake -DCMAKE_BUILD_TYPE=Release .. && make
 
 
-注: OSX 系统下默认检测 `/usr/local/Cellar/openssl@1.1/` 目录下最新的 openssl 作为 openssl 根目录。另外支持手动设置 cmake 参数
+注: OSX 系统下默认检测 `/usr/local/Cellar/openssl@1.1/` 目录下最新的 openssl 作为 openssl 根目录。另外支持手动设置 cmake 参数设置自定义版本的依赖
 
-> -DOPENSSL_ROOT_DIR=/xxxxxx/xxx/xxx ..
+> -DOpenSSLx_ROOT=/xxxxxx/xxx/xxx 指定 openssl root
+> 
+> -DLibevent2_ROOT=xxxxxx  指定 libevent root
 
 ## 运行
 

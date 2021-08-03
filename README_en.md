@@ -33,7 +33,10 @@ Unlike most other clients that support multiple protocols, pegasocks does not re
 
 Note: The latest openssl in the `/usr/local/Cellar/openssl@1.1/` directory is detected as the openssl root directory by default on OSX systems. In addition, manual setting of cmake parameters is supported
 
-> -DOPENSSL_ROOT_DIR=/xxxxxx/xxx/xxx
+> -DOpenSSLx_ROOT=/xxxxxx/xxx/xxx for openssl root
+> 
+> -DLibevent2_ROOT=xxxxxx  for libevent root
+
 
 ## Run
 

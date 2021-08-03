@@ -13,18 +13,14 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 		FIND_LIBRARY(LIBEVENT2_LIBRARIES NAMES libevent-x86-v120-mt-2_1_4_0 event libevent )
 	endif()
 else()
-  FIND_PATH(LIBEVENT2_INCLUDE_DIR event2/event.h HINTS
-    /usr/local/include/event2
-    /usr/include/event2)
-
-	# -levent -levent_core -levent_extra -levent_openssl
+  # -levent -levent_core -levent_extra -levent_openssl
   # OpenBSD issue, lookup from /usr/local/lib to avoid lib mismatch
-  FIND_LIBRARY(LIBEVENT2_LIBRARIES NAMES event libevent PATHS 
-    /usr/local/lib
-    /usr/lib)
-	FIND_LIBRARY(LIBEVENT2_CORE_LIBRARIES NAMES event_core libevent_core )
-	FIND_LIBRARY(LIBEVENT2_EXTRA_LIBRARIES NAMES event_extra libevent_extra )
-  FIND_LIBRARY(LIBEVENT2_SSL_LIBRARIES NAMES event_openssl libevent_openssl )
+  FIND_PATH(LIBEVENT2_INCLUDE_DIR event2/event.h)
+  FIND_LIBRARY(LIBEVENT2_LIBRARIES NAMES event libevent)
+  FIND_LIBRARY(LIBEVENT2_CORE_LIBRARIES NAMES event_core libevent_core)
+  FIND_LIBRARY(LIBEVENT2_EXTRA_LIBRARIES NAMES event_extra libevent_extra)
+  FIND_LIBRARY(LIBEVENT2_SSL_LIBRARIES NAMES event_openssl libevent_openssl)
+  
 endif()
 
 
