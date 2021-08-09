@@ -1,11 +1,23 @@
 #ifndef _PGS_CODEC
 #define _PGS_CODEC
 
+#include <arpa/inet.h>
 #include <event2/buffer.h>
 #include <stdint.h>
 
 #include "pgs_defs.h"
 #include "pgs_session.h"
+
+#ifndef htonll
+#define htonll(x)                                                              \
+	((1 == htonl(1)) ?                                                     \
+		       (x) :                                                         \
+		       ((uint64_t)htonl((x)&0xFFFFFFFF) << 32) | htonl((x) >> 32))
+#endif
+
+#ifndef ntohll
+#define ntohll(x) htonll(x)
+#endif
 
 #define pgs_ws_write_head_text(b, l) pgs_ws_write_head(b, l, 0x01)
 #define pgs_ws_write_head_bin(b, l) pgs_ws_write_head(b, l, 0x02)

@@ -1,9 +1,11 @@
 #ifndef _PGS_SESSION
 #define _PGS_SESSION
 
+#include <netinet/in.h>
+#include <event2/event.h>
+
 #include "pgs_local_server.h"
 #include "pgs_outbound.h"
-#include <event2/event.h>
 
 #define pgs_session_debug(session, ...)                                        \
 	pgs_logger_debug(session->local_server->logger, __VA_ARGS__)

@@ -4,17 +4,6 @@
 #include <assert.h>
 #include <openssl/rand.h>
 
-#ifndef htonll
-#define htonll(x)                                                              \
-	((1 == htonl(1)) ?                                                     \
-		       (x) :                                                         \
-		       ((uint64_t)htonl((x)&0xFFFFFFFF) << 32) | htonl((x) >> 32))
-#endif
-
-#ifndef ntohll
-#define ntohll(x) htonll(x)
-#endif
-
 const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
 const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 const char vmess_key_suffix[36] = "c48619fe-8f02-49e0-b9e9-edf763e17e21";
