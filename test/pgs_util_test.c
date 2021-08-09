@@ -1,5 +1,4 @@
-#include "pgs_util.h"
-#include "pgs_crypto.h"
+#include "../src/pgs_crypto.h"
 #include "assert.h"
 
 void test_sha224()
@@ -9,9 +8,9 @@ void test_sha224()
 	char result[] =
 		"d63dc919e201d7bc4c825630d2cf25fdc93d4b2f0d46706d29038d01";
 	char buf[28];
-	pgs_size_t res_len = 0;
-	sha224((const pgs_buf_t *)input, 8, (pgs_buf_t *)buf, &res_len);
-	pgs_buf_t *hexstring = to_hexstring((const pgs_buf_t *)buf, 28);
+	uint64_t res_len = 0;
+	sha224((const uint8_t *)input, 8, (uint8_t *)buf, &res_len);
+	uint8_t *hexstring = to_hexstring((const uint8_t *)buf, 28);
 	assert(res_len == 28);
 	assert(strcmp(result, (const char *)hexstring) == 0);
 	free(hexstring);
@@ -24,10 +23,10 @@ void test_shake128()
 	char result[] =
 		"f4202e3c5852f9182a0430fd8144f0a74b95e7417ecae17db0f8cfeed0e3e66e";
 	char buf[32];
-	pgs_size_t res_len = 32;
-	shake128((const pgs_buf_t *)input, strlen(input), (pgs_buf_t *)buf,
+	uint64_t res_len = 32;
+	shake128((const uint8_t *)input, strlen(input), (uint8_t *)buf,
 		 res_len);
-	pgs_buf_t *hexstring = to_hexstring((const pgs_buf_t *)buf, res_len);
+	uint8_t *hexstring = to_hexstring((const uint8_t *)buf, res_len);
 	assert(strcmp(result, (const char *)hexstring) == 0);
 	free(hexstring);
 }
@@ -47,10 +46,10 @@ void test_hmac_md5()
 	char data[] = "Hi There";
 	char result[] = "9294727a3638bb1c13f48ef8158bfc9d";
 	char buf[16];
-	pgs_size_t res_len = 0;
-	hmac_md5((const pgs_buf_t *)key, 16, (const pgs_buf_t *)data, 8,
-		 (pgs_buf_t *)buf, &res_len);
-	pgs_buf_t *hexstring = to_hexstring((const pgs_buf_t *)buf, res_len);
+	uint64_t res_len = 0;
+	hmac_md5((const uint8_t *)key, 16, (const uint8_t *)data, 8,
+		 (uint8_t *)buf, &res_len);
+	uint8_t *hexstring = to_hexstring((const uint8_t *)buf, res_len);
 	assert(res_len == 16);
 	assert(strcmp(result, (const char *)hexstring) == 0);
 	free(hexstring);
@@ -62,8 +61,8 @@ void test_md5()
 	char input[] = "password";
 	char result[] = "5f4dcc3b5aa765d61d8327deb882cf99";
 	char buf[MD5_LEN];
-	md5((const pgs_buf_t *)input, 8, (pgs_buf_t *)buf);
-	pgs_buf_t *hexstring = to_hexstring((const pgs_buf_t *)buf, MD5_LEN);
+	md5((const uint8_t *)input, 8, (uint8_t *)buf);
+	uint8_t *hexstring = to_hexstring((const uint8_t *)buf, MD5_LEN);
 	assert(strcmp(result, (const char *)hexstring) == 0);
 	free(hexstring);
 }
@@ -86,11 +85,11 @@ void test_aes_128_cfb_encrypt()
 	char result[] = "960bb181638ddd77";
 	unsigned char output[8];
 
-	int output_len = aes_128_cfb_encrypt((const pgs_buf_t *)plaintext, 8,
-					     (const pgs_buf_t *)key,
-					     (const pgs_buf_t *)iv, output);
-	pgs_buf_t *hexstring =
-		to_hexstring((const pgs_buf_t *)output, output_len);
+	int output_len = aes_128_cfb_encrypt((const uint8_t *)plaintext, 8,
+					     (const uint8_t *)key,
+					     (const uint8_t *)iv, output);
+	uint8_t *hexstring =
+		to_hexstring((const uint8_t *)output, output_len);
 	assert(strcmp(result, (const char *)hexstring) == 0);
 	free(hexstring);
 }
@@ -107,9 +106,9 @@ void test_aes_128_cfb_decrypt()
 	char result[] = "password";
 	unsigned char output[9];
 
-	int output_len = aes_128_cfb_decrypt((const pgs_buf_t *)ciphertext, 8,
-					     (const pgs_buf_t *)key,
-					     (const pgs_buf_t *)iv, output);
+	int output_len = aes_128_cfb_decrypt((const uint8_t *)ciphertext, 8,
+					     (const uint8_t *)key,
+					     (const uint8_t *)iv, output);
 	assert(output_len == 8);
 	output[8] = '\0';
 	assert(strcmp(result, (const char *)output) == 0);

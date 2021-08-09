@@ -55,6 +55,16 @@ execute_process(
     OUTPUT_VARIABLE
         SHORT_HASH)
 
+if(DEFINED STATIC)
+  set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+  set(BUILD_SHARED_LIBS OFF)
+  if(DEFINED APPLE)
+    message(WARNING "Static build on Apple is not supported, see: https://developer.apple.com/library/archive/qa/qa1118/_index.html")
+  else()
+    set(CMAKE_EXE_LINKER_FLAGS "-static")
+  endif()
+endif()
+
 find_package(Libevent2 REQUIRED)
 include_directories(${LIBEVENT2_INCLUDE_DIR})
 

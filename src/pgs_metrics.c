@@ -31,13 +31,11 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 			      int idx, pgs_logger_t *logger)
 {
 	const pgs_server_config_t *config = &sm->server_configs[idx];
-	const pgs_buf_t *cmd = g204_cmd;
-	pgs_size_t cmd_len = 20;
+	const uint8_t *cmd = g204_cmd;
+	uint64_t cmd_len = 20;
 	pgs_metrics_task_ctx_t *mctx =
 		pgs_metrics_task_ctx_new(base, sm, idx, logger, NULL);
 
-	pgs_session_inbound_cbs_t inbound_cbs = { NULL, NULL, NULL, NULL,
-						  NULL };
 	pgs_session_outbound_cbs_t outbound_cbs = {
 		on_ws_g204_event,	on_trojan_gfw_g204_event,
 		on_ws_g204_event,	on_v2ray_tcp_g204_event,
@@ -45,10 +43,10 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 		on_v2ray_ws_g204_read,	on_v2ray_tcp_g204_read
 	};
 
-	pgs_session_outbound_t *ptr = pgs_session_outbound_new(
-		config, idx, cmd, cmd_len, logger, base, mctx->dns_base, NULL,
-		inbound_cbs, outbound_cbs, mctx,
-		(free_ctx_fn *)pgs_metrics_task_ctx_free);
+	pgs_session_outbound_t *ptr =
+		pgs_session_outbound_new(config, idx, cmd, cmd_len, logger,
+					 base, mctx->dns_base, outbound_cbs,
+					 mctx);
 	mctx->outbound = ptr;
 }
 
@@ -72,7 +70,7 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	pgs_size_t data_len = evbuffer_get_length(input);
+	uint64_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	pgs_trojansession_ctx_t *trojan_s_ctx = mctx->outbound->ctx;
@@ -94,8 +92,8 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 			mctx->sm->server_stats[mctx->server_idx].connect_delay =
 				connect_time;
 
-			pgs_size_t len = strlen(g204_http_req);
-			pgs_size_t head_len = trojan_s_ctx->head_len;
+			uint64_t len = strlen(g204_http_req);
+			uint64_t head_len = trojan_s_ctx->head_len;
 
 			if (head_len > 0)
 				len += head_len;
@@ -117,8 +115,8 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 	}
 }
 
-static void v2ray_ws_vmess_write_cb(struct evbuffer *writer, pgs_buf_t *data,
-				    pgs_size_t len)
+static void v2ray_ws_vmess_write_cb(struct evbuffer *writer, uint8_t *data,
+				    uint64_t len)
 {
 	pgs_ws_write_bin(writer, data, len);
 }
@@ -129,7 +127,7 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	pgs_size_t data_len = evbuffer_get_length(input);
+	uint64_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	pgs_vmess_ctx_t *v2ray_s_ctx = mctx->outbound->ctx;
@@ -150,12 +148,12 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 					 connect_time);
 			mctx->sm->server_stats[mctx->server_idx].connect_delay =
 				connect_time;
-			pgs_size_t total_len = pgs_vmess_write(
-				(const pgs_buf_t *)
-					mctx->outbound->config->password,
-				(const pgs_buf_t *)g204_http_req,
-				strlen(g204_http_req), v2ray_s_ctx, output,
-				(pgs_vmess_write_body_cb)&v2ray_ws_vmess_write_cb);
+			pgs_session_t dummy = { 0 };
+			dummy.outbound = mctx->outbound;
+			uint64_t total_len = pgs_vmess_write_remote(
+				&dummy, (const uint8_t *)g204_http_req,
+				strlen(g204_http_req),
+				(pgs_session_write_fn)&vmess_flush_remote);
 		}
 	} else {
 		double g204_time = elapse(mctx->start_at);
@@ -187,8 +185,8 @@ static void on_trojan_gfw_g204_event(struct bufferevent *bev, short events,
 			connect_time;
 		// write request
 		struct evbuffer *output = bufferevent_get_output(bev);
-		pgs_size_t len = strlen(g204_http_req);
-		pgs_size_t head_len = sctx->head_len;
+		uint64_t len = strlen(g204_http_req);
+		uint64_t head_len = sctx->head_len;
 		if (head_len > 0)
 			len += head_len;
 
@@ -227,12 +225,15 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 		pgs_logger_debug(mctx->logger, "connect: %f", connect_time);
 		mctx->sm->server_stats[mctx->server_idx].connect_delay =
 			connect_time;
+
 		// write request
+		pgs_session_t dummy = { 0 };
+		dummy.outbound = mctx->outbound;
 		struct evbuffer *output = bufferevent_get_output(bev);
-		pgs_size_t total_len = pgs_vmess_write(
-			(const pgs_buf_t *)mctx->outbound->config->password,
-			(const pgs_buf_t *)g204_http_req, strlen(g204_http_req),
-			sctx, output, (pgs_vmess_write_body_cb)&evbuffer_add);
+		uint64_t total_len = pgs_vmess_write_remote(
+			&dummy, (const uint8_t *)g204_http_req,
+			strlen(g204_http_req),
+			(pgs_session_write_fn)&vmess_flush_remote);
 	}
 	if (events & BEV_EVENT_ERROR)
 		pgs_logger_error(mctx->logger, "Error from bufferevent");

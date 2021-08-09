@@ -1,8 +1,9 @@
 #ifndef _PGS_MPSC
 #define _PGS_MPSC
 
-#include "stdatomic.h"
-#include "pgs_core.h"
+#include <stdatomic.h>
+#include <stdbool.h>
+#include <stdlib.h>
 
 typedef struct pgs_mpsc_s pgs_mpsc_t;
 

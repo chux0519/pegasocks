@@ -5,6 +5,8 @@
 #include <signal.h>
 #include <pthread.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 static void accept_error_cb(struct evconnlistener *listener, void *ctx)
 {
@@ -40,10 +42,9 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 
 // New server
 pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
-
 {
 	pgs_local_server_t *ptr = malloc(sizeof(pgs_local_server_t));
-	ptr->tid = (pgs_tid)pthread_self();
+	ptr->tid = (uint32_t)pthread_self();
 	ptr->logger = pgs_logger_new(ctx->mpsc, ctx->config->log_level,
 				     ctx->config->log_isatty);
 	ptr->base = event_base_new();
@@ -61,12 +62,21 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 				   -1, ctx->fd);
 	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
 
+	// TODO: construct a new udp session add more context
+	// READ from udp fd(cache this fd) -> TROJAN/V2RAY -> REMOTE
+	// cache the udp fd with the tcp connection
+	//   - the new tcp connection should be closed when the socks5 socket is closed
+	// read from remote tcp -> decode -> write to local udp fd
+	// wait for tcp closed ?
+	// ptr->udp_event = event_new(ptr->base, ctx->udp_fd, EV_READ | EV_PERSIST,
+	//			   udp_read_cb, ptr);
 	return ptr;
 }
 
 // Run the Loop
 void pgs_local_server_run(pgs_local_server_t *local)
 {
+	// event_add(local->udp_event, NULL);
 	event_base_dispatch(local->base);
 }
 

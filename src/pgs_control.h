@@ -1,6 +1,8 @@
 #ifndef _PGS_CONTROL
 #define _PGS_CONTROL
 
+#include <stdint.h>
+
 #include <event2/bufferevent.h>
 
 #include "pgs_server_manager.h"

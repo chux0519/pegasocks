@@ -5,16 +5,14 @@
 #include <event2/bufferevent.h>
 #include <event2/dns.h>
 
-#include "pgs_core.h"
+#include <stdint.h>
+
 #include "pgs_log.h"
 #include "pgs_config.h"
 #include "pgs_server_manager.h"
 
-typedef struct pgs_local_server_s pgs_local_server_t;
-typedef struct pgs_local_server_ctx_s pgs_local_server_ctx_t;
-
-struct pgs_local_server_s {
-	pgs_tid tid;
+typedef struct pgs_local_server_s {
+	uint32_t tid;
 	int server_fd;
 	struct event_base *base;
 	struct evdns_base *dns_base;
@@ -23,14 +21,14 @@ struct pgs_local_server_s {
 	// shared from main thread, read only
 	pgs_config_t *config;
 	pgs_server_manager_t *sm;
-};
+} pgs_local_server_t;
 
-struct pgs_local_server_ctx_s {
+typedef struct pgs_local_server_ctx_s {
 	int fd;
 	pgs_mpsc_t *mpsc;
 	pgs_config_t *config;
 	pgs_server_manager_t *sm;
-};
+} pgs_local_server_ctx_t;
 
 pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx);
 void pgs_local_server_run(pgs_local_server_t *local);

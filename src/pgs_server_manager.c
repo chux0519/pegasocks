@@ -1,5 +1,4 @@
 #include "pgs_server_manager.h"
-#include "pgs_core.h"
 #include <assert.h>
 
 pgs_server_manager_t *
@@ -81,8 +80,7 @@ void pgs_server_stats_free(pgs_server_stats_t *ptr, int len)
 }
 
 pgs_session_stats_msg_t *pgs_session_stats_msg_new(time_t start, time_t end,
-						   pgs_size_t send,
-						   pgs_size_t recv,
+						   uint64_t send, uint64_t recv,
 						   int config_idx)
 {
 	pgs_server_session_stats_t *data =

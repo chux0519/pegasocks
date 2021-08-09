@@ -9,7 +9,7 @@ static char *log_levels[] = { "DEBUG", "INFO", "WARN", "ERROR" };
 static char *log_colors[] = { "\e[01;32m", "\e[01;32m", "\e[01;35m",
 			      "\e[01;31m" };
 
-pgs_logger_msg_t *pgs_logger_msg_new(char *msg, pgs_tid tid)
+pgs_logger_msg_t *pgs_logger_msg_new(char *msg, uint32_t tid)
 {
 	pgs_logger_msg_t *ptr = malloc(sizeof(pgs_logger_msg_t));
 	ptr->msg = msg;
@@ -37,7 +37,7 @@ pgs_logger_t *pgs_logger_new(pgs_mpsc_t *mpsc, LOG_LEVEL level, bool isatty)
 	pgs_logger_t *ptr = malloc(sizeof(pgs_logger_t));
 	ptr->level = level;
 	ptr->mpsc = mpsc;
-	ptr->tid = (pgs_tid)pthread_self();
+	ptr->tid = (uint32_t)pthread_self();
 	ptr->isatty = isatty;
 	return ptr;
 }

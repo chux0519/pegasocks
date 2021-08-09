@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include <event2/listener.h>
 #include <event2/buffer.h>
@@ -106,7 +107,7 @@ static void on_control_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	pgs_size_t len = evbuffer_get_length(input);
+	uint64_t len = evbuffer_get_length(input);
 	unsigned char *rdata = evbuffer_pullup(input, len);
 
 	// Support commands are

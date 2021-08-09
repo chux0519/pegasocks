@@ -1,10 +1,12 @@
 #include "pgs_config.h"
+#include "pgs_crypto.h"
+
 #include <stdio.h>
+#include <unistd.h>
+
 #include <json-c/json.h>
-#include "pgs_util.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include <unistd.h>
 
 /**
  * load config
@@ -41,8 +43,8 @@ pgs_config_t *pgs_config_load(const char *config)
 	// Parse content
 	pgs_config_t *ptr = pgs_config_new();
 
-	json_object *log_file_obj = json_object_object_get(jobj, "log_file");
-	if (log_file_obj) {
+	json_object *log_file_obj;
+	if (json_object_object_get_ex(jobj, "log_file", &log_file_obj)) {
 		const char *log_file = json_object_get_string(log_file_obj);
 		if (log_file != NULL) {
 			FILE *log_fd = fopen(log_file, "a+");
@@ -127,23 +129,22 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 					goto error;
 			} else if (strcmp(key, "password") == 0) {
 				ptr[i].password =
-					(pgs_buf_t *)json_object_get_string(
-						val);
+					(uint8_t *)json_object_get_string(val);
 				if (ptr[i].password == NULL)
 					goto error;
 			}
 		}
 		if (strcmp(ptr[i].server_type, "trojan") == 0) {
 			// password = to_hexstring(sha224(password))
-			pgs_buf_t encoded_pass[SHA224_LEN];
-			pgs_size_t encoded_len = 0;
-			sha224((const pgs_buf_t *)ptr[i].password,
+			uint8_t encoded_pass[SHA224_LEN];
+			uint64_t encoded_len = 0;
+			sha224((const uint8_t *)ptr[i].password,
 			       strlen((const char *)ptr[i].password),
 			       encoded_pass, &encoded_len);
 			if (encoded_len != SHA224_LEN)
 				goto error;
 
-			pgs_buf_t *hexpass =
+			uint8_t *hexpass =
 				to_hexstring(encoded_pass, encoded_len);
 
 			ptr[i].password = hexpass;
@@ -156,7 +157,7 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 				else
 					j++;
 			}
-			pgs_buf_t *uuid = malloc(16 * sizeof(pgs_buf_t));
+			uint8_t *uuid = malloc(16 * sizeof(uint8_t));
 			hextobin(uuid_hex, uuid, 16);
 			ptr[i].password = uuid;
 		}
@@ -207,7 +208,7 @@ pgs_config_t *pgs_config_new()
 	return ptr;
 }
 
-pgs_server_config_t *pgs_servers_config_new(pgs_size_t len)
+pgs_server_config_t *pgs_servers_config_new(uint64_t len)
 {
 	pgs_server_config_t *ptr = malloc(sizeof(pgs_server_config_t) * len);
 	for (int i = 0; i < len; i++) {
@@ -220,7 +221,7 @@ pgs_server_config_t *pgs_servers_config_new(pgs_size_t len)
 	return ptr;
 }
 
-void pgs_servers_config_free(pgs_server_config_t *ptr, pgs_size_t len)
+void pgs_servers_config_free(pgs_server_config_t *ptr, uint64_t len)
 {
 	if (ptr == NULL || len == 0)
 		return;
@@ -261,14 +262,19 @@ pgs_trojanserver_config_t *pgs_trojanserver_config_parse(pgs_config_t *config,
 		goto error;
 	}
 
-	json_object *ssl_obj = json_object_object_get(jobj, "ssl");
-	json_object *ws_obj = json_object_object_get(jobj, "websocket");
-
-	if (ssl_obj) {
+	json_object *ssl_obj;
+	if (json_object_object_get_ex(jobj, "ssl", &ssl_obj)) {
 		ptr->ssl.enabled = true;
+		json_object_object_foreach(ssl_obj, k, v)
+		{
+			if (strcmp(k, "sni") == 0) {
+				ptr->ssl.sni = json_object_get_string(v);
+			}
+		}
 	}
 
-	if (ws_obj) {
+	json_object *ws_obj;
+	if (json_object_object_get_ex(jobj, "websocket", &ws_obj)) {
 		// parse websocket config
 		ptr->websocket.enabled = true;
 		json_object_object_foreach(ws_obj, k, v)
@@ -300,6 +306,7 @@ pgs_trojanserver_config_t *pgs_trojanserver_config_new()
 		malloc(sizeof(pgs_trojanserver_config_t));
 	ptr->ssl.enabled = true;
 	ptr->ssl.cert = NULL;
+	ptr->ssl.sni = NULL;
 	ptr->websocket.enabled = false;
 	ptr->websocket.hostname = NULL;
 	ptr->websocket.path = NULL;
@@ -322,30 +329,34 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
 {
 	pgs_v2rayserver_config_t *ptr = pgs_v2rayserver_config_new();
 
-	json_object *secure_obj = json_object_object_get(jobj, "secure");
-	if (secure_obj) {
+	json_object *secure_obj;
+	if (json_object_object_get_ex(jobj, "secure", &secure_obj)) {
 		const char *secure = json_object_get_string(secure_obj);
 		if (secure && strcmp(secure, "aes-128-gcm") == 0) {
 			ptr->secure = V2RAY_SECURE_GCM;
 		}
 	}
 
-	json_object *ssl_obj = json_object_object_get(jobj, "ssl");
-	if (ssl_obj) {
+	json_object *ssl_obj;
+	if (json_object_object_get_ex(jobj, "ssl", &ssl_obj)) {
 		ptr->ssl.enabled = true;
 		ptr->ssl_ctx = pgs_ssl_ctx_new();
 		if (ptr->ssl_ctx == NULL) {
 			pgs_config_error(config, "Error: pgs_ssl_ctx_new");
 			goto error;
 		}
+		json_object_object_foreach(ssl_obj, k, v)
+		{
+			if (strcmp(k, "sni") == 0) {
+				ptr->ssl.sni = json_object_get_string(v);
+			}
+		}
 	} else {
 		ptr->ssl.enabled = false;
 		ptr->ssl_ctx = NULL;
 	}
-
-	json_object *ws_obj = json_object_object_get(jobj, "websocket");
-
-	if (ws_obj) {
+	json_object *ws_obj;
+	if (json_object_object_get_ex(jobj, "websocket", &ws_obj)) {
 		// parse websocket config
 		ptr->websocket.enabled = true;
 		json_object_object_foreach(ws_obj, k, v)
@@ -377,6 +388,7 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_new()
 		malloc(sizeof(pgs_v2rayserver_config_t));
 	ptr->ssl.enabled = false;
 	ptr->ssl.cert = NULL;
+	ptr->ssl.sni = NULL;
 	ptr->websocket.enabled = false;
 	ptr->websocket.hostname = NULL;
 	ptr->websocket.path = NULL;

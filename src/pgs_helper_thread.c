@@ -1,5 +1,4 @@
 #include "pgs_helper_thread.h"
-#include "pgs_core.h"
 #include "pgs_metrics.h"
 #include "pgs_control.h"
 
@@ -49,7 +48,7 @@ void pgs_timer_init(int interval, pgs_timer_cb_t cb,
 pgs_helper_thread_ctx_t *pgs_helper_thread_ctx_new(pgs_helper_thread_arg_t *arg)
 {
 	pgs_helper_thread_ctx_t *ptr = malloc(sizeof(pgs_helper_thread_ctx_t));
-	ptr->tid = (pgs_tid)pthread_self();
+	ptr->tid = (uint32_t)pthread_self();
 	ptr->base = event_base_new();
 	ptr->config = arg->config;
 	ptr->logger = arg->logger;
