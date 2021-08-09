@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.5)
 
 project(pegasocks LANGUAGES C)
 
@@ -64,8 +64,6 @@ if(DEFINED STATIC)
     set(CMAKE_EXE_LINKER_FLAGS "-static")
   endif()
 endif()
-
-cmake_policy(SET CMP0074 NEW)
 
 find_package(Libevent2 REQUIRED)
 include_directories(${LIBEVENT2_INCLUDE_DIR})
@@ -135,7 +133,6 @@ if(DEFINED DEBUG_EVENT)
 endif(DEFINED DEBUG_EVENT)
 
 
-cmake_policy(SET CMP0006 OLD)
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)
 
