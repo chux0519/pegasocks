@@ -24,6 +24,14 @@ C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
 - libevent2
 - json-c
 
+## 安装
+
+如果你使用 Arch Linux，可以使用 aur 进行安装
+
+> yay -S pegasocks-git --overwrite /usr/local/bin/pegas,/usr/local/share/pegasocks/*
+
+或者直接编译如下
+
 ## 编译
 
 > mkdir build && cd build

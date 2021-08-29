@@ -24,6 +24,14 @@ Unlike most other clients that support multiple protocols, pegasocks does not re
 - libevent2
 - json-c
 
+## Install
+
+If you use Arch Linux, you can install the latest version via AUR
+
+> yay -S pegasocks-git --overwrite /usr/local/bin/pegas,/usr/local/share/pegasocks/*
+
+Or you can build it yourself as following
+
 ## Build
 
 > mkdir build && cd build
