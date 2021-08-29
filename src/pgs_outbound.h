@@ -317,14 +317,36 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 		pgs_v2rayserver_config_t *vconf =
 			(pgs_v2rayserver_config_t *)config->extra;
 		if (!vconf->websocket.enabled) {
-			// raw tcp vmess
+			// setup bev
+			if (vconf->ssl.enabled && vconf->ssl_ctx) {
+				// ssl + vmess
+				const char *sni = config->server_address;
+				if (vconf->ssl.sni != NULL) {
+					sni = vconf->ssl.sni;
+				}
+				SSL *ssl = pgs_ssl_new(vconf->ssl_ctx,
+						       (void *)sni);
+				if (ssl == NULL) {
+					pgs_logger_error(logger, "SSL_new");
+					goto error;
+				}
+				ptr->bev = bufferevent_openssl_socket_new(
+					base, -1, ssl,
+					BUFFEREVENT_SSL_CONNECTING,
+					BEV_OPT_CLOSE_ON_FREE |
+						BEV_OPT_DEFER_CALLBACKS);
+				bufferevent_openssl_set_allow_dirty_shutdown(
+					ptr->bev, 1);
+			} else {
+				// raw vmess
+				ptr->bev = bufferevent_socket_new(
+					base, -1,
+					BEV_OPT_CLOSE_ON_FREE |
+						BEV_OPT_DEFER_CALLBACKS);
+			}
+
 			ptr->ctx =
 				pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
-
-			ptr->bev = bufferevent_socket_new(
-				base, -1,
-				BEV_OPT_CLOSE_ON_FREE |
-					BEV_OPT_DEFER_CALLBACKS);
 
 			assert(outbound_cbs.on_v2ray_tcp_remote_event &&
 			       outbound_cbs.on_v2ray_tcp_remote_read);
@@ -333,7 +355,8 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 				NULL, outbound_cbs.on_v2ray_tcp_remote_event,
 				cb_ctx);
 		} else {
-			// websocket can be protected by ssl
+			// websocket enabled
+			// check if wss
 			if (vconf->ssl.enabled && vconf->ssl_ctx) {
 				const char *sni = config->server_address;
 				if (vconf->ssl.sni != NULL) {
