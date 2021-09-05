@@ -5,14 +5,9 @@
 #include <assert.h>
 #include <signal.h>
 
-static void pgs_timer_cb(evutil_socket_t fd, short event, void *data);
-
-/* timer */
 static void pgs_timer_cb(evutil_socket_t fd, short event, void *data)
 {
 	pgs_timer_cb_arg_t *arg = data;
-	// try to read metrics
-	pgs_server_manager_tryrecv(arg->ctx->sm);
 	// try to read all logs
 	pgs_logger_tryrecv(arg->ctx->logger, arg->ctx->config->log_file);
 	arg->tv.tv_sec = 1;
@@ -35,7 +30,7 @@ static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 void pgs_timer_init(int interval, pgs_timer_cb_t cb,
 		    pgs_helper_thread_ctx_t *ptr)
 {
-	// FIXME: leaks
+	// FIXME: leaks?
 	pgs_timer_cb_arg_t *arg = malloc(sizeof(pgs_timer_cb_arg_t));
 	arg->tv.tv_sec = interval;
 	arg->tv.tv_usec = 0;
@@ -69,12 +64,13 @@ void *pgs_helper_thread_start(void *data)
 
 	pgs_helper_thread_ctx_t *ctx = pgs_helper_thread_ctx_new(arg);
 
-	// init timer cb
+	// timer for logger
 	pgs_timer_init(1, pgs_timer_cb, ctx);
 
+	// timer for connect and g204, interval can be setted by config
 	pgs_timer_init(1, pgs_metrics_timer_cb, ctx);
 
-	// init control pannel
+	// control server
 	pgs_control_server_start(arg->ctrl_fd, ctx->base, ctx->sm, ctx->logger,
 				 ctx->config);
 

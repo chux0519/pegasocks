@@ -57,17 +57,12 @@ void pgs_logger_log(LOG_LEVEL level, pgs_logger_t *logger, const char *fmt, ...)
 
 	// construct string, then send to mpsc
 	// LEVEL date-time tid: MSG
-	char msg[MAX_MSG_LEN - 64];
-	char datetime[64];
+	char msg[MAX_MSG_LEN - 32];
+	char datetime[32];
+	PARSE_TIME_NOW(datetime);
 	va_start(args, fmt);
 	vsprintf(msg, fmt, args);
 	va_end(args);
-
-	time_t t;
-	struct tm *now;
-	time(&t);
-	now = localtime(&t);
-	strftime(datetime, sizeof(datetime), TIME_FORMAT, now);
 
 	char *m = malloc(sizeof(char) * MAX_MSG_LEN);
 
@@ -91,17 +86,12 @@ void pgs_logger_main_log(LOG_LEVEL level, FILE *output, const char *fmt, ...)
 {
 	va_list args;
 	// LEVEL date-time: MSG
-	char msg[MAX_MSG_LEN - 64];
-	char datetime[64];
+	char msg[MAX_MSG_LEN - 32];
+	char datetime[32];
+	PARSE_TIME_NOW(datetime);
 	va_start(args, fmt);
 	vsprintf(msg, fmt, args);
 	va_end(args);
-
-	time_t t;
-	struct tm *now;
-	time(&t);
-	now = localtime(&t);
-	strftime(datetime, sizeof(datetime), TIME_FORMAT, now);
 
 	if (isatty(fileno(output))) {
 		fprintf(output, "%s%s [thread-main] %s: \e[0m%s\n",

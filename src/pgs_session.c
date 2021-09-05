@@ -179,9 +179,9 @@ pgs_session_t *pgs_session_new(int fd, pgs_local_server_t *local_server)
 	ptr->outbound = NULL;
 
 	// init metrics
-	ptr->metrics = malloc(sizeof(pgs_server_session_stats_t));
-	ptr->metrics->start = time(NULL);
-	ptr->metrics->end = time(NULL);
+	ptr->metrics = malloc(sizeof(pgs_session_stats_t));
+	gettimeofday(&ptr->metrics->start, NULL);
+	gettimeofday(&ptr->metrics->end, NULL);
 	ptr->metrics->recv = 0;
 	ptr->metrics->send = 0;
 
@@ -211,19 +211,16 @@ void pgs_session_free(pgs_session_t *session)
 		pgs_session_inbound_free(session->inbound);
 
 	if (session->outbound) {
-		session->metrics->end = time(NULL);
 		const char *addr = session->outbound->dest;
-		// emit metrics
-		pgs_session_stats_msg_t *msg = pgs_session_stats_msg_new(
-			session->metrics->start, session->metrics->end,
-			session->metrics->send, session->metrics->recv,
-			session->outbound->config_idx);
-		pgs_session_stats_msg_send(msg, session->local_server->sm);
+		gettimeofday(&session->metrics->end, NULL);
+		char tm_start_str[32], tm_end_str[32];
+		PARSE_SESSION_TIMEVAL(tm_start_str, session->metrics->start);
+		PARSE_SESSION_TIMEVAL(tm_end_str, session->metrics->end);
 		pgs_session_info(
 			session,
-			"connection to %s:%d closed, send: %d, recv: %d", addr,
-			session->outbound->port, session->metrics->send,
-			session->metrics->recv);
+			"connection to %s:%d closed, start: %s, end: %s, send: %d, recv: %d",
+			addr, session->outbound->port, tm_start_str, tm_end_str,
+			session->metrics->send, session->metrics->recv);
 		pgs_session_outbound_free(session->outbound);
 	}
 

@@ -15,6 +15,7 @@ typedef struct pgs_logger_server_s pgs_logger_server_t;
 
 #define MAX_MSG_LEN 4096
 #define TIME_FORMAT "%Y-%m-%d %H:%M:%S"
+#define SESSION_TIME_FORMAT "%H:%M:%S"
 #define pgs_logger_debug(logger, ...) pgs_logger_log(DEBUG, logger, __VA_ARGS__)
 #define pgs_logger_info(logger, ...) pgs_logger_log(INFO, logger, __VA_ARGS__)
 #define pgs_logger_warn(logger, ...) pgs_logger_log(WARN, logger, __VA_ARGS__)
@@ -23,6 +24,25 @@ typedef struct pgs_logger_server_s pgs_logger_server_t;
 #define pgs_logger_main_bug(fp, ...) pgs_logger_main_log(DEBUG, fp, __VA_ARGS__)
 #define pgs_logger_main_error(fp, ...)                                         \
 	pgs_logger_main_log(ERROR, fp, __VA_ARGS__)
+
+#define PARSE_TIME_NOW(buffer)                                                 \
+	do {                                                                   \
+		time_t t;                                                      \
+		struct tm *now;                                                \
+		time(&t);                                                      \
+		now = localtime(&t);                                           \
+		strftime(buffer, sizeof(buffer), TIME_FORMAT, now);            \
+	} while (0)
+
+#define PARSE_SESSION_TIMEVAL(buffer, tv)                                      \
+	do {                                                                   \
+		struct tm *tm_info;                                            \
+		int millisec = tv.tv_usec / 1000.0;                            \
+		tm_info = localtime(&tv.tv_sec);                               \
+		strftime(buffer, sizeof(buffer), SESSION_TIME_FORMAT,          \
+			 tm_info);                                             \
+		sprintf(buffer, "%s.%03d", buffer, millisec);                  \
+	} while (0)
 
 void pgs_logger_debug_buffer(pgs_logger_t *logger, unsigned char *buf,
 			     int size);

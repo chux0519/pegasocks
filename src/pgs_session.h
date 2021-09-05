@@ -27,6 +27,13 @@ typedef enum {
 } pgs_session_inbound_state;
 typedef void(free_ctx_fn)(void *ctx);
 
+typedef struct pgs_server_session_stats_s {
+	struct timeval start;
+	struct timeval end;
+	uint64_t send;
+	uint64_t recv;
+} pgs_session_stats_t;
+
 typedef struct pgs_session_inbound_s {
 	struct bufferevent *bev;
 	pgs_session_inbound_state state;
@@ -46,7 +53,7 @@ typedef struct pgs_session_s {
 	pgs_session_inbound_t *inbound;
 	pgs_session_outbound_t *outbound;
 	pgs_local_server_t *local_server;
-	pgs_server_session_stats_t *metrics;
+	pgs_session_stats_t *metrics;
 } pgs_session_t;
 
 typedef struct pgs_session_inbound_cbs_s {
