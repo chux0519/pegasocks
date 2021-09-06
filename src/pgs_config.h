@@ -7,7 +7,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <json-c/json.h>
-#include <openssl/ssl.h>
 
 typedef struct pgs_config_ssl_s pgs_trojanserver_ssl_t;
 typedef struct pgs_config_ssl_s pgs_v2rayserver_ssl_t;
@@ -17,7 +16,7 @@ typedef enum {
 	V2RAY_SECURE_NONE = 1,
 	V2RAY_SECURE_GCM = 3,
 	V2RAY_SECURE_CHACHA = 4
-} pgs_v2rayserver_secure_t;
+} pgs_v2ray_secure_t;
 
 #define pgs_config_info(config, ...)                                           \
 	pgs_logger_main_info(config->log_file, __VA_ARGS__)
@@ -66,14 +65,14 @@ typedef struct pgs_server_ws_config_base_s {
 typedef struct pgs_trojanserver_config_s {
 	pgs_config_ssl_t ssl;
 	pgs_config_ws_t websocket;
-	SSL_CTX *ssl_ctx;
+	pgs_ssl_ctx_t *ssl_ctx;
 } pgs_trojanserver_config_t;
 
 typedef struct pgs_v2rayserver_config_s {
 	pgs_v2rayserver_ssl_t ssl;
 	pgs_config_ws_t websocket;
-	pgs_v2rayserver_secure_t secure;
-	SSL_CTX *ssl_ctx;
+	pgs_v2ray_secure_t secure;
+	pgs_ssl_ctx_t *ssl_ctx;
 } pgs_v2rayserver_config_t;
 
 /* common */

@@ -5,8 +5,6 @@
 #include "pgs_crypto.h"
 
 #include <stdint.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
 #include <event2/event.h>
 #include <event2/bufferevent.h>
 #include <event2/bufferevent_ssl.h>
@@ -74,7 +72,7 @@ typedef struct pgs_vmess_ctx_s {
 	uint32_t resp_hash;
 	pgs_base_cryptor_t *encryptor;
 	pgs_base_cryptor_t *decryptor;
-	pgs_v2rayserver_secure_t secure;
+	pgs_v2ray_secure_t secure;
 } pgs_vmess_ctx_t;
 
 static inline int pgs_get_addr_len(const uint8_t *data)
@@ -172,7 +170,7 @@ static void pgs_trojansession_ctx_free(pgs_trojansession_ctx_t *ctx)
 
 // vmess context
 static pgs_vmess_ctx_t *pgs_vmess_ctx_new(const uint8_t *cmd, uint64_t cmdlen,
-					  pgs_v2rayserver_secure_t secure)
+					  pgs_v2ray_secure_t secure)
 {
 	pgs_vmess_ctx_t *ptr =
 		(pgs_vmess_ctx_t *)malloc(sizeof(pgs_vmess_ctx_t));
@@ -201,20 +199,10 @@ static pgs_vmess_ctx_t *pgs_vmess_ctx_new(const uint8_t *cmd, uint64_t cmdlen,
 static void pgs_vmess_ctx_free(pgs_vmess_ctx_t *ptr)
 {
 	if (ptr->encryptor) {
-		if (ptr->secure == V2RAY_SECURE_CFB)
-			pgs_aes_cryptor_free(
-				(pgs_aes_cryptor_t *)ptr->encryptor);
-		else
-			pgs_aead_cryptor_free(
-				(pgs_aead_cryptor_t *)ptr->encryptor);
+		pgs_cryptor_free(ptr->secure, ptr->encryptor);
 	}
 	if (ptr->decryptor) {
-		if (ptr->secure == V2RAY_SECURE_CFB)
-			pgs_aes_cryptor_free(
-				(pgs_aes_cryptor_t *)ptr->decryptor);
-		else
-			pgs_aead_cryptor_free(
-				(pgs_aead_cryptor_t *)ptr->decryptor);
+		pgs_cryptor_free(ptr->secure, ptr->decryptor);
 	}
 	ptr->encryptor = NULL;
 	ptr->decryptor = NULL;
@@ -280,16 +268,13 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 		if (trojanconf->ssl.sni != NULL) {
 			sni = trojanconf->ssl.sni;
 		}
-		SSL *ssl = pgs_ssl_new(trojanconf->ssl_ctx, (void *)sni);
-
-		if (ssl == NULL) {
-			pgs_logger_error(logger, "SSL_new");
+		if (pgs_session_outbound_ssl_bev_init(
+			    &ptr->bev, base, trojanconf->ssl_ctx, sni)) {
+			pgs_logger_error(
+				logger,
+				"Failed to init outbound trojan ssl bev");
 			goto error;
 		}
-		ptr->bev = bufferevent_openssl_socket_new(
-			base, -1, ssl, BUFFEREVENT_SSL_CONNECTING,
-			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-		bufferevent_openssl_set_allow_dirty_shutdown(ptr->bev, 1);
 
 		if (trojanconf->websocket.enabled) {
 			// websocket support(trojan-go)
@@ -324,19 +309,14 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 				if (vconf->ssl.sni != NULL) {
 					sni = vconf->ssl.sni;
 				}
-				SSL *ssl = pgs_ssl_new(vconf->ssl_ctx,
-						       (void *)sni);
-				if (ssl == NULL) {
-					pgs_logger_error(logger, "SSL_new");
+				if (pgs_session_outbound_ssl_bev_init(
+					    &ptr->bev, base, vconf->ssl_ctx,
+					    sni)) {
+					pgs_logger_error(
+						logger,
+						"Failed to init outbound v2ray ssl bev");
 					goto error;
 				}
-				ptr->bev = bufferevent_openssl_socket_new(
-					base, -1, ssl,
-					BUFFEREVENT_SSL_CONNECTING,
-					BEV_OPT_CLOSE_ON_FREE |
-						BEV_OPT_DEFER_CALLBACKS);
-				bufferevent_openssl_set_allow_dirty_shutdown(
-					ptr->bev, 1);
 			} else {
 				// raw vmess
 				ptr->bev = bufferevent_socket_new(
@@ -362,19 +342,14 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 				if (vconf->ssl.sni != NULL) {
 					sni = vconf->ssl.sni;
 				}
-				SSL *ssl = pgs_ssl_new(vconf->ssl_ctx,
-						       (void *)sni);
-				if (ssl == NULL) {
-					pgs_logger_error(logger, "SSL_new");
+				if (pgs_session_outbound_ssl_bev_init(
+					    &ptr->bev, base, vconf->ssl_ctx,
+					    sni)) {
+					pgs_logger_error(
+						logger,
+						"Failed to init outbound v2ray ssl bev");
 					goto error;
 				}
-				ptr->bev = bufferevent_openssl_socket_new(
-					base, -1, ssl,
-					BUFFEREVENT_SSL_CONNECTING,
-					BEV_OPT_CLOSE_ON_FREE |
-						BEV_OPT_DEFER_CALLBACKS);
-				bufferevent_openssl_set_allow_dirty_shutdown(
-					ptr->bev, 1);
 			} else {
 				ptr->bev = bufferevent_socket_new(
 					base, -1,

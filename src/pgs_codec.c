@@ -2,7 +2,6 @@
 #include "pgs_crypto.h"
 
 #include <assert.h>
-#include <openssl/rand.h>
 
 const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
 const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
@@ -152,58 +151,33 @@ uint64_t pgs_vmess_write_head(pgs_session_t *session, pgs_vmess_ctx_t *ctx)
 	header_cmd_raw[0] = 1;
 	offset += 1;
 	// data iv
-	RAND_bytes(header_cmd_raw + offset, AES_128_CFB_IV_LEN);
+	rand_bytes(header_cmd_raw + offset, AES_128_CFB_IV_LEN);
 	memcpy(ctx->iv, header_cmd_raw + offset, AES_128_CFB_IV_LEN);
 	offset += AES_128_CFB_KEY_LEN;
 	// data key
-	RAND_bytes(header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
+	rand_bytes(header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
 	memcpy(ctx->key, header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
 	if (!ctx->encryptor) {
-		switch (ctx->secure) {
-		case V2RAY_SECURE_CFB:
-			ctx->encryptor = pgs_aes_cryptor_new(
-				EVP_aes_128_cfb(), (const uint8_t *)ctx->key,
-				(const uint8_t *)ctx->iv, PGS_ENCRYPT);
-			break;
-		case V2RAY_SECURE_GCM:
-			ctx->encryptor =
-				(pgs_base_cryptor_t *)pgs_aead_cryptor_new(
-					EVP_aes_128_gcm(),
-					(const uint8_t *)ctx->key,
+		ctx->encryptor =
+			pgs_cryptor_new(ctx->secure, (const uint8_t *)ctx->key,
 					(const uint8_t *)ctx->iv, PGS_ENCRYPT);
-			break;
-		default:
-			// not support yet
-			break;
-		}
 	}
+	assert(ctx->encryptor != NULL);
 
 	if (!ctx->decryptor) {
 		md5((const uint8_t *)ctx->iv, AES_128_CFB_IV_LEN,
 		    (uint8_t *)ctx->riv);
 		md5((const uint8_t *)ctx->key, AES_128_CFB_KEY_LEN,
 		    (uint8_t *)ctx->rkey);
-		switch (ctx->secure) {
-		case V2RAY_SECURE_CFB:
-			ctx->decryptor = pgs_aes_cryptor_new(
-				EVP_aes_128_cfb(), (const uint8_t *)ctx->rkey,
-				(const uint8_t *)ctx->riv, PGS_DECRYPT);
-			break;
-		case V2RAY_SECURE_GCM:
-			ctx->decryptor =
-				(pgs_base_cryptor_t *)pgs_aead_cryptor_new(
-					EVP_aes_128_gcm(),
-					(const uint8_t *)ctx->rkey,
+		ctx->decryptor =
+			pgs_cryptor_new(ctx->secure, (const uint8_t *)ctx->rkey,
 					(const uint8_t *)ctx->riv, PGS_DECRYPT);
-			break;
-		default:
-			// not support yet
-			break;
-		}
 	}
+	assert(ctx->decryptor != NULL);
+
 	offset += AES_128_CFB_IV_LEN;
 	// v
-	offset += RAND_bytes(header_cmd_raw + offset, 1);
+	offset += rand_bytes(header_cmd_raw + offset, 1);
 	// standard format data
 	header_cmd_raw[offset] = 0x01;
 	offset += 1;
@@ -319,7 +293,6 @@ uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 
 			memcpy(localr + 6, data + offset, frame_data_len);
 
-			assert(ctx->encryptor != NULL);
 			pgs_aes_cryptor_encrypt(ctx->encryptor, localr,
 						frame_data_len + 6, buf);
 			sent += (frame_data_len + 6);
@@ -338,7 +311,6 @@ uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 			buf[0] = (frame_data_len + 16) >> 8;
 			buf[1] = (frame_data_len + 16);
 
-			assert(ctx->encryptor != NULL);
 			int ciphertext_len = 0;
 			pgs_aead_cryptor_encrypt(
 				(pgs_aead_cryptor_t *)ctx->encryptor,

@@ -7,6 +7,12 @@ add_executable (pgs_util_test pgs_util_test.c
                        ${CMAKE_SOURCE_DIR}/src/pgs_crypto.c)
 target_link_libraries (pgs_util_test ${OPENSSL_LIBRARIES})
 
+if(USE_MBEDTLS)
+  target_link_libraries (pgs_util_test ${MBEDTLS_LIBRARIES})
+else()
+  target_link_libraries (pgs_util_test ${OPENSSL_LIBRARIES})
+endif()
+
 add_test (PegaUtilTests pgs_util_test)
 
 

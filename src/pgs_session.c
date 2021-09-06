@@ -12,10 +12,6 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <event2/bufferevent_ssl.h>
-
 /*
  * local handlers
  */
@@ -544,9 +540,7 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 			session,
 			"Error from bufferevent: on_trojan_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		SSL *ssl = bufferevent_openssl_get_ssl(bev);
-		if (ssl)
-			pgs_ssl_close(ssl);
+		pgs_free_bev_ssl_ctx(bev);
 		bufferevent_free(bev);
 
 		pgs_session_free(session);
@@ -764,9 +758,7 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 			session,
 			"Error from bufferevent: on_v2ray_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		SSL *ssl = bufferevent_openssl_get_ssl(bev);
-		if (ssl)
-			pgs_ssl_close(ssl);
+		pgs_free_bev_ssl_ctx(bev);
 		bufferevent_free(bev);
 
 		pgs_session_free(session);

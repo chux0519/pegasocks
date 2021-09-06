@@ -47,6 +47,8 @@ include_directories(3rd-party)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
+option(USE_MBEDTLS "Define if pegasocks should build with mbedtls instead of openssl" OFF)
+
 execute_process(
     COMMAND
         git rev-parse --short HEAD
@@ -68,15 +70,27 @@ endif()
 find_package(Libevent2 REQUIRED)
 include_directories(${LIBEVENT2_INCLUDE_DIR})
 
-find_package(OpenSSLx REQUIRED)
-include_directories(${OPENSSL_INCLUDE_DIR})
+if(USE_MBEDTLS)
+  find_package(MbedTLS REQUIRED)
+  add_compile_definitions(USE_MBEDTLS=1)
+  message(STATUS "mbed TLS include: ${MBEDTLS_INCLUDE_DIR}")
+  message(STATUS "mbed TLS lib: ${MBEDTLS_LIBRARIES}")
+  include_directories(${MBEDTLS_INCLUDE_DIR})
+else()
+  find_package(OpenSSLx REQUIRED)
+  include_directories(${OPENSSL_INCLUDE_DIR})
+endif()
 
 find_package(jsonc REQUIRED)
 include_directories(${JSONC_INCLUDE_DIRS})
 
 add_executable(pegas ${SOURCES} ./3rd-party/tray/tray.h)
 
-target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+if(USE_MBEDTLS)
+  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+else()
+  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+endif()
 
 if(DEFINED WITH_APPLET)
 if(UNIX AND NOT APPLE)
@@ -90,7 +104,11 @@ if(APPLE)
   # add app bundle
   set(BUNDLE_TARGET PegasApp)
   add_executable(${BUNDLE_TARGET} ${SOURCES} ./3rd-party/tray/tray.h)
-  target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+  if(USE_MBEDTLS)
+    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+  else()
+    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+  endif()
 
   set_target_properties(${BUNDLE_TARGET} PROPERTIES
         MACOSX_BUNDLE ON
