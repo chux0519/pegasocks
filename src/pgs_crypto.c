@@ -3,8 +3,7 @@
 
 /* AES */
 pgs_aes_cryptor_t *pgs_aes_cryptor_new(const EVP_CIPHER *cipher,
-				       const uint8_t *key,
-				       const uint8_t *iv,
+				       const uint8_t *key, const uint8_t *iv,
 				       pgs_cryptor_direction_t dir)
 {
 	pgs_aes_cryptor_t *ptr = malloc(sizeof(pgs_aes_cryptor_t));
@@ -59,8 +58,8 @@ bool pgs_aes_cryptor_encrypt(pgs_aes_cryptor_t *ptr, const uint8_t *plaintext,
 }
 
 bool pgs_aes_cryptor_encrypt_final(pgs_aes_cryptor_t *ptr,
-				   const uint8_t *plaintext,
-				   int plaintext_len, uint8_t *ciphertext)
+				   const uint8_t *plaintext, int plaintext_len,
+				   uint8_t *ciphertext)
 {
 	int len = 0;
 	if (1 != EVP_EncryptFinal_ex(ptr->ctx, ciphertext, &len))
@@ -68,9 +67,8 @@ bool pgs_aes_cryptor_encrypt_final(pgs_aes_cryptor_t *ptr,
 	return true;
 }
 
-bool pgs_aes_cryptor_decrypt(pgs_aes_cryptor_t *ptr,
-			     const uint8_t *ciphertext, int ciphertext_len,
-			     uint8_t *plaintext)
+bool pgs_aes_cryptor_decrypt(pgs_aes_cryptor_t *ptr, const uint8_t *ciphertext,
+			     int ciphertext_len, uint8_t *plaintext)
 {
 	int len = 0;
 	if (1 != EVP_DecryptUpdate(ptr->ctx, plaintext, &len, ciphertext,
@@ -92,8 +90,7 @@ bool pgs_aes_cryptor_decrypt_final(pgs_aes_cryptor_t *ptr,
 
 /* AEAD */
 pgs_aead_cryptor_t *pgs_aead_cryptor_new(const EVP_CIPHER *cipher,
-					 const uint8_t *key,
-					 const uint8_t *iv,
+					 const uint8_t *key, const uint8_t *iv,
 					 pgs_cryptor_direction_t dir)
 {
 	pgs_aead_cryptor_t *ptr = malloc(sizeof(pgs_aead_cryptor_t));
@@ -110,13 +107,7 @@ pgs_aead_cryptor_t *pgs_aead_cryptor_new(const EVP_CIPHER *cipher,
 		if (!(ptr->ctx = EVP_CIPHER_CTX_new()))
 			goto error;
 		if (1 != EVP_EncryptInit_ex(ptr->ctx, EVP_aes_128_gcm(), NULL,
-					    NULL, NULL))
-			goto error;
-		if (1 != EVP_CIPHER_CTX_ctrl(ptr->ctx, EVP_CTRL_GCM_SET_IVLEN,
-					     12, NULL))
-			goto error;
-		if (1 !=
-		    EVP_EncryptInit_ex(ptr->ctx, NULL, NULL, ptr->key, ptr->iv))
+					    ptr->key, ptr->iv))
 			goto error;
 		break;
 	}
@@ -124,15 +115,8 @@ pgs_aead_cryptor_t *pgs_aead_cryptor_new(const EVP_CIPHER *cipher,
 		if (!(ptr->ctx = EVP_CIPHER_CTX_new()))
 			goto error;
 		if (1 != EVP_DecryptInit_ex(ptr->ctx, EVP_aes_128_gcm(), NULL,
-					    NULL, NULL))
+					    ptr->key, ptr->iv))
 			goto error;
-		if (1 != EVP_CIPHER_CTX_ctrl(ptr->ctx, EVP_CTRL_GCM_SET_IVLEN,
-					     12, NULL))
-			goto error;
-		if (1 !=
-		    EVP_DecryptInit_ex(ptr->ctx, NULL, NULL, ptr->key, ptr->iv))
-			goto error;
-
 		break;
 	}
 	default:
@@ -157,10 +141,9 @@ void pgs_aead_cryptor_free(pgs_aead_cryptor_t *ptr)
 	ptr = NULL;
 }
 
-bool pgs_aead_cryptor_encrypt(pgs_aead_cryptor_t *ptr,
-			      const uint8_t *plaintext, int plaintext_len,
-			      uint8_t *tag, uint8_t *ciphertext,
-			      int *ciphertext_len)
+bool pgs_aead_cryptor_encrypt(pgs_aead_cryptor_t *ptr, const uint8_t *plaintext,
+			      int plaintext_len, uint8_t *tag,
+			      uint8_t *ciphertext, int *ciphertext_len)
 {
 	int len;
 
@@ -213,13 +196,17 @@ void pgs_aead_cryptor_increase_iv(pgs_aead_cryptor_t *ptr)
 	ptr->counter += 1;
 	ptr->iv[0] = ptr->counter >> 8;
 	ptr->iv[1] = ptr->counter;
+
+	EVP_CIPHER_CTX_reset(ptr->ctx);
 	switch (ptr->dir) {
 	case PGS_ENCRYPT: {
-		EVP_EncryptInit_ex(ptr->ctx, NULL, NULL, ptr->key, ptr->iv);
+		EVP_EncryptInit_ex(ptr->ctx, EVP_aes_128_gcm(), NULL, ptr->key,
+				   ptr->iv);
 		break;
 	}
 	case PGS_DECRYPT: {
-		EVP_DecryptInit_ex(ptr->ctx, NULL, NULL, ptr->key, ptr->iv);
+		EVP_DecryptInit_ex(ptr->ctx, EVP_aes_128_gcm(), NULL, ptr->key,
+				   ptr->iv);
 		break;
 	}
 	default:
