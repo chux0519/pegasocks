@@ -73,9 +73,11 @@ include_directories(${LIBEVENT2_INCLUDE_DIR})
 if(USE_MBEDTLS)
   find_package(MbedTLS REQUIRED)
   add_compile_definitions(USE_MBEDTLS=1)
+
   message(STATUS "mbed TLS include: ${MBEDTLS_INCLUDE_DIR}")
   message(STATUS "mbed TLS lib: ${MBEDTLS_LIBRARIES}")
   include_directories(${MBEDTLS_INCLUDE_DIR})
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lmbedtls -lmbedcrypto -lmbedx509")
 else()
   find_package(OpenSSLx REQUIRED)
   include_directories(${OPENSSL_INCLUDE_DIR})
@@ -83,6 +85,7 @@ endif()
 
 find_package(jsonc REQUIRED)
 include_directories(${JSONC_INCLUDE_DIRS})
+message(STATUS "json lib: ${JSONC_LIBRARIES}")
 
 add_executable(pegas ${SOURCES} ./3rd-party/tray/tray.h)
 
