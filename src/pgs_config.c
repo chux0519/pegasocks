@@ -5,8 +5,6 @@
 #include <unistd.h>
 
 #include <json-c/json.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
 
 /**
  * load config
@@ -318,7 +316,7 @@ pgs_trojanserver_config_t *pgs_trojanserver_config_new()
 void pgs_trojanserver_config_free(pgs_trojanserver_config_t *ptr)
 {
 	if (ptr->ssl_ctx != NULL)
-		SSL_CTX_free(ptr->ssl_ctx);
+		pgs_ssl_ctx_free(ptr->ssl_ctx);
 	free(ptr);
 	ptr = NULL;
 }
@@ -400,7 +398,7 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_new()
 void pgs_v2rayserver_config_free(pgs_v2rayserver_config_t *ptr)
 {
 	if (ptr->ssl_ctx != NULL)
-		SSL_CTX_free(ptr->ssl_ctx);
+		pgs_ssl_ctx_free(ptr->ssl_ctx);
 	free(ptr);
 	ptr = NULL;
 }

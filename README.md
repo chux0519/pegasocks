@@ -20,7 +20,7 @@ C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
 
 ## 依赖
 
-- openssl 1.1.1
+- openssl 1.1.1 / mbedtls 2.27.0
 - libevent2
 - json-c
 
@@ -44,6 +44,10 @@ C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
 > -DOpenSSLx_ROOT=/xxxxxx/xxx/xxx 指定 openssl root
 > 
 > -DLibevent2_ROOT=xxxxxx  指定 libevent root
+
+如果你想使用 mbedtls (在移动端的体积比 openssl 小很多) 添加下列参数
+
+> -DUSE_MBEDTLS=ON
 
 ## 运行
 
@@ -72,9 +76,9 @@ C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
 
 ## 系统托盘
 
-默认编译二进制文件不带 GUI，带上参数 `-DWITH_APPLET=1` 开启系统托盘功能。
+默认编译二进制文件不带 GUI，带上参数 `-DWITH_APPLET=ON` 开启系统托盘功能。
 
-> cmake -DCMAKE_BUILD_TYPE=Release -DWITH_APPLET=1 .. && make
+> cmake -DCMAKE_BUILD_TYPE=Release -DWITH_APPLET=ON .. && make
 
 ### Linux 
 

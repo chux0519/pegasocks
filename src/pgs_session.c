@@ -12,10 +12,6 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <event2/bufferevent_ssl.h>
-
 /*
  * local handlers
  */
@@ -280,47 +276,18 @@ void pgs_session_inbound_update(const pgs_server_config_t *config,
 				void *cb_ctx)
 {
 	if (strcmp(config->server_type, "trojan") == 0) {
-		pgs_trojanserver_config_t *trojanconf =
-			(pgs_trojanserver_config_t *)config->extra;
-		if (trojanconf->websocket.enabled) {
-			if (inbev && inbound_cbs.on_local_event &&
-			    inbound_cbs.on_trojan_ws_local_read)
-				bufferevent_setcb(
-					inbev,
-					inbound_cbs.on_trojan_ws_local_read,
-					NULL, inbound_cbs.on_local_event,
-					cb_ctx);
-		} else {
-			// trojan-gfw
-			if (inbev && inbound_cbs.on_local_event &&
-			    inbound_cbs.on_trojan_gfw_local_read)
-				bufferevent_setcb(
-					inbev,
-					inbound_cbs.on_trojan_gfw_local_read,
-					NULL, inbound_cbs.on_local_event,
-					cb_ctx);
-		}
+		if (inbev && inbound_cbs.on_local_event &&
+		    inbound_cbs.on_trojan_local_read)
+			bufferevent_setcb(inbev,
+					  inbound_cbs.on_trojan_local_read,
+					  NULL, inbound_cbs.on_local_event,
+					  cb_ctx);
 	} else if (strcmp(config->server_type, "v2ray") == 0) {
-		pgs_v2rayserver_config_t *vconf = config->extra;
-		if (!vconf->websocket.enabled) {
-			// raw tcp vmess
-			if (inbev && inbound_cbs.on_local_event &&
-			    inbound_cbs.on_v2ray_tcp_local_read)
-				bufferevent_setcb(
-					inbev,
-					inbound_cbs.on_v2ray_tcp_local_read,
-					NULL, inbound_cbs.on_local_event,
-					cb_ctx);
-		} else {
-			// websocket can be protected by ssl
-			if (inbev && inbound_cbs.on_local_event &&
-			    inbound_cbs.on_v2ray_ws_local_read)
-				bufferevent_setcb(
-					inbev,
-					inbound_cbs.on_v2ray_ws_local_read,
-					NULL, inbound_cbs.on_local_event,
-					cb_ctx);
-		}
+		if (inbev && inbound_cbs.on_local_event &&
+		    inbound_cbs.on_v2ray_local_read)
+			bufferevent_setcb(inbev,
+					  inbound_cbs.on_v2ray_local_read, NULL,
+					  inbound_cbs.on_local_event, cb_ctx);
 	}
 }
 
@@ -413,14 +380,11 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			const uint8_t *cmd = session->inbound->cmd;
 			pgs_session_inbound_cbs_t inbound_cbs = {
 				on_local_event, on_trojan_local_read,
-				on_trojan_local_read, on_v2ray_local_read,
 				on_v2ray_local_read
 			};
 			pgs_session_outbound_cbs_t outbound_cbs = {
-				on_trojan_remote_event, on_trojan_remote_event,
-				on_v2ray_remote_event,	on_v2ray_remote_event,
-				on_trojan_remote_read,	on_trojan_remote_read,
-				on_v2ray_remote_read,	on_v2ray_remote_read
+				on_trojan_remote_event, on_v2ray_remote_event,
+				on_trojan_remote_read, on_v2ray_remote_read
 			};
 			// create outbound
 			session->outbound = pgs_session_outbound_new(
@@ -456,10 +420,8 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			const uint8_t *cmd = session->inbound->cmd;
 
 			pgs_session_outbound_cbs_t outbound_cbs = {
-				on_trojan_remote_event, on_trojan_remote_event,
-				on_v2ray_remote_event,	on_v2ray_remote_event,
-				on_trojan_remote_read,	on_trojan_remote_read,
-				on_v2ray_remote_read,	on_v2ray_remote_read
+				on_trojan_remote_event, on_v2ray_remote_event,
+				on_trojan_remote_read, on_v2ray_remote_read
 			};
 			// create outbound
 			session->outbound = pgs_session_outbound_new(
@@ -544,9 +506,7 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 			session,
 			"Error from bufferevent: on_trojan_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		SSL *ssl = bufferevent_openssl_get_ssl(bev);
-		if (ssl)
-			pgs_ssl_close(ssl);
+		pgs_free_bev_ssl_ctx(bev);
 		bufferevent_free(bev);
 
 		pgs_session_free(session);
@@ -764,9 +724,7 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 			session,
 			"Error from bufferevent: on_v2ray_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		SSL *ssl = bufferevent_openssl_get_ssl(bev);
-		if (ssl)
-			pgs_ssl_close(ssl);
+		pgs_free_bev_ssl_ctx(bev);
 		bufferevent_free(bev);
 
 		pgs_session_free(session);

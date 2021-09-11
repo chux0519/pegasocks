@@ -47,6 +47,10 @@ include_directories(3rd-party)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
+option(USE_MBEDTLS "Define if pegasocks should build with mbedtls instead of openssl" OFF)
+option(USE_STATIC "Define if static builds" OFF)
+option(WITH_APPLET "Define if pegasocks with applet support" OFF)
+
 execute_process(
     COMMAND
         git rev-parse --short HEAD
@@ -55,7 +59,7 @@ execute_process(
     OUTPUT_VARIABLE
         SHORT_HASH)
 
-if(DEFINED STATIC)
+if(USE_STATIC)
   set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
   set(BUILD_SHARED_LIBS OFF)
   if(DEFINED APPLE)
@@ -68,17 +72,32 @@ endif()
 find_package(Libevent2 REQUIRED)
 include_directories(${LIBEVENT2_INCLUDE_DIR})
 
-find_package(OpenSSLx REQUIRED)
-include_directories(${OPENSSL_INCLUDE_DIR})
+if(USE_MBEDTLS)
+  find_package(MbedTLS REQUIRED)
+  add_compile_definitions(USE_MBEDTLS=1)
+
+  message(STATUS "mbed TLS include: ${MBEDTLS_INCLUDE_DIR}")
+  message(STATUS "mbed TLS lib: ${MBEDTLS_LIBRARIES}")
+  include_directories(${MBEDTLS_INCLUDE_DIR})
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lmbedtls -lmbedcrypto -lmbedx509")
+else()
+  find_package(OpenSSLx REQUIRED)
+  include_directories(${OPENSSL_INCLUDE_DIR})
+endif()
 
 find_package(jsonc REQUIRED)
 include_directories(${JSONC_INCLUDE_DIRS})
+message(STATUS "json lib: ${JSONC_LIBRARIES}")
 
 add_executable(pegas ${SOURCES} ./3rd-party/tray/tray.h)
 
-target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+if(USE_MBEDTLS)
+  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+else()
+  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+endif()
 
-if(DEFINED WITH_APPLET)
+if(WITH_APPLET)
 if(UNIX AND NOT APPLE)
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
@@ -90,7 +109,11 @@ if(APPLE)
   # add app bundle
   set(BUNDLE_TARGET PegasApp)
   add_executable(${BUNDLE_TARGET} ${SOURCES} ./3rd-party/tray/tray.h)
-  target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+  if(USE_MBEDTLS)
+    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+  else()
+    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+  endif()
 
   set_target_properties(${BUNDLE_TARGET} PROPERTIES
         MACOSX_BUNDLE ON
@@ -127,7 +150,8 @@ if(APPLE)
   target_sources(${BUNDLE_TARGET} PUBLIC ${BUNDLE_RESOURCES})
 endif()
 add_compile_definitions(WITH_APPLET=$WITH_APPLET)
-endif(DEFINED WITH_APPLET)
+endif()
+
 if(DEFINED DEBUG_EVENT)
   add_compile_definitions(DEBUG_EVENT=$DEBUG_EVENT)
 endif(DEFINED DEBUG_EVENT)

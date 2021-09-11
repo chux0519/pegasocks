@@ -1,4 +1,9 @@
 #include "../src/pgs_crypto.h"
+#ifdef USE_MBEDTLS
+#include <mbedtls/cipher.h>
+#else
+#include <openssl/evp.h>
+#endif
 #include "assert.h"
 
 void test_sha224()
@@ -88,8 +93,7 @@ void test_aes_128_cfb_encrypt()
 	int output_len = aes_128_cfb_encrypt((const uint8_t *)plaintext, 8,
 					     (const uint8_t *)key,
 					     (const uint8_t *)iv, output);
-	uint8_t *hexstring =
-		to_hexstring((const uint8_t *)output, output_len);
+	uint8_t *hexstring = to_hexstring((const uint8_t *)output, output_len);
 	assert(strcmp(result, (const char *)hexstring) == 0);
 	free(hexstring);
 }
@@ -130,25 +134,33 @@ void test_crypto_aead_encrypt()
 	unsigned char tag1[16] = { 0xa5, 0x33, 0x26, 0xb6, 0x34, 0xa1,
 				   0x17, 0xf8, 0x78, 0xdc, 0x09, 0x0e,
 				   0x76, 0x93, 0x47, 0x5e };
-	pgs_aead_cryptor_t *encryptor =
-		pgs_aead_cryptor_new(EVP_aes_128_gcm(), key, iv, PGS_ENCRYPT);
+	pgs_aead_cryptor_t *encryptor;
+
+#ifdef USE_MBEDTLS
+	mbedtls_cipher_type_t cipher_gcm = MBEDTLS_CIPHER_AES_128_GCM;
+	encryptor = pgs_aead_cryptor_new(&cipher_gcm, key, iv, PGS_ENCRYPT);
+#else
+	const EVP_CIPHER *cipher_gcm = EVP_aes_128_gcm();
+	encryptor = pgs_aead_cryptor_new(cipher_gcm, key, iv, PGS_ENCRYPT);
+#endif
 
 	{
 		// First round
 		unsigned char en_tag[16] = { 0 };
 		unsigned char out[8] = { 0 };
 		int output_len;
-		pgs_aead_cryptor_encrypt(encryptor, plaintext, 8, en_tag, out,
-					 &output_len);
+		bool ret = pgs_aead_cryptor_encrypt(encryptor, plaintext, 8,
+						    en_tag, out, &output_len);
+		assert(ret == true);
+
+		for (int i = 0; i < output_len; i++) {
+			assert(out[i] == result1[i]);
+		}
 
 		for (int i = 0; i < 16; i++) {
 			assert(en_tag[i] == tag1[i]);
 		}
-
 		assert(output_len == 8);
-		for (int i = 0; i < output_len; i++) {
-			assert(out[i] == result1[i]);
-		}
 	}
 
 	// Second round
@@ -194,8 +206,15 @@ void test_crypto_aead_decrypt()
 	unsigned char tag1[16] = { 0xa5, 0x33, 0x26, 0xb6, 0x34, 0xa1,
 				   0x17, 0xf8, 0x78, 0xdc, 0x09, 0x0e,
 				   0x76, 0x93, 0x47, 0x5e };
-	pgs_aead_cryptor_t *decryptor =
-		pgs_aead_cryptor_new(EVP_aes_128_gcm(), key, iv, PGS_DECRYPT);
+
+	pgs_aead_cryptor_t *decryptor;
+#ifdef USE_MBEDTLS
+	mbedtls_cipher_type_t cipher_gcm = MBEDTLS_CIPHER_AES_128_GCM;
+	decryptor = pgs_aead_cryptor_new(&cipher_gcm, key, iv, PGS_DECRYPT);
+#else
+	const EVP_CIPHER *cipher_gcm = EVP_aes_128_gcm();
+	decryptor = pgs_aead_cryptor_new(cipher_gcm, key, iv, PGS_DECRYPT);
+#endif
 
 	{
 		// First round
@@ -227,10 +246,10 @@ void test_crypto_aead_decrypt()
 		assert(pgs_aead_cryptor_decrypt(decryptor, ciphertext2, 8, tag2,
 						out, &output_len) == true);
 
-		assert(output_len == 8);
 		for (int i = 0; i < output_len; i++) {
 			assert(out[i] == plaintext[i]);
 		}
+		assert(output_len == 8);
 	}
 
 	pgs_aead_cryptor_free(decryptor);
