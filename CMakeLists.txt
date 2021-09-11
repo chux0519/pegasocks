@@ -48,6 +48,8 @@ include_directories(3rd-party)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 option(USE_MBEDTLS "Define if pegasocks should build with mbedtls instead of openssl" OFF)
+option(USE_STATIC "Define if static builds" OFF)
+option(WITH_APPLET "Define if pegasocks with applet support" OFF)
 
 execute_process(
     COMMAND
@@ -57,7 +59,7 @@ execute_process(
     OUTPUT_VARIABLE
         SHORT_HASH)
 
-if(DEFINED STATIC)
+if(USE_STATIC)
   set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
   set(BUILD_SHARED_LIBS OFF)
   if(DEFINED APPLE)
@@ -95,7 +97,7 @@ else()
   target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
 endif()
 
-if(DEFINED WITH_APPLET)
+if(WITH_APPLET)
 if(UNIX AND NOT APPLE)
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
@@ -148,7 +150,8 @@ if(APPLE)
   target_sources(${BUNDLE_TARGET} PUBLIC ${BUNDLE_RESOURCES})
 endif()
 add_compile_definitions(WITH_APPLET=$WITH_APPLET)
-endif(DEFINED WITH_APPLET)
+endif()
+
 if(DEFINED DEBUG_EVENT)
   add_compile_definitions(DEBUG_EVENT=$DEBUG_EVENT)
 endif(DEFINED DEBUG_EVENT)

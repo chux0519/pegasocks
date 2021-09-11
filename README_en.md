@@ -20,7 +20,7 @@ Unlike most other clients that support multiple protocols, pegasocks does not re
 
 ## Dependencies
 
-- openssl 1.1.1
+- openssl 1.1.1 / mbedtls 2.27.0
 - libevent2
 - json-c
 
@@ -45,6 +45,9 @@ Note: The latest openssl in the `/usr/local/Cellar/openssl@1.1/` directory is de
 > 
 > -DLibevent2_ROOT=xxxxxx  for libevent root
 
+If you want to use mbedtls(which is much smaller than openssl on mobile), use following cmake parameter
+
+> -DUSE_MBEDTLS=ON
 
 ## Run
 
@@ -73,9 +76,9 @@ Also, the system tray is supported, see below
 
 ## System Tray
 
-Default compile binary without GUI, take parameter `-DWITH_APPLET=1` to enable system tray.
+Default compile binary without GUI, take parameter `-DWITH_APPLET=ON` to enable system tray.
 
-> cmake -DCMAKE_BUILD_TYPE=Release -DWITH_APPLET=1 . && make
+> cmake -DCMAKE_BUILD_TYPE=Release -DWITH_APPLET=ON . && make
 
 ### Linux 
 
