@@ -113,8 +113,12 @@ static inline int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev,
 	*bev = bufferevent_mbedtls_socket_new(
 		base, -1, ssl, BUFFEREVENT_SSL_CONNECTING,
 		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+#ifdef BUFFEREVENT_SSL_BATCH_WRITE
 	bufferevent_ssl_set_flags(*bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN |
 						BUFFEREVENT_SSL_BATCH_WRITE);
+#else
+	bufferevent_mbedtls_set_allow_dirty_shutdown(*bev, 1);
+#endif
 
 	return 0;
 }
@@ -181,8 +185,12 @@ static inline int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev,
 	*bev = bufferevent_openssl_socket_new(
 		base, -1, ssl, BUFFEREVENT_SSL_CONNECTING,
 		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+#ifdef BUFFEREVENT_SSL_BATCH_WRITE
 	bufferevent_ssl_set_flags(*bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN |
 						BUFFEREVENT_SSL_BATCH_WRITE);
+#else
+	bufferevent_openssl_set_allow_dirty_shutdown(*bev, 1);
+#endif
 	return 0;
 }
 
