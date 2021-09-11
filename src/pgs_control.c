@@ -20,14 +20,7 @@ static void on_control_event(struct bufferevent *bev, short events, void *ctx);
 
 static bool starts_with(const char *pre, const char *str)
 {
-	size_t lenpre = strlen(pre), lenstr = strlen(str);
-	if (lenstr < lenpre)
-		return false;
-	for (size_t i = 0; i < lenpre; i++) {
-		if (tolower(pre[i]) != tolower(str[i]))
-			return false;
-	}
-	return true;
+	return strncasecmp(pre, str, strlen(pre)) == 0;
 }
 
 void pgs_control_server_start(int fd, struct event_base *base,
