@@ -13,14 +13,10 @@ typedef void(on_event_cb)(struct bufferevent *bev, short events, void *ctx);
 typedef void(on_read_cb)(struct bufferevent *bev, void *ctx);
 
 typedef struct pgs_session_outbound_cbs_s {
-	on_event_cb *on_trojan_ws_remote_event;
-	on_event_cb *on_trojan_gfw_remote_event;
-	on_event_cb *on_v2ray_ws_remote_event;
-	on_event_cb *on_v2ray_tcp_remote_event;
-	on_read_cb *on_trojan_ws_remote_read;
-	on_read_cb *on_trojan_gfw_remote_read;
-	on_read_cb *on_v2ray_ws_remote_read;
-	on_read_cb *on_v2ray_tcp_remote_read;
+	on_event_cb *on_trojan_remote_event;
+	on_event_cb *on_v2ray_remote_event;
+	on_read_cb *on_trojan_remote_read;
+	on_read_cb *on_v2ray_remote_read;
 } pgs_session_outbound_cbs_t;
 
 typedef struct pgs_session_outbound_s {
@@ -276,28 +272,11 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 			goto error;
 		}
 
-		if (trojanconf->websocket.enabled) {
-			// websocket support(trojan-go)
-			assert(outbound_cbs.on_trojan_ws_remote_event &&
-			       outbound_cbs.on_trojan_ws_remote_read);
-			bufferevent_setcb(
-				ptr->bev, outbound_cbs.on_trojan_ws_remote_read,
-				NULL, outbound_cbs.on_trojan_ws_remote_event,
-				cb_ctx);
-
-			bufferevent_enable(ptr->bev, EV_READ);
-		} else {
-			// trojan-gfw
-			assert(outbound_cbs.on_trojan_gfw_remote_event &&
-			       outbound_cbs.on_trojan_gfw_remote_read);
-			bufferevent_setcb(
-				ptr->bev,
-				outbound_cbs.on_trojan_gfw_remote_read, NULL,
-				outbound_cbs.on_trojan_gfw_remote_event,
-				cb_ctx);
-
-			bufferevent_enable(ptr->bev, EV_READ);
-		}
+		assert(outbound_cbs.on_trojan_remote_event &&
+		       outbound_cbs.on_trojan_remote_read);
+		bufferevent_setcb(ptr->bev, outbound_cbs.on_trojan_remote_read,
+				  NULL, outbound_cbs.on_trojan_remote_event,
+				  cb_ctx);
 	} else if (strcmp(config->server_type, "v2ray") == 0) {
 		pgs_v2rayserver_config_t *vconf =
 			(pgs_v2rayserver_config_t *)config->extra;
@@ -324,16 +303,6 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 					BEV_OPT_CLOSE_ON_FREE |
 						BEV_OPT_DEFER_CALLBACKS);
 			}
-
-			ptr->ctx =
-				pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
-
-			assert(outbound_cbs.on_v2ray_tcp_remote_event &&
-			       outbound_cbs.on_v2ray_tcp_remote_read);
-			bufferevent_setcb(
-				ptr->bev, outbound_cbs.on_v2ray_tcp_remote_read,
-				NULL, outbound_cbs.on_v2ray_tcp_remote_event,
-				cb_ctx);
 		} else {
 			// websocket enabled
 			// check if wss
@@ -356,20 +325,16 @@ pgs_session_outbound_new(const pgs_server_config_t *config, int config_idx,
 					BEV_OPT_CLOSE_ON_FREE |
 						BEV_OPT_DEFER_CALLBACKS);
 			}
-			ptr->ctx =
-				pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
-
-			assert(outbound_cbs.on_v2ray_ws_remote_event &&
-			       outbound_cbs.on_v2ray_ws_remote_read);
-			bufferevent_setcb(ptr->bev,
-					  outbound_cbs.on_v2ray_ws_remote_read,
-					  NULL,
-					  outbound_cbs.on_v2ray_ws_remote_event,
-					  cb_ctx);
 		}
-		bufferevent_enable(ptr->bev, EV_READ);
+		ptr->ctx = pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
+		assert(outbound_cbs.on_v2ray_remote_event &&
+		       outbound_cbs.on_v2ray_remote_read);
+		bufferevent_setcb(ptr->bev, outbound_cbs.on_v2ray_remote_read,
+				  NULL, outbound_cbs.on_v2ray_remote_event,
+				  cb_ctx);
 	}
 
+	bufferevent_enable(ptr->bev, EV_READ);
 	// fire request
 	pgs_logger_debug(logger, "connect: %s:%d", config->server_address,
 			 config->server_port);
