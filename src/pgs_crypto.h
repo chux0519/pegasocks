@@ -3,8 +3,8 @@
 
 #include "pgs_defs.h"
 #include "pgs_config.h"
-#include "../3rd-party/sha3.h"
-#include "../3rd-party/fnv.h"
+#include "sha3.h"
+#include "fnv.h"
 
 #include <assert.h>
 #include <stdint.h>

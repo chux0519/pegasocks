@@ -6,7 +6,39 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <json-c/json.h>
+#include "parson/parson.h"
+
+#define SERVER_TYPE_TROJAN "trojan"
+#define SERVER_TYPE_V2RAY "v2ray"
+#define IS_TROJAN_SERVER(type) (strcasecmp((type), SERVER_TYPE_TROJAN) == 0)
+#define IS_V2RAY_SERVER(type) (strcasecmp((type), SERVER_TYPE_V2RAY) == 0)
+
+// root config fields
+#define CONFIG_LOCAL_ADDRESS "local_address"
+#define CONFIG_LOCAL_PORT "local_port"
+#define CONFIG_CONTROL_PORT "control_port"
+#define CONFIG_CONTROL_FILE "control_file"
+#define CONFIG_PING_INTERVAL "ping_interval"
+#define CONFIG_LOG_FILE "log_file"
+#define CONFIG_LOG_LEVEL "log_level"
+#define CONFIG_TIMEOUT "timeout"
+#define CONFIG_SERVERS "servers"
+
+// server fields
+#define CONFIG_SERVER_ADDRESS "server_address"
+#define CONFIG_SERVER_TYPE "server_type"
+#define CONFIG_SERVER_PORT "server_port"
+#define CONFIG_SERVER_PASSWORD "password"
+
+// SNI
+#define CONFIG_SSL_SNI "ssl.sni"
+
+// WS
+#define CONFIG_WS_PATH "websocket.path"
+#define CONFIG_WS_HOSTNAME "websocket.hostname"
+
+// VMESS secure
+#define CONFIG_VMESS_SECURE "secure"
 
 typedef struct pgs_config_ssl_s pgs_trojanserver_ssl_t;
 typedef struct pgs_config_ssl_s pgs_v2rayserver_ssl_t;
@@ -78,25 +110,25 @@ typedef struct pgs_v2rayserver_config_s {
 /* common */
 pgs_config_t *pgs_config_load(const char *config);
 pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
-					      json_object *jobj);
+					      JSON_Array *arr);
 pgs_config_t *pgs_config_new();
 void pgs_config_free(pgs_config_t *config);
 pgs_server_config_t *pgs_servers_config_new(uint64_t len);
 void pgs_servers_config_free(pgs_server_config_t *servers,
 			     uint64_t servers_count);
 void *pgs_server_config_parse_extra(pgs_config_t *config,
-				    const char *server_type, json_object *jobj);
+				    const char *server_type, JSON_Object *jobj);
 void pgs_server_config_free_extra(const char *server_type, void *ptr);
 
 /* trojan config */
 pgs_trojanserver_config_t *pgs_trojanserver_config_parse(pgs_config_t *config,
-							 json_object *jobj);
+							 JSON_Object *jobj);
 pgs_trojanserver_config_t *pgs_trojanserver_config_new();
 void pgs_trojanserver_config_free(pgs_trojanserver_config_t *tconf);
 
 /* v2ray config */
 pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
-						       json_object *jobj);
+						       JSON_Object *jobj);
 pgs_v2rayserver_config_t *pgs_v2rayserver_config_new();
 void pgs_v2rayserver_config_free(pgs_v2rayserver_config_t *ptr);
 

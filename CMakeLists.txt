@@ -40,7 +40,7 @@ set(CMAKE_C_FLAGS_UBSAN
     FORCE)
 # SAN end =======================================
 
-file(GLOB SOURCES src/*.c 3rd-party/*.c)
+file(GLOB SOURCES src/*.c 3rd-party/*.c 3rd-party/parson/parson.c)
 
 include_directories(src)
 include_directories(3rd-party)
@@ -85,16 +85,12 @@ else()
   include_directories(${OPENSSL_INCLUDE_DIR})
 endif()
 
-find_package(jsonc REQUIRED)
-include_directories(${JSONC_INCLUDE_DIRS})
-message(STATUS "json lib: ${JSONC_LIBRARIES}")
-
 add_executable(pegas ${SOURCES} ./3rd-party/tray/tray.h)
 
 if(USE_MBEDTLS)
-  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} pthread)
 else()
-  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} pthread)
 endif()
 
 if(WITH_APPLET)
@@ -110,9 +106,9 @@ if(APPLE)
   set(BUNDLE_TARGET PegasApp)
   add_executable(${BUNDLE_TARGET} ${SOURCES} ./3rd-party/tray/tray.h)
   if(USE_MBEDTLS)
-    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} pthread)
   else()
-    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} pthread)
   endif()
 
   set_target_properties(${BUNDLE_TARGET} PROPERTIES
