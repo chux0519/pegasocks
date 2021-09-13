@@ -406,7 +406,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			session->inbound->state = INBOUND_PROXY;
 			return;
 		}
-		case 0x02: // TODO: bind
+		case 0x02: // bind
 		case 0x03: {
 			// CMD UDP ASSCOTIATE
 			int port = 0;

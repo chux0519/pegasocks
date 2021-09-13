@@ -296,7 +296,7 @@ static void do_ws_remote_request(struct bufferevent *bev, void *ctx)
 {
 	pgs_metrics_task_ctx_t *mctx = (pgs_metrics_task_ctx_t *)ctx;
 	const pgs_server_config_t *config = mctx->outbound->config;
-	// TODO: should assert here
+
 	const pgs_server_ws_config_base_t *wsconfig = config->extra;
 
 	pgs_logger_debug(mctx->logger, "do_ws_remote_request");
