@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.10)
 
 project(pegasocks LANGUAGES C)
 
@@ -61,7 +61,8 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 set(PGS_VERSION "\"v0.0.0-${SHORT_HASH}\"")
-add_compile_definitions(PGS_VERSION=${PGS_VERSION})
+
+add_definitions(-DPGS_VERSION=${PGS_VERSION})
 
 if(USE_STATIC)
   set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
@@ -78,7 +79,7 @@ include_directories(${LIBEVENT2_INCLUDE_DIR})
 
 if(USE_MBEDTLS)
   find_package(MbedTLS REQUIRED)
-  add_compile_definitions(USE_MBEDTLS=1)
+  add_definitions(-DUSE_MBEDTLS=1)
 
   message(STATUS "mbed TLS include: ${MBEDTLS_INCLUDE_DIR}")
   message(STATUS "mbed TLS lib: ${MBEDTLS_LIBRARIES}")
@@ -149,11 +150,11 @@ if(APPLE)
   set_target_properties(${BUNDLE_TARGET} PROPERTIES RESOURCE "${BUNDLE_RESOURCES}")
   target_sources(${BUNDLE_TARGET} PUBLIC ${BUNDLE_RESOURCES})
 endif()
-add_compile_definitions(WITH_APPLET=1)
+add_definitions(-DWITH_APPLET=1)
 endif()
 
 if(DEFINED DEBUG_EVENT)
-  add_compile_definitions(DEBUG_EVENT=1)
+  add_definitions(-DDEBUG_EVENT=1)
 endif(DEFINED DEBUG_EVENT)
 
 
