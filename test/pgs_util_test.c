@@ -1,4 +1,4 @@
-#include "../src/pgs_crypto.h"
+#include "pgs_crypto.h"
 #ifdef USE_MBEDTLS
 #include <mbedtls/cipher.h>
 #else

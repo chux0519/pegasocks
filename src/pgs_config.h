@@ -108,7 +108,10 @@ typedef struct pgs_v2rayserver_config_s {
 } pgs_v2rayserver_config_t;
 
 /* common */
+// load config from file
 pgs_config_t *pgs_config_load(const char *config);
+// parse config from string
+pgs_config_t *pgs_config_parse(const char *json);
 pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 					      JSON_Array *arr);
 pgs_config_t *pgs_config_new();

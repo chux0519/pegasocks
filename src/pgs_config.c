@@ -16,12 +16,36 @@
  */
 pgs_config_t *pgs_config_load(const char *config)
 {
+	// Open config file, parse as json
+	FILE *fp = fopen(config, "r");
+	if (fp == NULL) {
+		return NULL;
+	}
+
+	// Read from file
+	fseek(fp, 0, SEEK_END);
+	int fsize = ftell(fp);
+	rewind(fp);
+	char *fcontent = (char *)malloc(sizeof(char) * (fsize + 1));
+	fread(fcontent, 1, fsize, fp);
+	fcontent[fsize] = '\0';
+
+	pgs_config_t *ptr = pgs_config_parse(fcontent);
+
+	// Release buffer and fd
+	free(fcontent);
+	fclose(fp);
+
+	return ptr;
+}
+
+pgs_config_t *pgs_config_parse(const char *json)
+{
 	JSON_Value *root_value;
 	JSON_Object *root_obj;
 	JSON_Object *log_file_obj;
 	JSON_Array *servers_array;
-
-	root_value = json_parse_file(config);
+	root_value = json_parse_string(json);
 	if (root_value == NULL || json_value_get_type(root_value) != JSONObject)
 		goto error;
 	pgs_config_t *ptr = pgs_config_new();
@@ -87,7 +111,7 @@ pgs_config_t *pgs_config_load(const char *config)
 
 	return ptr;
 error:
-	pgs_config_error(ptr, "Error: pgs_config_load");
+	pgs_config_error(ptr, "Error: pgs_config_parse");
 	pgs_config_free(ptr);
 	if (root_value != NULL)
 		json_value_free(root_value);
@@ -145,6 +169,9 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 			ptr[i].password = hexpass;
 		}
 		if (IS_V2RAY_SERVER(server_type)) {
+			size_t len = strlen(password);
+			if (len != 36) // invalid uuid
+				goto error;
 			char uuid_hex[32];
 			for (int j = 0, k = 0; j < 36 && k < 32;) {
 				if (password[j] != '-')
