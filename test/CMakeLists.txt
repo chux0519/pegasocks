@@ -11,6 +11,8 @@ add_executable (pgs_config_test pgs_config_test.c
                        ${CMAKE_SOURCE_DIR}/3rd-party/parson/parson.c
                        ${CMAKE_SOURCE_DIR}/src/pgs_log.c
                        ${CMAKE_SOURCE_DIR}/src/pgs_mpsc.c
+                       ${CMAKE_SOURCE_DIR}/3rd-party/sha3.c
+                       ${CMAKE_SOURCE_DIR}/3rd-party/hash_32a.c
                        ${CMAKE_SOURCE_DIR}/src/pgs_crypto.c)
 
 if(USE_MBEDTLS)
