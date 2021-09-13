@@ -22,7 +22,6 @@ C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
 
 - openssl 1.1.1 / mbedtls 2.27.0
 - libevent2
-- json-c
 
 ## 安装
 
@@ -97,5 +96,5 @@ OSX上，默认会将二进制打包成 app bundle，直接将打包出的 `buil
 
 ⚠️注:如果遇到无法启动的状况，请确认
 
-1. 系统安装了 libevent 和 json-c (brew install libevent json-c)
+1. 系统安装了 libevent (brew install libevent)
 2. 是否有 **配置文件**，app bundle 会检测 `~/.config/.pegasrc`

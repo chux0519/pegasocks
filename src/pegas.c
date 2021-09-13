@@ -18,7 +18,10 @@
 #include "pgs_applet.h"
 
 #define MAX_LOG_MPSC_SIZE 64
-#define MAX_STATS_MPSC_SIZE 64
+
+#ifndef PGS_VERSION
+#define PGS_VERSION "v0.0.0-develop"
+#endif
 
 static void spawn_workers(pthread_t *threads, int server_threads,
 			  pgs_local_server_ctx_t *ctx)
@@ -154,8 +157,11 @@ int main(int argc, char **argv)
 
 	// parse opt
 	int opt = 0;
-	while ((opt = getopt(argc, argv, "c:t:")) != -1) {
+	while ((opt = getopt(argc, argv, "vc:t:")) != -1) {
 		switch (opt) {
+		case 'v':
+			printf("%s\n", PGS_VERSION);
+			exit(0);
 		case 'c':
 			config_path = optarg;
 			break;
@@ -210,13 +216,12 @@ int main(int argc, char **argv)
 
 	// mpsc with MAX_LOG_MPSC_SIZE message slots
 	pgs_mpsc_t *mpsc = pgs_mpsc_new(MAX_LOG_MPSC_SIZE);
-	pgs_mpsc_t *statsq = pgs_mpsc_new(MAX_STATS_MPSC_SIZE);
 	// logger for logger server
 	pgs_logger_t *logger =
 		pgs_logger_new(mpsc, config->log_level, config->log_isatty);
 
-	pgs_server_manager_t *sm = pgs_server_manager_new(
-		statsq, config->servers, config->servers_count);
+	pgs_server_manager_t *sm =
+		pgs_server_manager_new(config->servers, config->servers_count);
 
 	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config, sm };
 

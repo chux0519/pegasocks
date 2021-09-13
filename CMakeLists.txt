@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 
 project(pegasocks LANGUAGES C)
 
@@ -40,7 +40,7 @@ set(CMAKE_C_FLAGS_UBSAN
     FORCE)
 # SAN end =======================================
 
-file(GLOB SOURCES src/*.c 3rd-party/*.c)
+file(GLOB SOURCES src/*.c 3rd-party/*.c 3rd-party/parson/parson.c)
 
 include_directories(src)
 include_directories(3rd-party)
@@ -57,7 +57,12 @@ execute_process(
     RESULT_VARIABLE
         SHORT_HASH_RESULT
     OUTPUT_VARIABLE
-        SHORT_HASH)
+        SHORT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+set(PGS_VERSION "\"v0.0.0-${SHORT_HASH}\"")
+
+add_definitions(-DPGS_VERSION=${PGS_VERSION})
 
 if(USE_STATIC)
   set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
@@ -74,7 +79,7 @@ include_directories(${LIBEVENT2_INCLUDE_DIR})
 
 if(USE_MBEDTLS)
   find_package(MbedTLS REQUIRED)
-  add_compile_definitions(USE_MBEDTLS=1)
+  add_definitions(-DUSE_MBEDTLS=1)
 
   message(STATUS "mbed TLS include: ${MBEDTLS_INCLUDE_DIR}")
   message(STATUS "mbed TLS lib: ${MBEDTLS_LIBRARIES}")
@@ -85,16 +90,12 @@ else()
   include_directories(${OPENSSL_INCLUDE_DIR})
 endif()
 
-find_package(jsonc REQUIRED)
-include_directories(${JSONC_INCLUDE_DIRS})
-message(STATUS "json lib: ${JSONC_LIBRARIES}")
-
 add_executable(pegas ${SOURCES} ./3rd-party/tray/tray.h)
 
 if(USE_MBEDTLS)
-  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} pthread)
 else()
-  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} pthread)
 endif()
 
 if(WITH_APPLET)
@@ -110,9 +111,9 @@ if(APPLE)
   set(BUNDLE_TARGET PegasApp)
   add_executable(${BUNDLE_TARGET} ${SOURCES} ./3rd-party/tray/tray.h)
   if(USE_MBEDTLS)
-    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} pthread)
   else()
-    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} ${JSONC_LIBRARIES} pthread)
+    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} pthread)
   endif()
 
   set_target_properties(${BUNDLE_TARGET} PROPERTIES
@@ -149,11 +150,11 @@ if(APPLE)
   set_target_properties(${BUNDLE_TARGET} PROPERTIES RESOURCE "${BUNDLE_RESOURCES}")
   target_sources(${BUNDLE_TARGET} PUBLIC ${BUNDLE_RESOURCES})
 endif()
-add_compile_definitions(WITH_APPLET=$WITH_APPLET)
+add_definitions(-DWITH_APPLET=1)
 endif()
 
 if(DEFINED DEBUG_EVENT)
-  add_compile_definitions(DEBUG_EVENT=$DEBUG_EVENT)
+  add_definitions(-DDEBUG_EVENT=1)
 endif(DEFINED DEBUG_EVENT)
 
 

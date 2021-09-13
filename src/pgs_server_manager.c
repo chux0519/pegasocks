@@ -2,11 +2,9 @@
 #include <assert.h>
 
 pgs_server_manager_t *
-pgs_server_manager_new(pgs_mpsc_t *mpsc, pgs_server_config_t *server_configs,
-		       int server_len)
+pgs_server_manager_new(pgs_server_config_t *server_configs, int server_len)
 {
 	pgs_server_manager_t *ptr = malloc(sizeof(pgs_server_manager_t));
-	ptr->mpsc = mpsc;
 	ptr->server_stats = calloc(server_len, sizeof(pgs_server_stats_t));
 	ptr->server_configs = server_configs;
 	ptr->server_len = server_len;

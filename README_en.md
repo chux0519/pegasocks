@@ -22,7 +22,6 @@ Unlike most other clients that support multiple protocols, pegasocks does not re
 
 - openssl 1.1.1 / mbedtls 2.27.0
 - libevent2
-- json-c
 
 ## Install
 
@@ -97,5 +96,5 @@ On OSX, the binary will be packaged into an app bundle by default, just copy the
 
 ⚠️Note: If you encounter a situation where you can't start, please make sure that
 
-1. libevent and json-c are installed on your system (brew install libevent json-c)
+1. libevent and are installed on your system (brew install libevent)
 2. if there is a **configuration** file, the app bundle will detect `~/.config/.pegasrc`

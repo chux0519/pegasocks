@@ -62,14 +62,6 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 				   -1, ctx->fd);
 	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
 
-	// TODO: construct a new udp session add more context
-	// READ from udp fd(cache this fd) -> TROJAN/V2RAY -> REMOTE
-	// cache the udp fd with the tcp connection
-	//   - the new tcp connection should be closed when the socks5 socket is closed
-	// read from remote tcp -> decode -> write to local udp fd
-	// wait for tcp closed ?
-	// ptr->udp_event = event_new(ptr->base, ctx->udp_fd, EV_READ | EV_PERSIST,
-	//			   udp_read_cb, ptr);
 	return ptr;
 }
 
