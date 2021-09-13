@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.12)
 
 project(pegasocks LANGUAGES C)
 
@@ -57,7 +57,11 @@ execute_process(
     RESULT_VARIABLE
         SHORT_HASH_RESULT
     OUTPUT_VARIABLE
-        SHORT_HASH)
+        SHORT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+set(PGS_VERSION "\"v0.0.0-${SHORT_HASH}\"")
+add_compile_definitions(PGS_VERSION=${PGS_VERSION})
 
 if(USE_STATIC)
   set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
@@ -145,11 +149,11 @@ if(APPLE)
   set_target_properties(${BUNDLE_TARGET} PROPERTIES RESOURCE "${BUNDLE_RESOURCES}")
   target_sources(${BUNDLE_TARGET} PUBLIC ${BUNDLE_RESOURCES})
 endif()
-add_compile_definitions(WITH_APPLET=$WITH_APPLET)
+add_compile_definitions(WITH_APPLET=1)
 endif()
 
 if(DEFINED DEBUG_EVENT)
-  add_compile_definitions(DEBUG_EVENT=$DEBUG_EVENT)
+  add_compile_definitions(DEBUG_EVENT=1)
 endif(DEFINED DEBUG_EVENT)
 
 

@@ -19,6 +19,10 @@
 
 #define MAX_LOG_MPSC_SIZE 64
 
+#ifndef PGS_VERSION
+#define PGS_VERSION "v0.0.0-develop"
+#endif
+
 static void spawn_workers(pthread_t *threads, int server_threads,
 			  pgs_local_server_ctx_t *ctx)
 {
@@ -153,8 +157,11 @@ int main(int argc, char **argv)
 
 	// parse opt
 	int opt = 0;
-	while ((opt = getopt(argc, argv, "c:t:")) != -1) {
+	while ((opt = getopt(argc, argv, "vc:t:")) != -1) {
 		switch (opt) {
+		case 'v':
+			printf("%s\n", PGS_VERSION);
+			exit(0);
 		case 'c':
 			config_path = optarg;
 			break;
