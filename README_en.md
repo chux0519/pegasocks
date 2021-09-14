@@ -44,9 +44,17 @@ Note: The latest openssl in the `/usr/local/Cellar/openssl@1.1/` directory is de
 > 
 > -DLibevent2_ROOT=xxxxxx  for libevent root
 
+### mbedtls
+
 If you want to use mbedtls(which is much smaller than openssl on mobile), use following cmake parameter
 
 > -DUSE_MBEDTLS=ON
+
+### jemalloc
+
+jemalloc is supported by
+
+> -DUSE_JEMALLOC=ON
 
 ## Run
 

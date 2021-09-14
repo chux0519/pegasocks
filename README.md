@@ -44,9 +44,17 @@ C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
 > 
 > -DLibevent2_ROOT=xxxxxx  指定 libevent root
 
+### mbedtls
+
 如果你想使用 mbedtls (在移动端的体积比 openssl 小很多) 添加下列参数
 
 > -DUSE_MBEDTLS=ON
+
+### jemalloc
+
+如果你想使用 jemalloc, 添加参数
+
+> -DUSE_JEMALLOC=ON
 
 ## 运行
 

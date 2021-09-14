@@ -48,6 +48,7 @@ include_directories(3rd-party)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 option(USE_MBEDTLS "Define if pegasocks should build with mbedtls instead of openssl" OFF)
+option(USE_JEMALLOC "Define if pegasocks should build with jemalloc" OFF)
 option(USE_STATIC "Define if static builds" OFF)
 option(WITH_APPLET "Define if pegasocks with applet support" OFF)
 
@@ -74,8 +75,18 @@ if(USE_STATIC)
   endif()
 endif()
 
+if(USE_JEMALLOC)
+  find_package(JeMalloc REQUIRED)
+  include_directories(${JeMalloc_INCLUDE_DIRS})
+  list(APPEND THIRDPARTY_LIBS JeMalloc::JeMalloc)
+
+  message(STATUS "jemalloc include: ${JeMalloc_INCLUDE_DIRS}")
+  message(STATUS "jemalloc lib: ${JeMalloc_LIBRARIES}")
+endif()
+
 find_package(Libevent2 REQUIRED)
 include_directories(${LIBEVENT2_INCLUDE_DIR})
+list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_LIBRARIES})
 
 if(USE_MBEDTLS)
   find_package(MbedTLS REQUIRED)
@@ -84,37 +95,32 @@ if(USE_MBEDTLS)
   message(STATUS "mbed TLS include: ${MBEDTLS_INCLUDE_DIR}")
   message(STATUS "mbed TLS lib: ${MBEDTLS_LIBRARIES}")
   include_directories(${MBEDTLS_INCLUDE_DIR})
+
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lmbedtls -lmbedcrypto -lmbedx509")
+  list(APPEND THIRDPARTY_LIBS ${MBEDTLS_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES})
 else()
   find_package(OpenSSLx REQUIRED)
   include_directories(${OPENSSL_INCLUDE_DIR})
+
+  list(APPEND THIRDPARTY_LIBS ${OPENSSL_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES})
 endif()
 
 add_executable(pegas ${SOURCES} ./3rd-party/tray/tray.h)
 
-if(USE_MBEDTLS)
-  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} pthread)
-else()
-  target_link_libraries(pegas ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} pthread)
-endif()
-
 if(WITH_APPLET)
+add_definitions(-DWITH_APPLET=1)
 if(UNIX AND NOT APPLE)
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
   include_directories(${APPINDICATOR_INCLUDE_DIRS})
-  target_link_libraries(pegas ${APPINDICATOR_LIBRARIES})
-endif()
+  list(APPEND THIRDPARTY_LIBS ${APPINDICATOR_LIBRARIES})
+endif(UNIX AND NOT APPLE)
 if(APPLE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DTRAY_APPKIT=1 -DOBJC_OLD_DISPATCH_PROTOTYPES=1 -framework Cocoa")
   # add app bundle
   set(BUNDLE_TARGET PegasApp)
   add_executable(${BUNDLE_TARGET} ${SOURCES} ./3rd-party/tray/tray.h)
-  if(USE_MBEDTLS)
-    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES} pthread)
-  else()
-    target_link_libraries(${BUNDLE_TARGET} ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES} pthread)
-  endif()
+  target_link_libraries(${BUNDLE_TARGET} pthread ${THIRDPARTY_LIBS})
 
   set_target_properties(${BUNDLE_TARGET} PROPERTIES
         MACOSX_BUNDLE ON
@@ -149,15 +155,14 @@ if(APPLE)
     list(APPEND BUNDLE_RESOURCES "${CMAKE_SOURCE_DIR}/logo/icon.png")
   set_target_properties(${BUNDLE_TARGET} PROPERTIES RESOURCE "${BUNDLE_RESOURCES}")
   target_sources(${BUNDLE_TARGET} PUBLIC ${BUNDLE_RESOURCES})
-endif()
-add_definitions(-DWITH_APPLET=1)
-endif()
+endif(APPLE)
+endif(WITH_APPLET)
 
 if(DEFINED DEBUG_EVENT)
   add_definitions(-DDEBUG_EVENT=1)
 endif(DEFINED DEBUG_EVENT)
 
-
+target_link_libraries(pegas pthread ${THIRDPARTY_LIBS})
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)
 
