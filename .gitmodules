@@ -7,6 +7,3 @@
 [submodule "3rd-party/ipset"]
 	path = 3rd-party/ipset
 	url = https://github.com/shadowsocks/ipset
-[submodule "3rd-party/libbloom"]
-	path = 3rd-party/libbloom
-	url = https://github.com/shadowsocks/libbloom
