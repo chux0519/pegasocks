@@ -96,13 +96,12 @@ if(USE_MBEDTLS)
   message(STATUS "mbed TLS lib: ${MBEDTLS_LIBRARIES}")
   include_directories(${MBEDTLS_INCLUDE_DIR})
 
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lmbedtls -lmbedcrypto -lmbedx509")
-  list(APPEND THIRDPARTY_LIBS ${MBEDTLS_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES})
+  list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES})
 else()
   find_package(OpenSSLx REQUIRED)
   include_directories(${OPENSSL_INCLUDE_DIR})
 
-  list(APPEND THIRDPARTY_LIBS ${OPENSSL_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES})
+  list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES})
 endif()
 
 add_executable(pegas ${SOURCES} ./3rd-party/tray/tray.h)
@@ -162,7 +161,10 @@ if(DEFINED DEBUG_EVENT)
   add_definitions(-DDEBUG_EVENT=1)
 endif(DEFINED DEBUG_EVENT)
 
-target_link_libraries(pegas pthread ${THIRDPARTY_LIBS})
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Android")
+  list(APPEND THIRDPARTY_LIBS pthread)
+endif()
+target_link_libraries(pegas ${THIRDPARTY_LIBS})
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)
 
