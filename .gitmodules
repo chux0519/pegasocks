@@ -1,9 +1,3 @@
-[submodule "3rd-party/libcork"]
-	path = 3rd-party/libcork
-	url = https://github.com/dcreager/libcork
-[submodule "3rd-party/libcorkipset"]
-	path = 3rd-party/libcorkipset
-	url = https://github.com/dcreager/libcorkipset.git
 [submodule "3rd-party/parson"]
 	path = 3rd-party/parson
 	url = https://github.com/kgabis/parson.git
