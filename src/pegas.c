@@ -17,6 +17,10 @@
 #include "pgs_helper_thread.h"
 #include "pgs_applet.h"
 
+#ifdef WITH_ACL
+#include "pgs_acl.h"
+#endif
+
 #define MAX_LOG_MPSC_SIZE 64
 
 #ifndef PGS_VERSION
@@ -154,6 +158,11 @@ int main(int argc, char **argv)
 	// default settings
 	int server_threads = 4;
 	char *config_path = NULL;
+	char *acl_path = NULL;
+
+#ifdef WITH_ACL
+	int ret = pgs_acl_init(acl_path);
+#endif
 
 	// parse opt
 	int opt = 0;
@@ -258,6 +267,9 @@ int main(int argc, char **argv)
 	pgs_logger_free(logger);
 	pgs_mpsc_free(mpsc);
 	pgs_config_free(config);
+#ifdef WITH_ACL
+	pgs_acl_free();
+#endif
 
 	return 0;
 }

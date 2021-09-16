@@ -105,6 +105,7 @@ find_package(Libevent2 REQUIRED)
 include_directories(${LIBEVENT2_INCLUDE_DIR})
 list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_LIBRARIES})
 
+
 if(USE_MBEDTLS)
   find_package(MbedTLS REQUIRED)
   add_definitions(-DUSE_MBEDTLS=1)
@@ -122,6 +123,44 @@ else()
   list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES})
 endif()
 
+if(WITH_ACL)
+  include_directories(3rd-party/libcork/include)
+  include_directories(3rd-party/ipset/include)
+
+  set(LIBCORK_SOURCE
+        3rd-party/libcork/src/libcork/ds/array.c
+        3rd-party/libcork/src/libcork/ds/hash-table.c
+        3rd-party/libcork/src/libcork/core/hash.c
+        3rd-party/libcork/src/libcork/ds/dllist.c
+        3rd-party/libcork/src/libcork/core/allocator.c
+        3rd-party/libcork/src/libcork/core/error.c
+        3rd-party/libcork/src/libcork/core/ip-address.c
+        )
+  add_library(cork ${LIBCORK_SOURCE})
+
+  set(LIBIPSET_SOURCE
+        3rd-party/ipset/src/libipset/general.c
+        3rd-party/ipset/src/libipset/bdd/assignments.c
+        3rd-party/ipset/src/libipset/bdd/basics.c
+        3rd-party/ipset/src/libipset/bdd/bdd-iterator.c
+        3rd-party/ipset/src/libipset/bdd/expanded.c
+        3rd-party/ipset/src/libipset/bdd/reachable.c
+        3rd-party/ipset/src/libipset/set/allocation.c
+        3rd-party/ipset/src/libipset/set/inspection.c
+        3rd-party/ipset/src/libipset/set/ipv4_set.c
+        3rd-party/ipset/src/libipset/set/ipv6_set.c
+        3rd-party/ipset/src/libipset/set/iterator.c
+        )
+
+  add_library(ipset ${LIBIPSET_SOURCE})
+  target_link_libraries(ipset cork)
+  list(APPEND THIRDPARTY_LIBS ipset)
+
+  set(PEGAS_SOURCES ${PEGAS_SOURCES}
+                    src/pgs_acl.c
+  )
+  add_definitions(-DWITH_ACL=1)
+endif(WITH_ACL)
 
 
 if(WITH_APPLET)
