@@ -3,31 +3,22 @@
 
 #include <stdbool.h>
 
-#include <ipset/ipset.h>
-#include <libcork/ds/dllist.h>
-#include <pcre.h>
+struct pgs_acl_s;
+typedef struct pgs_acl_s pgs_acl_t;
+
+struct pgs_acl_rule_s;
+typedef struct pgs_acl_rule_s pgs_acl_rule_t;
 
 typedef enum {
 	PROXY_ALL_BYPASS_LIST,
 	BYPASS_ALL_PROXY_LIST,
 } pgs_acl_mode;
 
-typedef struct pgs_acl_s {
-	pgs_acl_mode mode;
-	struct ip_set v4set;
-	struct ip_set v6set;
-	struct cork_dllist rules;
-} pgs_acl_t;
-
-typedef struct pgs_acl_rule_s {
-	char *raw;
-	pcre *pattern;
-	struct cork_dllist_item entry;
-} pgs_acl_rule_t;
-
 pgs_acl_t *pgs_acl_new(const char *path);
 
 void pgs_acl_add_rule(pgs_acl_t *acl, const char *raw);
+
+pgs_acl_mode pgs_acl_get_mode(pgs_acl_t *ptr);
 
 void pgs_acl_free(pgs_acl_t *acl);
 

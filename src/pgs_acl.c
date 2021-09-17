@@ -5,7 +5,24 @@
 #include <stdio.h>
 #include <ctype.h>
 
+#include <ipset/ipset.h>
+#include <libcork/ds/dllist.h>
+#include <pcre.h>
+
 #define LINE_BUFF_SIZE 256
+
+struct pgs_acl_s {
+	pgs_acl_mode mode;
+	struct ip_set v4set;
+	struct ip_set v6set;
+	struct cork_dllist rules;
+};
+
+struct pgs_acl_rule_s {
+	char *raw;
+	pcre *pattern;
+	struct cork_dllist_item entry;
+};
 
 static void parse_addr_cidr(const char *str, char *host, int *cidr)
 {
@@ -158,6 +175,11 @@ void pgs_acl_add_rule(pgs_acl_t *acl, const char *raw)
 {
 	pgs_acl_rule_t *rule = pgs_acl_rule_new(raw);
 	cork_dllist_add(&acl->rules, &rule->entry);
+}
+
+pgs_acl_mode pgs_acl_get_mode(pgs_acl_t *ptr)
+{
+	return ptr->mode;
 }
 
 void pgs_acl_free(pgs_acl_t *ptr)

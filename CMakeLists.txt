@@ -128,11 +128,12 @@ if(WITH_ACL)
   include_directories(${PCRE_INCLUDE_DIRS})
   list(APPEND THIRDPARTY_LIBS ${PCRE_LIBRARIES})
 
+  set(PEGAS_SOURCES ${PEGAS_SOURCES}
+                    src/pgs_acl.c
+  )
+
   include_directories(3rd-party/libcork/include)
   include_directories(3rd-party/ipset/include)
-  set(THIRDPARTY_SOURCES 
-    ${THIRDPARTY_SOURCES} 3rd-party/tiny-regex-c/re.c
-  )
 
   set(LIBCORK_SOURCE
         3rd-party/libcork/src/libcork/ds/array.c
@@ -167,9 +168,6 @@ if(WITH_ACL)
   target_link_libraries(ipset cork)
   list(APPEND THIRDPARTY_LIBS ipset)
 
-  set(PEGAS_SOURCES ${PEGAS_SOURCES}
-                    src/pgs_acl.c
-  )
   add_definitions(-DWITH_ACL=1)
 endif(WITH_ACL)
 

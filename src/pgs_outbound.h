@@ -140,16 +140,18 @@ static void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
 	}
 	*dest_ptr = dest;
 	*port = (cmd[cmd_len - 2] << 8) | cmd[cmd_len - 1];
+#ifdef WITH_ACL
 	if (acl != NULL) {
 		bool match = pgs_acl_match_host(acl, dest);
 		// TODO: if not match and atype is SOCKS5_CMD_HOSTNAME
 		// should we resolve DNS here?
-		if (acl->mode == PROXY_ALL_BYPASS_LIST) {
+		if (pgs_acl_get_mode(acl) == PROXY_ALL_BYPASS_LIST) {
 			*proxy = !match;
-		} else if (acl->mode == BYPASS_ALL_PROXY_LIST) {
+		} else if (pgs_acl_get_mode(acl) == BYPASS_ALL_PROXY_LIST) {
 			*proxy = match;
 		}
 	}
+#endif
 }
 
 // trojan session context
