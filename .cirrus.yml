@@ -14,13 +14,15 @@ freebsd_task:
         - pkg update -f
         - pkg upgrade -y
         - pkg install -y gmake cmake json-c openssl libevent git
-    setup_script:
-        - pw groupadd testgroup
-        - pw useradd testuser -g testgroup -w none -m
-        - cp -R . $HOME
-        - chown -R testuser:testgroup $HOME
-    build_script: su testuser -c 'git submodule update --init && mkdir -p ~/build && cd ~/build && cmake .. && gmake --jobs=5'
-    test_script: su testuser -c 'cd ~/build && gmake test'
+    build_script:
+        - git submodule update --init
+        - mkdir -p build
+        - cd build
+        - cmake ..
+        - gmake --jobs=5
+    test_script:
+        - cd build
+        - make test
 
 linux_task:
     container:
