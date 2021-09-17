@@ -2,6 +2,49 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+#include <ctype.h>
+
+#define LINE_BUFF_SIZE 256
+
+static void parse_addr_cidr(const char *str, char *host, int *cidr)
+{
+	int ret = -1;
+	char *pch;
+
+	pch = strchr(str, '/');
+	while (pch != NULL) {
+		ret = pch - str;
+		pch = strchr(pch + 1, '/');
+	}
+	if (ret == -1) {
+		strcpy(host, str);
+		*cidr = -1;
+	} else {
+		memcpy(host, str, ret);
+		host[ret] = '\0';
+		*cidr = atoi(str + ret + 1);
+	}
+}
+
+static char *trimwhitespace(char *str)
+{
+	char *end;
+
+	while (isspace((unsigned char)*str))
+		str++;
+
+	if (*str == 0)
+		return str;
+
+	end = str + strlen(str) - 1;
+	while (end > str && isspace((unsigned char)*end))
+		end--;
+
+	*(end + 1) = 0;
+
+	return str;
+}
 
 pgs_acl_t *pgs_acl_new(pgs_acl_mode mode, const char *path)
 {
@@ -11,9 +54,104 @@ pgs_acl_t *pgs_acl_new(pgs_acl_mode mode, const char *path)
 	ipset_init(&ptr->v6set);
 	cork_dllist_init(&ptr->rules);
 
-	// TODO: load acl file from path
+	FILE *fd = fopen(path, "r");
+	if (fd == NULL)
+		goto error;
+
+	char buff[LINE_BUFF_SIZE];
+
+	// parsing logic is modifed from
+	// https://github.com/shadowsocks/shadowsocks-libev/blob/master/src/acl.c#L133
+	while (!feof(fd)) {
+		if (fgets(buff, LINE_BUFF_SIZE, fd)) {
+			// Discards the whole line if longer than 255 characters
+			int long_line = 0; // 1: Long  2: Error
+			while ((strlen(buff) == 255) && (buff[254] != '\n')) {
+				long_line = 1;
+				if (fgets(buff, LINE_BUFF_SIZE, fd) == NULL) {
+					long_line = 2;
+					break;
+				}
+			}
+			if (long_line) {
+				continue;
+			}
+
+			// Trim the newline
+			int len = strlen(buff);
+			if (len > 0 && buff[len - 1] == '\n') {
+				buff[len - 1] = '\0';
+			}
+
+			char *comment = strchr(buff, '#');
+			if (comment) {
+				*comment = '\0';
+			}
+
+			char *line = trimwhitespace(buff);
+			if (strlen(line) == 0) {
+				continue;
+			}
+
+			// notice: outbound_block_list is not supported
+			if (strcmp(line, "[black_list]") == 0 ||
+			    strcmp(line, "[bypass_list]") == 0) {
+				ptr->mode = PROXY_ALL_BYPASS_LIST;
+				continue;
+			} else if (strcmp(line, "[white_list]") == 0 ||
+				   strcmp(line, "[proxy_list]") == 0) {
+				ptr->mode = BYPASS_ALL_PROXY_LIST;
+				continue;
+			} else if (strcmp(line, "[reject_all]") == 0 ||
+				   strcmp(line, "[bypass_all]") == 0) {
+				ptr->mode = BYPASS_ALL_PROXY_LIST;
+				continue;
+			} else if (strcmp(line, "[accept_all]") == 0 ||
+				   strcmp(line, "[proxy_all]") == 0) {
+				ptr->mode = PROXY_ALL_BYPASS_LIST;
+				continue;
+			}
+
+			char host[LINE_BUFF_SIZE];
+			int cidr;
+			parse_addr_cidr(line, host, &cidr);
+
+			struct cork_ip addr;
+			int err = cork_ip_init(&addr, host);
+			if (!err) {
+				if (addr.version == 4) {
+					if (cidr >= 0) {
+						ipset_ipv4_add_network(
+							&ptr->v4set,
+							&(addr.ip.v4), cidr);
+					} else {
+						ipset_ipv4_add(&ptr->v4set,
+							       &(addr.ip.v4));
+					}
+				} else if (addr.version == 6) {
+					if (cidr >= 0) {
+						ipset_ipv6_add_network(
+							&ptr->v6set,
+							&(addr.ip.v6), cidr);
+					} else {
+						ipset_ipv6_add(&ptr->v6set,
+							       &(addr.ip.v6));
+					}
+				}
+			} else {
+				pgs_acl_add_rule(ptr, line);
+			}
+		}
+	}
+
+	fclose(fd);
 
 	return ptr;
+
+error:
+	fclose(fd);
+	pgs_acl_free(ptr);
+	return NULL;
 }
 
 void pgs_acl_add_rule(pgs_acl_t *acl, const char *raw)
