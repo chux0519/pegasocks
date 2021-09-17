@@ -46,10 +46,10 @@ static char *trimwhitespace(char *str)
 	return str;
 }
 
-pgs_acl_t *pgs_acl_new(pgs_acl_mode mode, const char *path)
+pgs_acl_t *pgs_acl_new(const char *path)
 {
 	pgs_acl_t *ptr = malloc(sizeof(pgs_acl_t));
-	ptr->mode = mode;
+	ptr->mode = PROXY_ALL_BYPASS_LIST; // this will be updated at parsing
 	ipset_init(&ptr->v4set);
 	ipset_init(&ptr->v6set);
 	cork_dllist_init(&ptr->rules);

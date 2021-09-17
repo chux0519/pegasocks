@@ -25,7 +25,7 @@ typedef struct pgs_acl_rule_s {
 	struct cork_dllist_item entry;
 } pgs_acl_rule_t;
 
-pgs_acl_t *pgs_acl_new(pgs_acl_mode mode, const char *path);
+pgs_acl_t *pgs_acl_new(const char *path);
 
 void pgs_acl_add_rule(pgs_acl_t *acl, const char *raw);
 
