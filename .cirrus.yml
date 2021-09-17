@@ -13,13 +13,13 @@ freebsd_task:
         - sed -i.bak -e 's,pkg+http://pkg.FreeBSD.org/\${ABI}/quarterly,pkg+http://pkg.FreeBSD.org/\${ABI}/latest,' /etc/pkg/FreeBSD.conf        
         - pkg update -f
         - pkg upgrade -y
-        - pkg install -y gmake cmake json-c openssl libevent
+        - pkg install -y gmake cmake json-c openssl libevent git
     setup_script:
         - pw groupadd testgroup
         - pw useradd testuser -g testgroup -w none -m
         - cp -R . $HOME
         - chown -R testuser:testgroup $HOME
-    build_script: su testuser -c 'mkdir -p ~/build && cd ~/build && cmake .. && gmake --jobs=5'
+    build_script: su testuser -c 'git submodule update --init && mkdir -p ~/build && cd ~/build && cmake .. && gmake --jobs=5'
     test_script: su testuser -c 'cd ~/build && gmake test'
 
 linux_task:
@@ -30,8 +30,9 @@ linux_task:
 
     install_script:
         - apt update && apt upgrade -y
-        - DEBIAN_FRONTEND=noninteractive apt install -y cmake build-essential libjson-c-dev libevent-dev libssl-dev
+        - DEBIAN_FRONTEND=noninteractive apt install -y git cmake build-essential libjson-c-dev libevent-dev libssl-dev
     build_script:
+        - git submodule update --init
         - mkdir -p build
         - cd build
         - cmake ..
