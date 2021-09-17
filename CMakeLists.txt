@@ -126,6 +126,9 @@ endif()
 if(WITH_ACL)
   include_directories(3rd-party/libcork/include)
   include_directories(3rd-party/ipset/include)
+  set(THIRDPARTY_SOURCES 
+    ${THIRDPARTY_SOURCES} 3rd-party/tiny-regex-c/re.c
+  )
 
   set(LIBCORK_SOURCE
         3rd-party/libcork/src/libcork/ds/array.c
