@@ -33,12 +33,17 @@ linux_task:
     install_script:
         - apt update && apt upgrade -y
         - DEBIAN_FRONTEND=noninteractive apt install -y git cmake build-essential libjson-c-dev libevent-dev libssl-dev
-    build_script:
+    prepare_script:
         - git submodule update --init
-        - mkdir -p build
-        - cd build
-        - cmake ..
+    build_default_test_script:
+        - mkdir -p build/default
+        - cd build/default
+        - cmake ../..
         - make
-    test_script:
-        - cd build
+        - make test
+    build_acl_test_script:
+        - mkdir -p build/acl
+        - cd build/acl
+        - cmake -DWITH_ACL=ON ../..
+        - make
         - make test
