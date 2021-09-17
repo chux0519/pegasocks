@@ -124,6 +124,10 @@ else()
 endif()
 
 if(WITH_ACL)
+  find_package(PCRE REQUIRED)
+  include_directories(${PCRE_INCLUDE_DIRS})
+  list(APPEND THIRDPARTY_LIBS ${PCRE_LIBRARIES})
+
   include_directories(3rd-party/libcork/include)
   include_directories(3rd-party/ipset/include)
   set(THIRDPARTY_SOURCES 

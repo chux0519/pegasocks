@@ -178,10 +178,19 @@ void pgs_acl_free(pgs_acl_t *ptr)
 
 pgs_acl_rule_t *pgs_acl_rule_new(const char *raw)
 {
-	pgs_acl_rule_t *ptr = malloc(sizeof(pgs_acl_rule_t));
+	pgs_acl_rule_t *ptr = calloc(1, sizeof(pgs_acl_rule_t));
 	ptr->raw = strdup(raw);
-	ptr->pattern = re_compile(ptr->raw);
+
+	const char *reerr;
+	int reerroffset;
+	ptr->pattern = pcre_compile(ptr->raw, 0, &reerr, &reerroffset, NULL);
+	if (ptr->pattern == NULL)
+		goto error;
 	return ptr;
+
+error:
+	pgs_acl_rule_free(ptr);
+	return NULL;
 }
 
 void pgs_acl_rule_free(pgs_acl_rule_t *ptr)
@@ -197,18 +206,16 @@ bool pgs_acl_match_host(pgs_acl_t *acl, const char *host)
 	int err = cork_ip_init(&addr, host);
 
 	if (err) {
-		int match_length;
-		int match_idx = -1;
+		int host_len = strlen(host);
+
 		struct cork_dllist_item *curr, *next;
 		pgs_acl_rule_t *rule;
 		cork_dllist_foreach(&acl->rules, curr, next, pgs_acl_rule_t,
 				    rule, entry)
 		{
-			match_idx =
-				re_matchp(rule->pattern, host, &match_length);
-			if (match_idx != -1) {
+			if (pcre_exec(rule->pattern, NULL, host, host_len, 0, 0,
+				      NULL, 0) >= 0)
 				return true;
-			}
 		}
 		return false;
 	}

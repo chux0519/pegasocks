@@ -5,7 +5,7 @@
 
 #include <ipset/ipset.h>
 #include <libcork/ds/dllist.h>
-#include <tiny-regex-c/re.h>
+#include <pcre.h>
 
 typedef enum {
 	PROXY_ALL_BYPASS_LIST,
@@ -21,7 +21,7 @@ typedef struct pgs_acl_s {
 
 typedef struct pgs_acl_rule_s {
 	char *raw;
-	re_t pattern;
+	pcre *pattern;
 	struct cork_dllist_item entry;
 } pgs_acl_rule_t;
 
