@@ -275,8 +275,11 @@ int main(int argc, char **argv)
 	pgs_logger_free(logger);
 	pgs_mpsc_free(mpsc);
 	pgs_config_free(config);
+
+#ifdef WITH_ACL
 	if (acl != NULL)
 		pgs_acl_free(acl);
+#endif
 
 	return 0;
 }
