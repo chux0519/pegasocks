@@ -60,6 +60,7 @@ typedef struct pgs_session_inbound_cbs_s {
 	on_event_cb *on_local_event;
 	on_read_cb *on_trojan_local_read;
 	on_read_cb *on_v2ray_local_read;
+	on_read_cb *on_bypass_local_read;
 } pgs_session_inbound_cbs_t;
 
 // inbound

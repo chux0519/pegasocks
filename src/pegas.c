@@ -16,10 +16,7 @@
 #include "pgs_server_manager.h"
 #include "pgs_helper_thread.h"
 #include "pgs_applet.h"
-
-#ifdef WITH_ACL
 #include "pgs_acl.h"
-#endif
 
 #define MAX_LOG_MPSC_SIZE 64
 
@@ -160,17 +157,16 @@ int main(int argc, char **argv)
 	char *config_path = NULL;
 	char *acl_path = NULL;
 
-#ifdef WITH_ACL
-	int ret = pgs_acl_init(acl_path);
-#endif
-
 	// parse opt
 	int opt = 0;
-	while ((opt = getopt(argc, argv, "vc:t:")) != -1) {
+	while ((opt = getopt(argc, argv, "va:c:t:")) != -1) {
 		switch (opt) {
 		case 'v':
 			printf("%s\n", PGS_VERSION);
 			exit(0);
+		case 'a':
+			acl_path = optarg;
+			break;
 		case 'c':
 			config_path = optarg;
 			break;
@@ -206,9 +202,21 @@ int main(int argc, char **argv)
 	// load config
 	pgs_config_t *config = pgs_config_load(config_path);
 	if (config == NULL) {
-		fprintf(stderr, "invalid config");
+		fprintf(stderr, "invalid config\n");
 		return -1;
 	}
+
+	pgs_acl_t *acl = NULL;
+
+#ifdef WITH_ACL
+	if (acl_path != NULL) {
+		acl = pgs_acl_new(acl_path);
+		if (acl == NULL) {
+			fprintf(stderr, "failed to load acl file\n");
+			return -1;
+		}
+	}
+#endif
 
 	pgs_config_info(config, "worker threads: %d, config: %s",
 			server_threads, config_path);
@@ -232,7 +240,7 @@ int main(int argc, char **argv)
 	pgs_server_manager_t *sm =
 		pgs_server_manager_new(config->servers, config->servers_count);
 
-	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config, sm };
+	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config, sm, acl };
 
 	pgs_helper_thread_arg_t helper_thread_arg = { sm, logger, config,
 						      ctrl_fd };
@@ -267,9 +275,8 @@ int main(int argc, char **argv)
 	pgs_logger_free(logger);
 	pgs_mpsc_free(mpsc);
 	pgs_config_free(config);
-#ifdef WITH_ACL
-	pgs_acl_free();
-#endif
+	if (acl != NULL)
+		pgs_acl_free(acl);
 
 	return 0;
 }

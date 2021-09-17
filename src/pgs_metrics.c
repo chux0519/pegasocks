@@ -82,15 +82,16 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 	pgs_metrics_task_ctx_t *mctx =
 		pgs_metrics_task_ctx_new(base, config, sm, idx, logger, NULL);
 
-	pgs_session_outbound_cbs_t outbound_cbs = { on_trojan_g204_event,
-						    on_v2ray_g204_event,
-						    on_trojan_g204_read,
-						    on_v2ray_g204_read };
+	pgs_session_outbound_cbs_t outbound_cbs = {
+		on_trojan_g204_event, on_v2ray_g204_event, NULL,
+		on_trojan_g204_read,  on_v2ray_g204_read,  NULL
+	};
 
+	bool proxy = true;
 	pgs_session_outbound_t *ptr =
 		pgs_session_outbound_new(config, idx, cmd, cmd_len, logger,
-					 base, mctx->dns_base, outbound_cbs,
-					 mctx);
+					 base, mctx->dns_base, NULL, &proxy,
+					 outbound_cbs, mctx);
 	mctx->outbound = ptr;
 }
 

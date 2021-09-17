@@ -132,6 +132,10 @@ if(WITH_ACL)
 
   set(LIBCORK_SOURCE
         3rd-party/libcork/src/libcork/ds/array.c
+        3rd-party/libcork/src/libcork/ds/buffer.c
+        3rd-party/libcork/src/libcork/ds/managed-buffer.c
+        3rd-party/libcork/src/libcork/ds/slice.c
+        3rd-party/libcork/src/libcork/posix/process.c
         3rd-party/libcork/src/libcork/ds/hash-table.c
         3rd-party/libcork/src/libcork/core/hash.c
         3rd-party/libcork/src/libcork/ds/dllist.c

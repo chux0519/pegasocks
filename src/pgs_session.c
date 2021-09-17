@@ -19,6 +19,14 @@ static void on_local_event(struct bufferevent *bev, short events, void *ctx);
 static void on_local_read(struct bufferevent *bev, void *ctx);
 
 /*
+ * bypass handlers
+ */
+static void on_bypass_remote_event(struct bufferevent *bev, short events,
+				   void *ctx);
+static void on_bypass_remote_read(struct bufferevent *bev, void *ctx);
+static void on_bypass_local_read(struct bufferevent *bev, void *ctx);
+
+/*
  * trojan session handlers
  */
 static void on_trojan_remote_event(struct bufferevent *bev, short events,
@@ -48,6 +56,8 @@ static int init_udp_fd(const pgs_config_t *config, int *fd, int *port);
 static int start_udp_server(const pgs_server_config_t *sconfig,
 			    pgs_session_t *session, int *port);
 
+// this determine whether it should be bypassed or not
+static void on_udp_read(int fd, short event, void *ctx);
 static void on_udp_read_trojan(int fd, short event, void *ctx);
 static void on_udp_read_v2ray(int fd, short event, void *ctx);
 
@@ -103,57 +113,11 @@ static int start_udp_server(const pgs_server_config_t *config,
 	}
 	session->inbound->udp_rbuf = (uint8_t *)malloc(BUFSIZE_16K);
 	session->inbound->udp_remote_wbuf = (uint8_t *)malloc(BUFSIZE_16K);
-
-	if (strcmp(config->server_type, "trojan") == 0) {
-		pgs_trojanserver_config_t *trojanconf =
-			(pgs_trojanserver_config_t *)config->extra;
-		if (trojanconf->websocket.enabled) {
-			// trojan-go
-			session->inbound->udp_server_ev =
-				event_new(session->local_server->base,
-					  session->inbound->udp_fd,
-					  EV_READ | EV_PERSIST,
-					  on_udp_read_trojan, session);
-			event_add(session->inbound->udp_server_ev, NULL);
-			return 0;
-		} else {
-			// trojan-gfw
-			session->inbound->udp_server_ev =
-				event_new(session->local_server->base,
-					  session->inbound->udp_fd,
-					  EV_READ | EV_PERSIST,
-					  on_udp_read_trojan, session);
-			event_add(session->inbound->udp_server_ev, NULL);
-			return 0;
-		}
-	} else if (strcmp(config->server_type, "v2ray") == 0) {
-		pgs_v2rayserver_config_t *vconf = config->extra;
-		if (!vconf->websocket.enabled) {
-			// raw tcp vmess
-			session->inbound->udp_server_ev =
-				event_new(session->local_server->base,
-					  session->inbound->udp_fd,
-					  EV_READ | EV_PERSIST,
-					  on_udp_read_v2ray, session);
-			event_add(session->inbound->udp_server_ev, NULL);
-			return 0;
-		} else {
-			// websocket can be protected by ssl
-			session->inbound->udp_server_ev =
-				event_new(session->local_server->base,
-					  session->inbound->udp_fd,
-					  EV_READ | EV_PERSIST,
-					  on_udp_read_v2ray, session);
-			event_add(session->inbound->udp_server_ev, NULL);
-			return 0;
-		}
-	}
-	pgs_session_error(
-		session,
-		"failed to init udp server: server type(%s) not supported",
-		config->server_type);
-	// server type not supported
-	return -1;
+	session->inbound->udp_server_ev =
+		event_new(session->local_server->base, session->inbound->udp_fd,
+			  EV_READ | EV_PERSIST, on_udp_read, session);
+	event_add(session->inbound->udp_server_ev, NULL);
+	return 0;
 }
 
 /**
@@ -272,22 +236,33 @@ void pgs_session_inbound_free(pgs_session_inbound_t *ptr)
 
 void pgs_session_inbound_update(const pgs_server_config_t *config,
 				pgs_logger_t *logger, struct bufferevent *inbev,
+				bool proxy,
 				pgs_session_inbound_cbs_t inbound_cbs,
 				void *cb_ctx)
 {
-	if (strcmp(config->server_type, "trojan") == 0) {
+	if (proxy) {
+		if (strcmp(config->server_type, "trojan") == 0) {
+			if (inbev && inbound_cbs.on_local_event &&
+			    inbound_cbs.on_trojan_local_read)
+				bufferevent_setcb(
+					inbev, inbound_cbs.on_trojan_local_read,
+					NULL, inbound_cbs.on_local_event,
+					cb_ctx);
+		} else if (strcmp(config->server_type, "v2ray") == 0) {
+			if (inbev && inbound_cbs.on_local_event &&
+			    inbound_cbs.on_v2ray_local_read)
+				bufferevent_setcb(
+					inbev, inbound_cbs.on_v2ray_local_read,
+					NULL, inbound_cbs.on_local_event,
+					cb_ctx);
+		}
+	} else {
 		if (inbev && inbound_cbs.on_local_event &&
-		    inbound_cbs.on_trojan_local_read)
+		    inbound_cbs.on_bypass_local_read)
 			bufferevent_setcb(inbev,
-					  inbound_cbs.on_trojan_local_read,
+					  inbound_cbs.on_bypass_local_read,
 					  NULL, inbound_cbs.on_local_event,
 					  cb_ctx);
-	} else if (strcmp(config->server_type, "v2ray") == 0) {
-		if (inbev && inbound_cbs.on_local_event &&
-		    inbound_cbs.on_v2ray_local_read)
-			bufferevent_setcb(inbev,
-					  inbound_cbs.on_v2ray_local_read, NULL,
-					  inbound_cbs.on_local_event, cb_ctx);
 	}
 }
 
@@ -310,6 +285,7 @@ static void on_local_event(struct bufferevent *bev, short events, void *ctx)
 /*
  * inbound on read handler
  * socks5 handshake -> proxy
+ * acl checked here
  */
 static void on_local_read(struct bufferevent *bev, void *ctx)
 {
@@ -380,23 +356,26 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			const uint8_t *cmd = session->inbound->cmd;
 			pgs_session_inbound_cbs_t inbound_cbs = {
 				on_local_event, on_trojan_local_read,
-				on_v2ray_local_read
+				on_v2ray_local_read, on_bypass_local_read
 			};
 			pgs_session_outbound_cbs_t outbound_cbs = {
 				on_trojan_remote_event, on_v2ray_remote_event,
-				on_trojan_remote_read, on_v2ray_remote_read
+				on_bypass_remote_event, on_trojan_remote_read,
+				on_v2ray_remote_read,	on_bypass_remote_read,
 			};
+			bool proxy = true;
 			// create outbound
 			session->outbound = pgs_session_outbound_new(
 				config, config_idx, cmd, cmdlen,
 				session->local_server->logger,
 				session->local_server->base,
-				session->local_server->dns_base, outbound_cbs,
-				session);
+				session->local_server->dns_base,
+				session->local_server->acl, &proxy,
+				outbound_cbs, session);
 			// update inbound cbs
 			pgs_session_inbound_update(
 				config, session->local_server->logger, bev,
-				inbound_cbs, session);
+				proxy, inbound_cbs, session);
 
 			if (session && session->outbound) {
 				const char *addr = session->outbound->dest;
@@ -410,6 +389,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 		case 0x03: {
 			// CMD UDP ASSCOTIATE
 			int port = 0;
+			// TODO: if bypass, we should set a bypass UDP server?
 			int err = start_udp_server(config, session, &port);
 			if (err != 0 || port == 0) {
 				goto error;
@@ -421,15 +401,18 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 
 			pgs_session_outbound_cbs_t outbound_cbs = {
 				on_trojan_remote_event, on_v2ray_remote_event,
-				on_trojan_remote_read, on_v2ray_remote_read
+				on_bypass_remote_event, on_trojan_remote_read,
+				on_v2ray_remote_read,	on_bypass_remote_read
 			};
+			bool proxy = true;
 			// create outbound
 			session->outbound = pgs_session_outbound_new(
 				config, config_idx, cmd, cmdlen,
 				session->local_server->logger,
 				session->local_server->base,
-				session->local_server->dns_base, outbound_cbs,
-				session);
+				session->local_server->dns_base,
+				session->local_server->acl, &proxy,
+				outbound_cbs, session);
 			// FIXME: hardcoded ATYP and BND.ADDR
 			evbuffer_add(output, "\x05\x00\x00\x01\x00\x00\x00\x00",
 				     8);
@@ -455,6 +438,78 @@ error:
 
 /**
  * outound event handler
+ */
+
+/*
+ * bypass
+ */
+
+static void on_bypass_remote_event(struct bufferevent *bev, short events,
+				   void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+
+	if (events & BEV_EVENT_CONNECTED) {
+		on_bypass_local_read(session->inbound->bev, ctx);
+	}
+
+	if (events & BEV_EVENT_ERROR)
+		pgs_session_error(
+			session,
+			"Error from bufferevent: on_bypass_remote_event");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		pgs_free_bev_ssl_ctx(bev);
+		bufferevent_free(bev);
+
+		pgs_session_free(session);
+	}
+}
+
+static void on_bypass_local_read(struct bufferevent *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "local read triggered");
+
+	struct evbuffer *inboundr = bufferevent_get_input(bev);
+	uint64_t len = evbuffer_get_length(inboundr);
+	uint8_t *msg = evbuffer_pullup(inboundr, len);
+
+	struct bufferevent *outbev = session->outbound->bev;
+	struct evbuffer *outboundw = bufferevent_get_output(outbev);
+
+	if (len > 0) {
+		evbuffer_add(outboundw, msg, len);
+		evbuffer_drain(inboundr, len);
+	}
+	return;
+
+error:
+	pgs_session_free(session);
+}
+
+static void on_bypass_remote_read(struct bufferevent *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "remote read triggered");
+	struct evbuffer *input = bufferevent_get_input(bev);
+	uint64_t data_len = evbuffer_get_length(input);
+	unsigned char *data = evbuffer_pullup(input, data_len);
+
+	if (data_len > 0) {
+		struct bufferevent *inbev = session->inbound->bev;
+		struct evbuffer *inboundw = bufferevent_get_output(inbev);
+		evbuffer_add(inboundw, data, data_len);
+		evbuffer_drain(input, data_len);
+	}
+
+	return;
+
+error:
+	pgs_session_free(session);
+}
+
+/*
+ * trojan
  */
 static void on_trojan_remote_event(struct bufferevent *bev, short events,
 				   void *ctx)
@@ -896,6 +951,28 @@ static void on_session_metrics_send(pgs_session_t *session, uint64_t len)
 /*
  * udp relay
  * */
+
+static void on_udp_read(int fd, short event, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "udp local read triggered");
+	pgs_server_config_t *config =
+		pgs_server_manager_get_config(session->local_server->sm);
+
+	// TODO: check bypass
+	// init remote here by config
+
+	if (strcmp(config->server_type, "trojan") == 0) {
+		on_udp_read_trojan(fd, event, ctx);
+	} else if (strcmp(config->server_type, "v2ray") == 0) {
+		on_udp_read_v2ray(fd, event, ctx);
+	}
+	pgs_session_error(
+		session,
+		"failed to handle udp packet: server type(%s) not supported",
+		config->server_type);
+}
+
 static void on_udp_read_trojan(int fd, short event, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;

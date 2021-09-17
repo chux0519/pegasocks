@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 
+#include "pgs_acl.h"
 #include "pgs_log.h"
 #include "pgs_config.h"
 #include "pgs_server_manager.h"
@@ -21,6 +22,7 @@ typedef struct pgs_local_server_s {
 	// shared from main thread, read only
 	pgs_config_t *config;
 	pgs_server_manager_t *sm;
+	pgs_acl_t *acl;
 } pgs_local_server_t;
 
 typedef struct pgs_local_server_ctx_s {
@@ -28,6 +30,7 @@ typedef struct pgs_local_server_ctx_s {
 	pgs_mpsc_t *mpsc;
 	pgs_config_t *config;
 	pgs_server_manager_t *sm;
+	pgs_acl_t *acl;
 } pgs_local_server_ctx_t;
 
 pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx);
