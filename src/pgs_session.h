@@ -54,6 +54,8 @@ typedef struct pgs_session_s {
 	pgs_session_outbound_t *outbound;
 	pgs_local_server_t *local_server;
 	pgs_session_stats_t *metrics;
+	// needed by UDP ASSOCIATE
+	const pgs_server_config_t *cur_config;
 } pgs_session_t;
 
 typedef struct pgs_session_inbound_cbs_s {

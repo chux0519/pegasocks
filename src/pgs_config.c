@@ -41,15 +41,17 @@ pgs_config_t *pgs_config_load(const char *config)
 
 pgs_config_t *pgs_config_parse(const char *json)
 {
-	JSON_Value *root_value;
+	pgs_config_t *ptr = pgs_config_new();
 	JSON_Object *root_obj;
 	JSON_Object *log_file_obj;
 	JSON_Array *servers_array;
-	root_value = json_parse_string(json);
-	if (root_value == NULL || json_value_get_type(root_value) != JSONObject)
+
+	ptr->root_value = json_parse_string(json);
+
+	if (ptr->root_value == NULL ||
+	    json_value_get_type(ptr->root_value) != JSONObject)
 		goto error;
-	pgs_config_t *ptr = pgs_config_new();
-	root_obj = json_value_get_object(root_value);
+	root_obj = json_value_get_object(ptr->root_value);
 
 	const char *log_file =
 		json_object_get_string(root_obj, CONFIG_LOG_FILE);
@@ -113,8 +115,7 @@ pgs_config_t *pgs_config_parse(const char *json)
 error:
 	pgs_config_error(ptr, "Error: pgs_config_parse");
 	pgs_config_free(ptr);
-	if (root_value != NULL)
-		json_value_free(root_value);
+
 	return NULL;
 }
 
@@ -223,6 +224,7 @@ void *pgs_server_config_parse_extra(pgs_config_t *config,
 pgs_config_t *pgs_config_new()
 {
 	pgs_config_t *ptr = malloc(sizeof(pgs_config_t));
+	ptr->root_value = NULL;
 	ptr->servers = NULL;
 	ptr->servers_count = 0;
 	ptr->local_address = NULL;
@@ -272,6 +274,11 @@ void pgs_config_free(pgs_config_t *config)
 		fclose(config->log_file);
 	if (config->servers)
 		pgs_servers_config_free(config->servers, config->servers_count);
+
+	if (config->root_value != NULL) {
+		json_value_free(config->root_value);
+		config->root_value = NULL;
+	}
 
 	free(config);
 

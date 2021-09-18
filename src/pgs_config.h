@@ -64,6 +64,7 @@ typedef struct pgs_server_config_s {
 } pgs_server_config_t;
 
 typedef struct pgs_config_s {
+	JSON_Value *root_value;
 	pgs_server_config_t *servers;
 	int servers_count;
 	const char *local_address;

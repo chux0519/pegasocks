@@ -17,6 +17,7 @@
 
 typedef void(on_event_cb)(struct bufferevent *bev, short events, void *ctx);
 typedef void(on_read_cb)(struct bufferevent *bev, void *ctx);
+typedef void(on_udp_read_cb)(int fd, short event, void *ctx);
 
 typedef struct pgs_session_outbound_cbs_s {
 	on_event_cb *on_trojan_remote_event;
@@ -25,15 +26,21 @@ typedef struct pgs_session_outbound_cbs_s {
 	on_read_cb *on_trojan_remote_read;
 	on_read_cb *on_v2ray_remote_read;
 	on_read_cb *on_bypass_remote_read;
+	on_udp_read_cb *on_bypass_remote_udp_read;
 } pgs_session_outbound_cbs_t;
 
 typedef struct pgs_session_outbound_s {
 	struct bufferevent *bev;
 	const pgs_server_config_t *config;
-	int config_idx;
 	char *dest;
 	int port;
 	void *ctx;
+
+	// UDP ASSOCIATE
+	int udp_fd;
+	struct sockaddr_in udp_server_addr;
+	socklen_t udp_server_addr_size;
+	struct event *udp_client_ev;
 } pgs_session_outbound_t;
 
 typedef struct pgs_trojansession_ctx_s {
@@ -251,6 +258,12 @@ static void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 	}
 	if (ptr->dest)
 		free(ptr->dest);
+
+	if (ptr->udp_client_ev != NULL) {
+		event_free(ptr->udp_client_ev);
+		ptr->udp_client_ev = NULL;
+	}
+
 	ptr->bev = NULL;
 	ptr->ctx = NULL;
 	ptr->dest = NULL;
@@ -258,21 +271,111 @@ static void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 	ptr = NULL;
 }
 
-static pgs_session_outbound_t *pgs_session_outbound_new(
-	const pgs_server_config_t *config, int config_idx, const uint8_t *cmd,
-	uint64_t cmd_len, pgs_logger_t *logger, struct event_base *base,
-	struct evdns_base *dns_base, pgs_acl_t *acl, bool *proxy,
-	pgs_session_outbound_cbs_t outbound_cbs, void *cb_ctx)
+static bool pgs_session_trojan_outbound_init(
+	pgs_session_outbound_t *ptr, const pgs_server_config_t *config,
+	const uint8_t *cmd, uint64_t cmd_len, struct event_base *base,
+	on_event_cb *event_cb, on_read_cb *read_cb, void *cb_ctx)
 {
-	pgs_session_outbound_t *ptr = (pgs_session_outbound_t *)malloc(
-		sizeof(pgs_session_outbound_t));
 	ptr->config = config;
-	ptr->config_idx = config_idx;
+
+	ptr->ctx =
+		pgs_trojansession_ctx_new(config->password, 56, cmd, cmd_len);
+
+	// sni
+	const char *sni = config->server_address;
+	pgs_trojanserver_config_t *tconf =
+		(pgs_trojanserver_config_t *)config->extra;
+	if (tconf->ssl.sni != NULL) {
+		sni = tconf->ssl.sni;
+	}
+	if (pgs_session_outbound_ssl_bev_init(&ptr->bev, base, tconf->ssl_ctx,
+					      sni))
+		goto error;
+
+	assert(event_cb && read_cb && ptr->bev);
+	bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
+
+	return true;
+
+error:
+	return false;
+}
+
+static bool pgs_session_v2ray_outbound_init(
+	pgs_session_outbound_t *ptr, const pgs_server_config_t *config,
+	const uint8_t *cmd, uint64_t cmd_len, struct event_base *base,
+	on_event_cb *event_cb, on_read_cb *read_cb, void *cb_ctx)
+{
+	pgs_v2rayserver_config_t *vconf =
+		(pgs_v2rayserver_config_t *)config->extra;
+
+	ptr->ctx = pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
+
+	if (vconf->ssl.enabled && vconf->ssl_ctx) {
+		// ssl + vmess
+		const char *sni = config->server_address;
+		if (vconf->ssl.sni != NULL) {
+			sni = vconf->ssl.sni;
+		}
+		if (pgs_session_outbound_ssl_bev_init(&ptr->bev, base,
+						      vconf->ssl_ctx, sni))
+			goto error;
+	} else {
+		// raw vmess
+		ptr->bev = bufferevent_socket_new(
+			base, -1,
+			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	}
+
+	assert(event_cb && read_cb && ptr->bev);
+	bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
+	return true;
+
+error:
+	return false;
+}
+
+static bool pgs_session_bypass_outbound_init(pgs_session_outbound_t *ptr,
+					     struct event_base *base,
+					     on_event_cb *event_cb,
+					     on_read_cb *read_cb, void *cb_ctx)
+{
+	if (event_cb == NULL || read_cb == NULL)
+		goto error;
+	ptr->ctx = NULL;
+	ptr->bev = bufferevent_socket_new(
+		base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
+	bufferevent_enable(ptr->bev, EV_READ);
+
+	return true;
+error:
+	return false;
+}
+
+static pgs_session_outbound_t *pgs_session_outbound_new()
+{
+	pgs_session_outbound_t *ptr = malloc(sizeof(pgs_session_outbound_t));
+	ptr->dest = NULL;
+	ptr->port = 0;
+	ptr->config = NULL;
 	ptr->bev = NULL;
 	ptr->ctx = NULL;
+	ptr->udp_client_ev = NULL;
+	ptr->udp_fd = 0;
+
+	return ptr;
+}
+
+static bool pgs_session_outbound_init(
+	pgs_session_outbound_t *ptr, const pgs_server_config_t *config,
+	const uint8_t *cmd, uint64_t cmd_len, pgs_logger_t *logger,
+	struct event_base *base, struct evdns_base *dns_base, pgs_acl_t *acl,
+	bool *proxy, pgs_session_outbound_cbs_t outbound_cbs, void *cb_ctx)
+{
+	ptr->config = config;
 
 	// CHECK if all zeros for UDP
-	ptr->port = (cmd[cmd_len - 2] << 8) | cmd[cmd_len - 1];
 	socks5_dest_addr_parse(cmd, cmd_len, acl, proxy, &ptr->dest,
 			       &ptr->port);
 
@@ -283,126 +386,52 @@ static pgs_session_outbound_t *pgs_session_outbound_new(
 
 	if (*proxy) {
 		if (strcmp(config->server_type, "trojan") == 0) {
-			pgs_trojanserver_config_t *trojanconf =
-				(pgs_trojanserver_config_t *)config->extra;
-			ptr->ctx = pgs_trojansession_ctx_new(config->password,
-							     56, cmd, cmd_len);
-			// sni
-			const char *sni = config->server_address;
-			if (trojanconf->ssl.sni != NULL) {
-				sni = trojanconf->ssl.sni;
-			}
-			if (pgs_session_outbound_ssl_bev_init(
-				    &ptr->bev, base, trojanconf->ssl_ctx,
-				    sni)) {
+			if (!pgs_session_trojan_outbound_init(
+				    ptr, config, cmd, cmd_len, base,
+				    outbound_cbs.on_trojan_remote_event,
+				    outbound_cbs.on_trojan_remote_read,
+				    cb_ctx)) {
 				pgs_logger_error(
 					logger,
-					"Failed to init outbound trojan ssl bev");
+					"Failed to init trojan outbound");
 				goto error;
 			}
-
-			assert(outbound_cbs.on_trojan_remote_event &&
-			       outbound_cbs.on_trojan_remote_read);
-			bufferevent_setcb(ptr->bev,
-					  outbound_cbs.on_trojan_remote_read,
-					  NULL,
-					  outbound_cbs.on_trojan_remote_event,
-					  cb_ctx);
 		} else if (strcmp(config->server_type, "v2ray") == 0) {
-			pgs_v2rayserver_config_t *vconf =
-				(pgs_v2rayserver_config_t *)config->extra;
-			if (!vconf->websocket.enabled) {
-				// setup bev
-				if (vconf->ssl.enabled && vconf->ssl_ctx) {
-					// ssl + vmess
-					const char *sni =
-						config->server_address;
-					if (vconf->ssl.sni != NULL) {
-						sni = vconf->ssl.sni;
-					}
-					if (pgs_session_outbound_ssl_bev_init(
-						    &ptr->bev, base,
-						    vconf->ssl_ctx, sni)) {
-						pgs_logger_error(
-							logger,
-							"Failed to init outbound v2ray ssl bev");
-						goto error;
-					}
-				} else {
-					// raw vmess
-					ptr->bev = bufferevent_socket_new(
-						base, -1,
-						BEV_OPT_CLOSE_ON_FREE |
-							BEV_OPT_DEFER_CALLBACKS);
-				}
-			} else {
-				// websocket enabled
-				// check if wss
-				if (vconf->ssl.enabled && vconf->ssl_ctx) {
-					const char *sni =
-						config->server_address;
-					if (vconf->ssl.sni != NULL) {
-						sni = vconf->ssl.sni;
-					}
-					if (pgs_session_outbound_ssl_bev_init(
-						    &ptr->bev, base,
-						    vconf->ssl_ctx, sni)) {
-						pgs_logger_error(
-							logger,
-							"Failed to init outbound v2ray ssl bev");
-						goto error;
-					}
-				} else {
-					ptr->bev = bufferevent_socket_new(
-						base, -1,
-						BEV_OPT_CLOSE_ON_FREE |
-							BEV_OPT_DEFER_CALLBACKS);
-				}
+			if (!pgs_session_v2ray_outbound_init(
+				    ptr, config, cmd, cmd_len, base,
+				    outbound_cbs.on_v2ray_remote_event,
+				    outbound_cbs.on_v2ray_remote_read,
+				    cb_ctx)) {
+				pgs_logger_error(
+					logger,
+					"Failed to init v2ray outbound");
+				goto error;
 			}
-			ptr->ctx =
-				pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
-			assert(outbound_cbs.on_v2ray_remote_event &&
-			       outbound_cbs.on_v2ray_remote_read);
-			bufferevent_setcb(ptr->bev,
-					  outbound_cbs.on_v2ray_remote_read,
-					  NULL,
-					  outbound_cbs.on_v2ray_remote_event,
-					  cb_ctx);
 		}
 
 		bufferevent_enable(ptr->bev, EV_READ);
-
-		// fire request
-		pgs_logger_debug(logger, "connect: %s:%d",
-				 config->server_address, config->server_port);
 
 		bufferevent_socket_connect_hostname(ptr->bev, dns_base, AF_INET,
 						    config->server_address,
 						    config->server_port);
+
+		pgs_logger_debug(logger, "connect: %s:%d",
+				 config->server_address, config->server_port);
 	} else {
-		if (outbound_cbs.on_bypass_remote_read == NULL ||
-		    outbound_cbs.on_bypass_remote_event == NULL) {
-			pgs_logger_error(logger, "no bypass handler");
-			goto error;
-		}
-		ptr->ctx = NULL;
-		ptr->bev = bufferevent_socket_new(
-			base, -1,
-			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-		bufferevent_setcb(ptr->bev, outbound_cbs.on_bypass_remote_read,
-				  NULL, outbound_cbs.on_bypass_remote_event,
-				  cb_ctx);
-		bufferevent_enable(ptr->bev, EV_READ);
+		// TODO: support UDP here ?
+		pgs_session_bypass_outbound_init(
+			ptr, base, outbound_cbs.on_bypass_remote_event,
+			outbound_cbs.on_bypass_remote_read, cb_ctx);
+
 		pgs_logger_info(logger, "bypass: %s:%d", ptr->dest, ptr->port);
 		bufferevent_socket_connect_hostname(ptr->bev, dns_base, AF_INET,
 						    ptr->dest, ptr->port);
 	}
 
-	return ptr;
+	return true;
 
 error:
-	pgs_session_outbound_free(ptr);
-	return NULL;
+	return false;
 }
 
 #endif

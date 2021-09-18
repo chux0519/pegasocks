@@ -113,6 +113,7 @@ static int start_udp_server(const pgs_server_config_t *config,
 		pgs_session_error(session, "failed to init udp server");
 		return err;
 	}
+	session->cur_config = config;
 	session->inbound->udp_rbuf = (uint8_t *)malloc(BUFSIZE_16K);
 	session->inbound->udp_remote_wbuf = (uint8_t *)malloc(BUFSIZE_16K);
 	session->inbound->udp_server_ev =
@@ -173,7 +174,6 @@ void pgs_session_free(pgs_session_t *session)
 		pgs_session_inbound_free(session->inbound);
 
 	if (session->outbound) {
-		const char *addr = session->outbound->dest;
 		gettimeofday(&session->metrics->end, NULL);
 		char tm_start_str[32], tm_end_str[32];
 		PARSE_SESSION_TIMEVAL(tm_start_str, session->metrics->start);
@@ -181,8 +181,9 @@ void pgs_session_free(pgs_session_t *session)
 		pgs_session_info(
 			session,
 			"connection to %s:%d closed, start: %s, end: %s, send: %d, recv: %d",
-			addr, session->outbound->port, tm_start_str, tm_end_str,
-			session->metrics->send, session->metrics->recv);
+			session->outbound->dest, session->outbound->port,
+			tm_start_str, tm_end_str, session->metrics->send,
+			session->metrics->recv);
 		pgs_session_outbound_free(session->outbound);
 	}
 
@@ -334,15 +335,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 		// get current server index
 		pgs_server_config_t *config = pgs_server_manager_get_config(
 			session->local_server->sm);
-		int config_idx = -1;
-		for (int i = 0;
-		     i < session->local_server->config->servers_count; i++) {
-			if (config ==
-			    &session->local_server->config->servers[i]) {
-				config_idx = i;
-				break;
-			}
-		}
+
 		switch (rdata[1]) {
 		case 0x01: {
 			// CMD connect
@@ -361,19 +354,26 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 				on_v2ray_local_read, on_bypass_local_read
 			};
 			pgs_session_outbound_cbs_t outbound_cbs = {
-				on_trojan_remote_event, on_v2ray_remote_event,
-				on_bypass_remote_event, on_trojan_remote_read,
-				on_v2ray_remote_read,	on_bypass_remote_read,
+				on_trojan_remote_event,
+				on_v2ray_remote_event,
+				on_bypass_remote_event,
+				on_trojan_remote_read,
+				on_v2ray_remote_read,
+				on_bypass_remote_read,
+				NULL
 			};
 			bool proxy = true;
 			// create outbound
-			session->outbound = pgs_session_outbound_new(
-				config, config_idx, cmd, cmdlen,
-				session->local_server->logger,
-				session->local_server->base,
-				session->local_server->dns_base,
-				session->local_server->acl, &proxy,
-				outbound_cbs, session);
+			session->outbound = pgs_session_outbound_new();
+			if (!pgs_session_outbound_init(
+				    session->outbound, config, cmd, cmdlen,
+				    session->local_server->logger,
+				    session->local_server->base,
+				    session->local_server->dns_base,
+				    session->local_server->acl, &proxy,
+				    outbound_cbs, session))
+				goto error;
+
 			// update inbound cbs
 			pgs_session_inbound_update(
 				config, session->local_server->logger, bev,
@@ -389,7 +389,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 		}
 		case 0x02: // bind
 		case 0x03: {
-			// CMD UDP ASSCOTIATE
+			// CMD UDP ASSOCIATE
 			int port = 0;
 			// TODO: if bypass, we should set a bypass UDP server?
 			int err = start_udp_server(config, session, &port);
@@ -398,23 +398,34 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			}
 			pgs_session_info(session, "udp server listening at: %d",
 					 port);
-			// create outbound and setup callbacks
-			const uint8_t *cmd = session->inbound->cmd;
 
-			pgs_session_outbound_cbs_t outbound_cbs = {
-				on_trojan_remote_event, on_v2ray_remote_event,
-				on_bypass_remote_event, on_trojan_remote_read,
-				on_v2ray_remote_read,	on_bypass_remote_read
-			};
 			bool proxy = true;
-			// create outbound
-			session->outbound = pgs_session_outbound_new(
-				config, config_idx, cmd, cmdlen,
-				session->local_server->logger,
-				session->local_server->base,
-				session->local_server->dns_base,
-				session->local_server->acl, &proxy,
-				outbound_cbs, session);
+			if (proxy) {
+				// create outbound and setup callbacks
+				const uint8_t *cmd = session->inbound->cmd;
+
+				pgs_session_outbound_cbs_t outbound_cbs = {
+					on_trojan_remote_event,
+					on_v2ray_remote_event,
+					on_bypass_remote_event,
+					on_trojan_remote_read,
+					on_v2ray_remote_read,
+					NULL /* if bypass then need no remote*/,
+					NULL
+				};
+
+				session->outbound = pgs_session_outbound_new();
+				if (!pgs_session_outbound_init(
+					    session->outbound, config, cmd,
+					    cmdlen,
+					    session->local_server->logger,
+					    session->local_server->base,
+					    session->local_server->dns_base,
+					    session->local_server->acl, &proxy,
+					    outbound_cbs, session))
+					goto error;
+			}
+
 			// FIXME: hardcoded ATYP and BND.ADDR
 			evbuffer_add(output, "\x05\x00\x00\x01\x00\x00\x00\x00",
 				     8);
@@ -958,12 +969,14 @@ static void on_udp_read(int fd, short event, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "udp local read triggered");
-	pgs_server_config_t *config =
-		pgs_server_manager_get_config(session->local_server->sm);
+	const pgs_server_config_t *config = session->cur_config;
 
 	uint8_t *buf = session->inbound->udp_rbuf;
 	socklen_t *size = &session->inbound->udp_client_addr_size;
 	struct sockaddr_in *client_addr = &session->inbound->udp_client_addr;
+
+	char *dest = NULL;
+	int port = 0;
 
 	ssize_t len = recvfrom(fd, buf, BUFSIZE_16K, 0,
 			       (struct sockaddr *)client_addr, size);
@@ -979,20 +992,44 @@ static void on_udp_read(int fd, short event, void *ctx)
 		// if bypass, send it directly, do a udp relay
 		// if not send it to outbound via different protocol(trojan/v2ray outbound)
 		bool proxy = true;
+		socks5_dest_addr_parse(buf, len, session->local_server->acl,
+				       &proxy, &dest, &port);
+
 		if (proxy) {
 			if (strcmp(config->server_type, "trojan") == 0) {
+				if (session->outbound == NULL) {
+					// TODO: create outbound
+					// session->outbound =
+				}
+				// will cache data in remote_wbuf before connected
 				on_udp_read_trojan(buf, len, session);
 			} else if (strcmp(config->server_type, "v2ray") == 0) {
+				if (session->outbound == NULL) {
+					// TODO: create outbound
+					// session->outbound =
+				}
+				// will cache data in remote_wbuf before connected
 				on_udp_read_v2ray(buf, len, session);
 			}
 			pgs_session_error(
 				session,
 				"failed to handle udp packet: server type(%s) not supported",
 				config->server_type);
+		} else {
+			pgs_session_info(session, "udp bypass: %s:%d", dest,
+					 port);
+			// create an udp outbound and write to it
 		}
 	}
 
+	if (dest != NULL) {
+		free(dest);
+	}
+
 error:
+	if (dest != NULL) {
+		free(dest);
+	}
 	pgs_session_free(session);
 }
 
