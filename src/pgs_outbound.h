@@ -110,6 +110,7 @@ static void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
 		dest = (char *)malloc(sizeof(char) * 32);
 		sprintf(dest, "%d.%d.%d.%d", cmd[offset], cmd[offset + 1],
 			cmd[offset + 2], cmd[offset + 3]);
+		offset += 4;
 		break;
 	}
 	case SOCKS5_CMD_HOSTNAME: {
@@ -119,6 +120,7 @@ static void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
 		dest = (char *)malloc(sizeof(char) * (len + 1));
 		memcpy(dest, cmd + 5, len);
 		dest[len] = '\0';
+		offset += len;
 		break;
 	}
 	case SOCKS5_CMD_IPV6: {
@@ -133,13 +135,14 @@ static void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
 			cmd[offset + 10] << 8 | cmd[offset + 11],
 			cmd[offset + 12] << 8 | cmd[offset + 13],
 			cmd[offset + 14] << 8 | cmd[offset + 15]);
+		offset += 16;
 		break;
 	}
 	default:
 		break;
 	}
 	*dest_ptr = dest;
-	*port = (cmd[cmd_len - 2] << 8) | cmd[cmd_len - 1];
+	*port = (cmd[offset] << 8) | cmd[offset + 1];
 #ifdef WITH_ACL
 	if (acl != NULL) {
 		bool match = pgs_acl_match_host(acl, dest);

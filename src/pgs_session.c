@@ -58,8 +58,10 @@ static int start_udp_server(const pgs_server_config_t *sconfig,
 
 // this determine whether it should be bypassed or not
 static void on_udp_read(int fd, short event, void *ctx);
-static void on_udp_read_trojan(int fd, short event, void *ctx);
-static void on_udp_read_v2ray(int fd, short event, void *ctx);
+static void on_udp_read_trojan(const uint8_t *buf, ssize_t len,
+			       pgs_session_t *session);
+static void on_udp_read_v2ray(const uint8_t *buf, ssize_t len,
+			      pgs_session_t *session);
 
 static int init_udp_fd(const pgs_config_t *config, int *fd, int *port)
 {
@@ -959,84 +961,93 @@ static void on_udp_read(int fd, short event, void *ctx)
 	pgs_server_config_t *config =
 		pgs_server_manager_get_config(session->local_server->sm);
 
-	// TODO: check bypass
-	// init remote here by config
-
-	if (strcmp(config->server_type, "trojan") == 0) {
-		on_udp_read_trojan(fd, event, ctx);
-	} else if (strcmp(config->server_type, "v2ray") == 0) {
-		on_udp_read_v2ray(fd, event, ctx);
-	}
-	pgs_session_error(
-		session,
-		"failed to handle udp packet: server type(%s) not supported",
-		config->server_type);
-}
-
-static void on_udp_read_trojan(int fd, short event, void *ctx)
-{
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "udp local read triggered");
-
 	uint8_t *buf = session->inbound->udp_rbuf;
 	socklen_t *size = &session->inbound->udp_client_addr_size;
 	struct sockaddr_in *client_addr = &session->inbound->udp_client_addr;
-	uint8_t *packet = NULL;
 
 	ssize_t len = recvfrom(fd, buf, BUFSIZE_16K, 0,
 			       (struct sockaddr *)client_addr, size);
 	if (0 == len) {
 		pgs_session_warn(session, "udp connection closed");
 	} else if (len > 0) { /*Max read/cache buffer size is 16K*/
-		// pgs_session_debug_buffer(session, buf, len);
 		if (len <= 3) { /*FRAG is not supported now*/
 			pgs_session_error(session, "invalid udp datagram");
 			goto error;
 		}
-		uint16_t addr_len = 1 + 2; // atype + port
-		addr_len += pgs_get_addr_len(buf + 3);
-		if (len <= (2 + 1 + addr_len)) {
-			pgs_session_error(session, "invalid udp datagram");
-			goto error;
-		}
-		uint16_t data_len = len - 2 - 1 -
-				    addr_len; /*RSV(2) | FRAG(1) | ADDR | DATA*/
-		uint16_t packet_len =
-			addr_len + 2 + 2 +
-			data_len; /*ADDR | LEN(2) | CRLF(2) | PAYLOAD(datalen)*/
-		packet = (uint8_t *)malloc(packet_len);
-		if (packet == NULL) {
-			pgs_session_error(session, "out of memory");
-			goto error;
-		}
-		memcpy(packet, buf + 3, addr_len);
-		packet[addr_len] = data_len >> 8;
-		packet[addr_len + 1] = data_len & 0xFF;
-		packet[addr_len + 2] = '\r';
-		packet[addr_len + 3] = '\n';
-		memcpy(packet + addr_len + 4, buf + 3 + addr_len, data_len);
-
-		// build packet then cache or send it
-		pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-		if (!trojan_s_ctx->connected) {
-			// Cache this, send it later
-			int pos = session->inbound->udp_remote_wbuf_pos;
-			if (pos + packet_len >= BUFSIZE_16K) {
-				pgs_session_error(session,
-						  "udp payload too large");
-				goto error;
+		uint8_t atype = buf[3];
+		// check if this should bypass
+		// if bypass, send it directly, do a udp relay
+		// if not send it to outbound via different protocol(trojan/v2ray outbound)
+		bool proxy = true;
+		if (proxy) {
+			if (strcmp(config->server_type, "trojan") == 0) {
+				on_udp_read_trojan(buf, len, session);
+			} else if (strcmp(config->server_type, "v2ray") == 0) {
+				on_udp_read_v2ray(buf, len, session);
 			}
-			memcpy(session->inbound->udp_remote_wbuf + pos, packet,
-			       packet_len);
-			session->inbound->udp_remote_wbuf_pos += packet_len;
-		} else {
-			// Send data
-			trojan_write_remote(session, packet, packet_len);
+			pgs_session_error(
+				session,
+				"failed to handle udp packet: server type(%s) not supported",
+				config->server_type);
 		}
-		if (packet != NULL) {
-			free(packet);
-			packet = NULL;
+	}
+
+error:
+	pgs_session_free(session);
+}
+
+static void on_udp_read_trojan(const uint8_t *buf, ssize_t len,
+			       pgs_session_t *session)
+{
+	uint8_t *packet = NULL;
+
+	// pgs_session_debug_buffer(session, buf, len);
+	if (len <= 3) { /*FRAG is not supported now*/
+		pgs_session_error(session, "invalid udp datagram");
+		goto error;
+	}
+	uint16_t addr_len = 1 + 2; // atype + port
+	addr_len += pgs_get_addr_len(buf + 3);
+	if (len <= (2 + 1 + addr_len)) {
+		pgs_session_error(session, "invalid udp datagram");
+		goto error;
+	}
+	uint16_t data_len =
+		len - 2 - 1 - addr_len; /*RSV(2) | FRAG(1) | ADDR | DATA*/
+	uint16_t packet_len =
+		addr_len + 2 + 2 +
+		data_len; /*ADDR | LEN(2) | CRLF(2) | PAYLOAD(datalen)*/
+	packet = (uint8_t *)malloc(packet_len);
+	if (packet == NULL) {
+		pgs_session_error(session, "out of memory");
+		goto error;
+	}
+	memcpy(packet, buf + 3, addr_len);
+	packet[addr_len] = data_len >> 8;
+	packet[addr_len + 1] = data_len & 0xFF;
+	packet[addr_len + 2] = '\r';
+	packet[addr_len + 3] = '\n';
+	memcpy(packet + addr_len + 4, buf + 3 + addr_len, data_len);
+
+	// build packet then cache or send it
+	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
+	if (!trojan_s_ctx->connected) {
+		// Cache this, send it later
+		int pos = session->inbound->udp_remote_wbuf_pos;
+		if (pos + packet_len >= BUFSIZE_16K) {
+			pgs_session_error(session, "udp payload too large");
+			goto error;
 		}
+		memcpy(session->inbound->udp_remote_wbuf + pos, packet,
+		       packet_len);
+		session->inbound->udp_remote_wbuf_pos += packet_len;
+	} else {
+		// Send data
+		trojan_write_remote(session, packet, packet_len);
+	}
+	if (packet != NULL) {
+		free(packet);
+		packet = NULL;
 	}
 	return;
 
@@ -1048,52 +1059,40 @@ error:
 	pgs_session_free(session);
 }
 
-static void on_udp_read_v2ray(int fd, short event, void *ctx)
+static void on_udp_read_v2ray(const uint8_t *buf, ssize_t len,
+			      pgs_session_t *session)
 {
-	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "udp local read triggered");
+	if (len <= 3) { /*FRAG is not supported now*/
+		pgs_session_error(session, "invalid udp datagram");
+		goto error;
+	}
 
-	uint8_t *buf = session->inbound->udp_rbuf;
-	socklen_t *size = &session->inbound->udp_client_addr_size;
-	struct sockaddr_in *client_addr = &session->inbound->udp_client_addr;
+	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
+	// store target_addr
+	uint16_t addr_len = 1 + 2; // atype + port
+	addr_len += pgs_get_addr_len(buf + 3);
+	if (len <= (2 + 1 + addr_len)) {
+		pgs_session_error(session, "invalid udp datagram");
+		goto error;
+	}
+	uint16_t data_len =
+		len - 2 - 1 - addr_len; /*RSV(2) | FRAG(1) | ADDR | DATA*/
 
-	ssize_t len = recvfrom(fd, buf, BUFSIZE_16K, 0,
-			       (struct sockaddr *)client_addr, size);
-	if (0 == len) {
-		pgs_session_warn(session, "udp connection closed");
-	} else if (len > 0) { /*Max read/cache buffer size is 16K*/
-		if (len <= 3) { /*FRAG is not supported now*/
-			pgs_session_error(session, "invalid udp datagram");
-			goto error;
-		}
+	v2ray_s_ctx->target_addr_len = addr_len;
+	memcpy(v2ray_s_ctx->target_addr, buf + 3, addr_len);
 
-		pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
-		// store target_addr
-		uint16_t addr_len = 1 + 2; // atype + port
-		addr_len += pgs_get_addr_len(buf + 3);
-		if (len <= (2 + 1 + addr_len)) {
-			pgs_session_error(session, "invalid udp datagram");
-			goto error;
-		}
-		uint16_t data_len = len - 2 - 1 -
-				    addr_len; /*RSV(2) | FRAG(1) | ADDR | DATA*/
-
-		v2ray_s_ctx->target_addr_len = addr_len;
-		memcpy(v2ray_s_ctx->target_addr, buf + 3, addr_len);
-
-		if (!v2ray_s_ctx->connected) {
-			// Cache, it will be sent when connected
-			memcpy(session->inbound->udp_remote_wbuf +
-				       session->inbound->udp_remote_wbuf_pos,
-			       buf + 3 + addr_len, data_len);
-			session->inbound->udp_remote_wbuf_pos += data_len;
-		} else {
-			// UDP
-			uint64_t total_len = pgs_vmess_write_remote(
-				session, buf + 3 + addr_len, data_len,
-				(pgs_session_write_fn)&vmess_flush_remote);
-			session->inbound->udp_remote_wbuf_pos = 0;
-		}
+	if (!v2ray_s_ctx->connected) {
+		// Cache, it will be sent when connected
+		memcpy(session->inbound->udp_remote_wbuf +
+			       session->inbound->udp_remote_wbuf_pos,
+		       buf + 3 + addr_len, data_len);
+		session->inbound->udp_remote_wbuf_pos += data_len;
+	} else {
+		// UDP
+		uint64_t total_len = pgs_vmess_write_remote(
+			session, buf + 3 + addr_len, data_len,
+			(pgs_session_write_fn)&vmess_flush_remote);
+		session->inbound->udp_remote_wbuf_pos = 0;
 	}
 	return;
 
