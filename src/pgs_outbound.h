@@ -11,14 +11,6 @@
 #include <event2/bufferevent.h>
 #include <event2/bufferevent_ssl.h>
 
-#define SOCKS5_CMD_IPV4 0x01
-#define SOCKS5_CMD_IPV6 0x04
-#define SOCKS5_CMD_HOSTNAME 0x03
-
-typedef void(on_event_cb)(struct bufferevent *bev, short events, void *ctx);
-typedef void(on_read_cb)(struct bufferevent *bev, void *ctx);
-typedef void(on_udp_read_cb)(int fd, short event, void *ctx);
-
 typedef struct pgs_session_outbound_cbs_s {
 	on_event_cb *on_trojan_remote_event;
 	on_event_cb *on_v2ray_remote_event;
@@ -28,14 +20,6 @@ typedef struct pgs_session_outbound_cbs_s {
 	on_read_cb *on_bypass_remote_read;
 	on_udp_read_cb *on_bypass_remote_udp_read;
 } pgs_session_outbound_cbs_t;
-
-typedef struct pgs_udp_relay_s {
-	int udp_fd;
-	uint8_t *udp_rbuf;
-	struct sockaddr_in udp_server_addr;
-	socklen_t udp_server_addr_size;
-	struct event *udp_client_ev;
-} pgs_udp_relay_t;
 
 typedef struct pgs_session_outbound_s {
 	bool ready;
@@ -109,11 +93,11 @@ static void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
 				   pgs_acl_t *acl, bool *proxy, char **dest_ptr,
 				   int *port)
 {
-	int atyp = cmd[3];
+	int atype = cmd[3];
 	int offset = 4;
 	char *dest = NULL;
 
-	switch (atyp) {
+	switch (atype) {
 	case SOCKS5_CMD_IPV4: {
 		assert(cmd_len > 8);
 		dest = (char *)malloc(sizeof(char) * 32);
@@ -155,7 +139,7 @@ static void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
 #ifdef WITH_ACL
 	if (acl != NULL) {
 		bool match = pgs_acl_match_host(acl, dest);
-		if (!match && atyp == SOCKS5_CMD_HOSTNAME) {
+		if (!match && atype == SOCKS5_CMD_HOSTNAME) {
 			// TODO: reolve the DNS and match the ip again
 		}
 		if (pgs_acl_get_mode(acl) == PROXY_ALL_BYPASS_LIST) {
@@ -248,11 +232,11 @@ static void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 	if (ptr->bev)
 		bufferevent_free(ptr->bev);
 	if (ptr->ctx) {
-		if (strcmp(ptr->config->server_type, "trojan") == 0) {
+		if (IS_TROJAN_SERVER(ptr->config->server_type)) {
 			pgs_trojansession_ctx_free(
 				(pgs_trojansession_ctx_t *)ptr->ctx);
 		}
-		if (strcmp(ptr->config->server_type, "v2ray") == 0) {
+		if (IS_V2RAY_SERVER(ptr->config->server_type)) {
 			pgs_vmess_ctx_free((pgs_vmess_ctx_t *)ptr->ctx);
 		}
 	}
@@ -350,20 +334,6 @@ error:
 	return false;
 }
 
-static bool pgs_session_udp_outbound_init(pgs_session_outbound_t *ptr,
-					  const pgs_config_t *config,
-					  struct event_base *base,
-					  on_udp_read_cb *udp_read_cb,
-					  void *cb_ctx)
-{
-	//ptr->udp_rbuf = (uint8_t *)malloc(BUFSIZE_16K);
-	//ptr->udp_client_ev = event_new(base, ptr->udp_fd, EV_READ | EV_PERSIST,
-	//			       udp_read_cb, cb_ctx);
-	//event_add(ptr->udp_client_ev, NULL);
-
-	//return true;
-}
-
 static pgs_session_outbound_t *pgs_session_outbound_new()
 {
 	pgs_session_outbound_t *ptr = malloc(sizeof(pgs_session_outbound_t));
@@ -398,7 +368,7 @@ static bool pgs_session_outbound_init(
 	}
 
 	if (proxy || is_udp) {
-		if (strcmp(config->server_type, "trojan") == 0) {
+		if (IS_TROJAN_SERVER(config->server_type)) {
 			if (!pgs_session_trojan_outbound_init(
 				    ptr, config, cmd, cmd_len, base,
 				    outbound_cbs.on_trojan_remote_event,
@@ -409,7 +379,7 @@ static bool pgs_session_outbound_init(
 					"Failed to init trojan outbound");
 				goto error;
 			}
-		} else if (strcmp(config->server_type, "v2ray") == 0) {
+		} else if (IS_V2RAY_SERVER(config->server_type)) {
 			if (!pgs_session_v2ray_outbound_init(
 				    ptr, config, cmd, cmd_len, base,
 				    outbound_cbs.on_v2ray_remote_event,

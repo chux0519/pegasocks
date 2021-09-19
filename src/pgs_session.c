@@ -4,6 +4,7 @@
 #include "pgs_session.h"
 #include "pgs_server_manager.h"
 #include "pgs_log.h"
+#include "pgs_udp_relay.h"
 
 #include <unistd.h>
 #include <assert.h>
@@ -169,20 +170,24 @@ void pgs_session_start(pgs_session_t *session)
 
 void pgs_session_free(pgs_session_t *session)
 {
-	if (session->inbound)
-		pgs_session_inbound_free(session->inbound);
-
 	if (session->outbound) {
 		gettimeofday(&session->metrics->end, NULL);
 		char tm_start_str[32], tm_end_str[32];
 		PARSE_SESSION_TIMEVAL(tm_start_str, session->metrics->start);
 		PARSE_SESSION_TIMEVAL(tm_end_str, session->metrics->end);
-		pgs_session_info(
-			session,
-			"connection to %s:%d closed, start: %s, end: %s, send: %d, recv: %d",
-			session->outbound->dest, session->outbound->port,
-			tm_start_str, tm_end_str, session->metrics->send,
-			session->metrics->recv);
+		if (session->inbound &&
+		    session->inbound->state != INBOUND_UDP_RELAY) {
+			pgs_session_info(
+				session,
+				"connection to %s:%d closed, start: %s, end: %s, send: %d, recv: %d",
+				session->outbound->dest,
+				session->outbound->port, tm_start_str,
+				tm_end_str, session->metrics->send,
+				session->metrics->recv);
+		}
+		if (session->inbound)
+			pgs_session_inbound_free(session->inbound);
+
 		pgs_session_outbound_free(session->outbound);
 	}
 
@@ -725,7 +730,7 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 		} else {
 			pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
 			session->outbound->ready = true;
-			pgs_session_debug(session, "v2ray tls connected");
+			pgs_session_debug(session, "v2ray connected");
 			if (session->inbound->state == INBOUND_PROXY) {
 				// TCP
 				on_v2ray_local_read(session->inbound->bev, ctx);
@@ -908,27 +913,59 @@ static void on_session_metrics_send(pgs_session_t *session, uint64_t len)
 
 static void on_remote_udp_read(int fd, short event, void *ctx)
 {
-	//pgs_session_t *session = (pgs_session_t *)ctx;
-	//uint8_t *buf = session->outbound->udp_rbuf;
-	//socklen_t *size = &session->outbound->udp_server_addr_size;
-	//struct sockaddr_in *server_addr = &session->outbound->udp_server_addr;
+	pgs_udp_relay_t *relay = (pgs_udp_relay_t *)ctx;
+	uint8_t *udp_packet = NULL;
 
-	//ssize_t len = recvfrom(fd, buf, BUFSIZE_16K, 0,
-	//		       (struct sockaddr *)server_addr, size);
+	if (event & EV_TIMEOUT) {
+		goto error;
+	}
+	if (relay->session == NULL) {
+		goto error;
+	}
 
-	//if (len > 0) {
-	//	if (session->inbound->udp_fd) {
-	//		ssize_t n =
-	//			sendto(session->inbound->udp_fd, buf, len, 0,
-	//			       (struct sockaddr *)&session->inbound
-	//				       ->udp_client_addr,
-	//			       session->inbound->udp_client_addr_size);
-	//		pgs_session_debug(
-	//			session,
-	//			"remote UDP read: %d, write %s to local", len,
-	//			n);
-	//	}
-	//}
+	pgs_session_t *session = (pgs_session_t *)(*relay->session);
+
+	uint8_t *buf = relay->udp_rbuf;
+	socklen_t size;
+	struct sockaddr_in *server_addr = &relay->udp_server_addr;
+
+	ssize_t len = recvfrom(fd, buf, BUFSIZE_16K, 0,
+			       (struct sockaddr *)server_addr, &size);
+
+	if (len > 0) {
+		if (session->inbound->udp_fd) {
+			int packet_len = relay->packet_header_len + len;
+			udp_packet = malloc(packet_len);
+			memcpy(udp_packet, relay->packet_header,
+			       relay->packet_header_len);
+			memcpy(udp_packet + relay->packet_header_len, buf, len);
+
+			// packet with socks5 header
+			ssize_t n =
+				sendto(session->inbound->udp_fd, udp_packet,
+				       packet_len, 0,
+				       (struct sockaddr *)&session->inbound
+					       ->udp_client_addr,
+				       session->inbound->udp_client_addr_size);
+			pgs_logger_debug(
+				session->local_server->logger,
+				"remote UDP read: %d, write %d to local", len,
+				n);
+		}
+	}
+	if (udp_packet != NULL) {
+		free(udp_packet);
+		udp_packet = NULL;
+	}
+	return;
+
+error:
+	if (udp_packet != NULL) {
+		free(udp_packet);
+		udp_packet = NULL;
+	}
+	pgs_udp_relay_free(relay);
+	return;
 }
 
 static void on_udp_read(int fd, short event, void *ctx)
@@ -966,12 +1003,12 @@ static void on_udp_read(int fd, short event, void *ctx)
 		}
 		bool proxy = true;
 
-		int atyp = buf[3];
+		int atype = buf[3];
 
 		socks5_dest_addr_parse(buf, len, session->local_server->acl,
 				       &proxy, &dest, &port);
 
-		if (proxy || atyp == SOCKS5_CMD_HOSTNAME) {
+		if (proxy || atype == SOCKS5_CMD_HOSTNAME) {
 			if (IS_TROJAN_SERVER(config->server_type)) {
 				on_udp_read_trojan(buf, len, session);
 			} else if (IS_V2RAY_SERVER(config->server_type)) {
@@ -983,30 +1020,24 @@ static void on_udp_read(int fd, short event, void *ctx)
 					config->server_type);
 			}
 		} else {
-			// TODO:
-			//			session->outbound->udp_fd =
-			//				socket(AF_INET, SOCK_DGRAM, 0);
-			//			int flag = fcntl(session->outbound->udp_fd, F_GETFL, 0);
-			//			fcntl(session->outbound->udp_fd, F_SETFL,
-			//			      flag | O_NONBLOCK);
-			//			assert(session->outbound &&
-			//			       session->outbound->udp_client_ev &&
-			//			       session->outbound->udp_fd);
-			struct sockaddr_in sin = { 0 };
-			sin.sin_family = AF_INET;
-			int err = inet_pton(AF_INET, dest, &sin.sin_addr);
-			sin.sin_port = htons(port);
-			if (err <= 0) {
-				goto error;
+			// udp_relay will do GC once it's done
+			pgs_udp_relay_t *udp_relay = pgs_udp_relay_new();
+			if (udp_relay) {
+				int host_len = pgs_get_addr_len(buf + 3);
+				pgs_udp_relay_set_header(udp_relay, buf,
+							 host_len + 4 + 2);
+
+				int offset = 3 + host_len + 2;
+				// add host_len as param
+				int n = pgs_udp_relay_trigger(
+					udp_relay, dest, port, buf + offset,
+					len - offset,
+					session->local_server->base,
+					on_remote_udp_read, session);
+				pgs_session_info(session,
+						 "udp bypass: %s:%d, sent: %d",
+						 dest, port, n);
 			}
-			int host_len = pgs_get_addr_len(buf + 3);
-			int offset = 3 + host_len + 2;
-			//ssize_t n =
-			//	sendto(session->outbound->udp_fd, buf + offset,
-			//	       len - offset, 0, (struct sockaddr *)&sin,
-			//	       sizeof(sin));
-			//pgs_session_info(session, "udp bypass: %s:%d, sent: %d",
-			//		 dest, port, n);
 		}
 	}
 	if (dest != NULL) {
