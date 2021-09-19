@@ -90,11 +90,10 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 						    NULL,
 						    NULL };
 
-	bool proxy = true;
 	pgs_session_outbound_t *ptr = pgs_session_outbound_new();
-	pgs_session_outbound_init(ptr, config, cmd, cmd_len, logger, base,
-				  mctx->dns_base, NULL, &proxy, outbound_cbs,
-				  mctx);
+	pgs_session_outbound_init(ptr, false, NULL, config, cmd, cmd_len,
+				  logger, base, mctx->dns_base, NULL,
+				  outbound_cbs, mctx);
 	mctx->outbound = ptr;
 }
 
@@ -123,7 +122,7 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	pgs_trojansession_ctx_t *trojan_s_ctx = mctx->outbound->ctx;
-	if (!trojan_s_ctx->connected) {
+	if (!mctx->outbound->ready) {
 		if (!strstr((const char *)data, "\r\n\r\n"))
 			return;
 
@@ -134,7 +133,7 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 		} else {
 			//drain
 			evbuffer_drain(input, data_len);
-			trojan_s_ctx->connected = true;
+			mctx->outbound->ready = true;
 			double connect_time = elapse(mctx->start_at);
 			pgs_logger_debug(mctx->logger, "connect: %f",
 					 connect_time);
@@ -180,7 +179,7 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	pgs_vmess_ctx_t *v2ray_s_ctx = mctx->outbound->ctx;
-	if (!v2ray_s_ctx->connected) {
+	if (!mctx->outbound->ready) {
 		if (!strstr((const char *)data, "\r\n\r\n"))
 			return;
 
@@ -191,7 +190,7 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 		} else {
 			//drain
 			evbuffer_drain(input, data_len);
-			v2ray_s_ctx->connected = true;
+			mctx->outbound->ready = true;
 			double connect_time = elapse(mctx->start_at);
 			pgs_logger_debug(mctx->logger, "connect: %f",
 					 connect_time);
@@ -227,7 +226,7 @@ static void on_trojan_gfw_g204_event(struct bufferevent *bev, short events,
 	if (events & BEV_EVENT_CONNECTED) {
 		// set connected
 		pgs_trojansession_ctx_t *sctx = mctx->outbound->ctx;
-		sctx->connected = true;
+		mctx->outbound->ready = true;
 		double connect_time = elapse(mctx->start_at);
 		pgs_logger_debug(mctx->logger, "trojan gfw connected: %f",
 				 connect_time);
@@ -272,7 +271,7 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 	if (events & BEV_EVENT_CONNECTED) {
 		// set connected
 		pgs_vmess_ctx_t *sctx = mctx->outbound->ctx;
-		sctx->connected = true;
+		mctx->outbound->ready = true;
 		double connect_time = elapse(mctx->start_at);
 		pgs_logger_debug(mctx->logger, "connect: %f", connect_time);
 		mctx->sm->server_stats[mctx->server_idx].connect_delay =

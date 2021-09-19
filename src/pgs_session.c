@@ -8,9 +8,10 @@
 #include <unistd.h>
 #include <assert.h>
 #include <ctype.h>
+
 #include <fcntl.h>
-#include <arpa/inet.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 
 /*
  * local handlers
@@ -52,7 +53,6 @@ static void on_session_metrics_send(pgs_session_t *session, uint64_t len);
 /*
  * udp
   */
-static int init_udp_fd(const pgs_config_t *config, int *fd, int *port);
 static int start_udp_server(const pgs_server_config_t *sconfig,
 			    pgs_session_t *session, int *port);
 
@@ -62,8 +62,10 @@ static void on_udp_read_trojan(const uint8_t *buf, ssize_t len,
 			       pgs_session_t *session);
 static void on_udp_read_v2ray(const uint8_t *buf, ssize_t len,
 			      pgs_session_t *session);
+static void on_remote_udp_read(int fd, short event, void *ctx);
 
-static int init_udp_fd(const pgs_config_t *config, int *fd, int *port)
+// init udp fd for listening
+static int init_udp_server_fd(const pgs_config_t *config, int *fd, int *port)
 {
 	int err = 0;
 	struct sockaddr_in sin = { 0 };
@@ -97,7 +99,6 @@ static int init_udp_fd(const pgs_config_t *config, int *fd, int *port)
 	*port = ntohs(sin.sin_port);
 	return err;
 }
-
 /*
  * Create UDP server for UDP ASSOCIATE
  * Returns error
@@ -106,16 +107,14 @@ static int init_udp_fd(const pgs_config_t *config, int *fd, int *port)
 static int start_udp_server(const pgs_server_config_t *config,
 			    pgs_session_t *session, int *port)
 {
-	int err = init_udp_fd(session->local_server->config,
-			      &session->inbound->udp_fd, port);
+	int err = init_udp_server_fd(session->local_server->config,
+				     &session->inbound->udp_fd, port);
 	if (err != 0 || port == 0) {
 		// error
 		pgs_session_error(session, "failed to init udp server");
 		return err;
 	}
-	session->cur_config = config;
 	session->inbound->udp_rbuf = (uint8_t *)malloc(BUFSIZE_16K);
-	session->inbound->udp_remote_wbuf = (uint8_t *)malloc(BUFSIZE_16K);
 	session->inbound->udp_server_ev =
 		event_new(session->local_server->base, session->inbound->udp_fd,
 			  EV_READ | EV_PERSIST, on_udp_read, session);
@@ -204,8 +203,6 @@ pgs_session_inbound_t *pgs_session_inbound_new(struct bufferevent *bev)
 	ptr->udp_client_addr_size = sizeof(struct sockaddr);
 	ptr->udp_server_ev = NULL;
 	ptr->udp_rbuf = NULL;
-	ptr->udp_remote_wbuf = NULL;
-	ptr->udp_remote_wbuf_pos = 0;
 	return ptr;
 }
 
@@ -230,43 +227,7 @@ void pgs_session_inbound_free(pgs_session_inbound_t *ptr)
 		free(ptr->udp_rbuf);
 		ptr->udp_rbuf = NULL;
 	}
-	if (ptr->udp_remote_wbuf != NULL) {
-		free(ptr->udp_remote_wbuf);
-		ptr->udp_remote_wbuf = NULL;
-	}
 	free(ptr);
-}
-
-void pgs_session_inbound_update(const pgs_server_config_t *config,
-				pgs_logger_t *logger, struct bufferevent *inbev,
-				bool proxy,
-				pgs_session_inbound_cbs_t inbound_cbs,
-				void *cb_ctx)
-{
-	if (proxy) {
-		if (strcmp(config->server_type, "trojan") == 0) {
-			if (inbev && inbound_cbs.on_local_event &&
-			    inbound_cbs.on_trojan_local_read)
-				bufferevent_setcb(
-					inbev, inbound_cbs.on_trojan_local_read,
-					NULL, inbound_cbs.on_local_event,
-					cb_ctx);
-		} else if (strcmp(config->server_type, "v2ray") == 0) {
-			if (inbev && inbound_cbs.on_local_event &&
-			    inbound_cbs.on_v2ray_local_read)
-				bufferevent_setcb(
-					inbev, inbound_cbs.on_v2ray_local_read,
-					NULL, inbound_cbs.on_local_event,
-					cb_ctx);
-		}
-	} else {
-		if (inbev && inbound_cbs.on_local_event &&
-		    inbound_cbs.on_bypass_local_read)
-			bufferevent_setcb(inbev,
-					  inbound_cbs.on_bypass_local_read,
-					  NULL, inbound_cbs.on_local_event,
-					  cb_ctx);
-	}
 }
 
 /**
@@ -300,13 +261,13 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	uint64_t len = evbuffer_get_length(input);
-	unsigned char *rdata = evbuffer_pullup(input, len);
-
-	// pgs_session_debug_buffer(session, rdata, len);
+	uint64_t len;
+	uint8_t *rdata;
 
 	switch (state) {
 	case INBOUND_AUTH:
+		len = evbuffer_get_length(input);
+		rdata = evbuffer_pullup(input, len);
 		if (len < 2 || rdata[0] != 0x5) {
 			pgs_session_error(session, "socks5: auth");
 			goto error;
@@ -315,12 +276,14 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 		evbuffer_drain(input, len);
 		session->inbound->state = INBOUND_CMD;
 		return;
-	case INBOUND_CMD: {
+	case INBOUND_CMD:
+		len = evbuffer_get_length(input);
+		rdata = evbuffer_pullup(input, len);
 		if (len < 7 || rdata[0] != 0x5 || rdata[2] != 0x0) {
 			pgs_session_error(session, "socks5: cmd");
 			goto error;
 		}
-		// uint16_t port = rdata[len - 2] << 8 | rdata[len - 1];
+
 		int addr_len = pgs_get_addr_len(rdata + 3);
 		if (addr_len == 0) {
 			pgs_session_error(session, "socks5: wrong atyp");
@@ -339,15 +302,6 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 		switch (rdata[1]) {
 		case 0x01: {
 			// CMD connect
-			// socks5 response, BND.ADDR and BND.PORT should be 0
-			// only the UDP ASSOCIATE command will set this,
-			// otherwise it may cause some kind of error,
-			// e.g. using `nc -X 5 -x 127.0.0.1:1080 %h %p` to proxy the ssh connection
-			evbuffer_add(output,
-				     "\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00",
-				     10);
-			evbuffer_drain(input, cmdlen);
-
 			const uint8_t *cmd = session->inbound->cmd;
 			pgs_session_inbound_cbs_t inbound_cbs = {
 				on_local_event, on_trojan_local_read,
@@ -362,69 +316,65 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 				on_bypass_remote_read,
 				NULL
 			};
-			bool proxy = true;
+
 			// create outbound
 			session->outbound = pgs_session_outbound_new();
 			if (!pgs_session_outbound_init(
-				    session->outbound, config, cmd, cmdlen,
-				    session->local_server->logger,
+				    session->outbound, false, NULL, config, cmd,
+				    cmdlen, session->local_server->logger,
 				    session->local_server->base,
 				    session->local_server->dns_base,
-				    session->local_server->acl, &proxy,
-				    outbound_cbs, session))
+				    session->local_server->acl, outbound_cbs,
+				    session))
 				goto error;
-
-			// update inbound cbs
-			pgs_session_inbound_update(
-				config, session->local_server->logger, bev,
-				proxy, inbound_cbs, session);
 
 			if (session && session->outbound) {
 				const char *addr = session->outbound->dest;
 				pgs_session_info(session, "--> %s:%d", addr,
 						 session->outbound->port);
 			}
+			// socks5 response, BND.ADDR and BND.PORT should be 0
+			// only the UDP ASSOCIATE command will set this,
+			// e.g. using `nc -X 5 -x 127.0.0.1:1080 %h %p` to proxy the ssh connection
+			evbuffer_add(output,
+				     "\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00",
+				     10);
+			evbuffer_drain(input, cmdlen);
+
 			session->inbound->state = INBOUND_PROXY;
 			return;
 		}
 		case 0x02: // bind
 		case 0x03: {
 			// CMD UDP ASSOCIATE
+			session->outbound = pgs_session_outbound_new();
+			pgs_session_outbound_cbs_t outbound_cbs = {
+				on_trojan_remote_event,
+				on_v2ray_remote_event,
+				on_bypass_remote_event,
+				on_trojan_remote_read,
+				on_v2ray_remote_read,
+				NULL /* if bypass then need no remote*/,
+				on_remote_udp_read
+			};
+			if (!pgs_session_outbound_init(
+				    session->outbound, true,
+				    session->local_server->config, config,
+				    rdata, cmdlen,
+				    session->local_server->logger,
+				    session->local_server->base,
+				    session->local_server->dns_base,
+				    session->local_server->acl, outbound_cbs,
+				    session))
+				goto error;
+
 			int port = 0;
-			// TODO: if bypass, we should set a bypass UDP server?
 			int err = start_udp_server(config, session, &port);
 			if (err != 0 || port == 0) {
 				goto error;
 			}
 			pgs_session_info(session, "udp server listening at: %d",
 					 port);
-
-			bool proxy = true;
-			if (proxy) {
-				// create outbound and setup callbacks
-				const uint8_t *cmd = session->inbound->cmd;
-
-				pgs_session_outbound_cbs_t outbound_cbs = {
-					on_trojan_remote_event,
-					on_v2ray_remote_event,
-					on_bypass_remote_event,
-					on_trojan_remote_read,
-					on_v2ray_remote_read,
-					NULL /* if bypass then need no remote*/,
-					NULL
-				};
-
-				session->outbound = pgs_session_outbound_new();
-				if (!pgs_session_outbound_init(
-					    session->outbound, config, cmd,
-					    cmdlen,
-					    session->local_server->logger,
-					    session->local_server->base,
-					    session->local_server->dns_base,
-					    session->local_server->acl, &proxy,
-					    outbound_cbs, session))
-					goto error;
-			}
 
 			// FIXME: hardcoded ATYP and BND.ADDR
 			evbuffer_add(output, "\x05\x00\x00\x01\x00\x00\x00\x00",
@@ -440,7 +390,28 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 					  "socks5: cmd not support yet");
 			goto error;
 		}
-	}
+	case INBOUND_PROXY:
+		// if outbound is ready, check outbound type and do the rest
+		assert(session->outbound != NULL);
+		if (!session->outbound->ready) {
+			// it will call local_read manually when ready
+			return;
+		}
+		if (session->outbound->bypass) {
+			return on_bypass_local_read(bev, ctx);
+		} else {
+			// check config
+			const pgs_server_config_t *config =
+				session->outbound->config;
+			if (IS_V2RAY_SERVER(config->server_type)) {
+				return on_v2ray_local_read(bev, ctx);
+			} else if (IS_TROJAN_SERVER(config->server_type)) {
+				return on_trojan_local_read(bev, ctx);
+			}
+		}
+	case INBOUND_UDP_RELAY:
+		// data should goes to local udp server now
+		return;
 	default:
 		break;
 	}
@@ -481,7 +452,6 @@ static void on_bypass_remote_event(struct bufferevent *bev, short events,
 static void on_bypass_local_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "local read triggered");
 
 	struct evbuffer *inboundr = bufferevent_get_input(bev);
 	uint64_t len = evbuffer_get_length(inboundr);
@@ -550,7 +520,7 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 			pgs_session_debug(session, "trojan-gfw connected");
 			pgs_trojansession_ctx_t *trojan_s_ctx =
 				session->outbound->ctx;
-			trojan_s_ctx->connected = true;
+			session->outbound->ready = true;
 			// manually trigger a read local event
 			if (session->inbound->state == INBOUND_PROXY) {
 				// TCP
@@ -558,14 +528,9 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 						     ctx);
 			} else if (session->inbound->state ==
 					   INBOUND_UDP_RELAY &&
-				   session->inbound->udp_remote_wbuf != NULL &&
-				   session->inbound->udp_remote_wbuf_pos > 0) {
-				// UDP
-				trojan_write_remote(
-					session,
-					session->inbound->udp_remote_wbuf,
-					session->inbound->udp_remote_wbuf_pos);
-				session->inbound->udp_remote_wbuf_pos = 0;
+				   session->inbound->udp_fd != 0) {
+				on_udp_read(session->inbound->udp_fd, EV_READ,
+					    session);
 			}
 		}
 	}
@@ -611,7 +576,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 	}
 	// trojan ws
 	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-	if (!trojan_s_ctx->connected) {
+	if (!session->outbound->ready) {
 		if (!strstr((const char *)data, "\r\n\r\n"))
 			return;
 
@@ -621,21 +586,16 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 		} else {
 			//drain
 			evbuffer_drain(input, data_len);
-			trojan_s_ctx->connected = true;
+			session->outbound->ready = true;
 			// local buffer should have data already
 			// manually trigger a read local event
 			if (session->inbound->state == INBOUND_PROXY) {
 				on_trojan_local_read(bev, ctx);
 			} else if (session->inbound->state ==
 					   INBOUND_UDP_RELAY &&
-				   session->inbound->udp_remote_wbuf != NULL &&
-				   session->inbound->udp_remote_wbuf_pos > 0) {
-				// should have data in cache already
-				trojan_write_remote(
-					session,
-					session->inbound->udp_remote_wbuf,
-					session->inbound->udp_remote_wbuf_pos);
-				session->inbound->udp_remote_wbuf_pos = 0;
+				   session->inbound->udp_fd != 0) {
+				on_udp_read(session->inbound->udp_fd, EV_READ,
+					    session);
 			}
 		}
 	} else {
@@ -698,11 +658,8 @@ error:
 static void on_trojan_local_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "local read triggered");
 
-	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-	if (!trojan_s_ctx->connected)
-		return;
+	pgs_trojansession_ctx_t *tctx = session->outbound->ctx;
 
 	struct evbuffer *inboundr = bufferevent_get_input(bev);
 	uint64_t len = evbuffer_get_length(inboundr);
@@ -717,11 +674,11 @@ static void on_trojan_local_read(struct bufferevent *bev, void *ctx)
 		pgs_session_error(session, "current server config not found");
 		goto error;
 	}
-	pgs_trojanserver_config_t *trojanconf =
+	pgs_trojanserver_config_t *tsconf =
 		(pgs_trojanserver_config_t *)config->extra;
-	if (trojanconf->websocket.enabled) {
+	if (tsconf->websocket.enabled) {
 		//ws
-		uint64_t head_len = trojan_s_ctx->head_len;
+		uint64_t head_len = tctx->head_len;
 		uint64_t ws_len = len;
 		if (head_len > 0) {
 			ws_len += head_len;
@@ -767,23 +724,16 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 					  "do_v2ray_ws_remote_request done");
 		} else {
 			pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
-			v2ray_s_ctx->connected = true;
-			pgs_session_debug(session, "connected");
+			session->outbound->ready = true;
+			pgs_session_debug(session, "v2ray tls connected");
 			if (session->inbound->state == INBOUND_PROXY) {
 				// TCP
 				on_v2ray_local_read(session->inbound->bev, ctx);
 			} else if (session->inbound->state ==
 					   INBOUND_UDP_RELAY &&
-				   session->inbound->udp_remote_wbuf != NULL &&
-				   session->inbound->udp_remote_wbuf_pos > 0) {
-				// UDP
-				uint64_t total_len = pgs_vmess_write_remote(
-					session,
-					session->inbound->udp_remote_wbuf,
-					session->inbound->udp_remote_wbuf_pos,
-					(pgs_session_write_fn)&vmess_flush_remote);
-
-				session->inbound->udp_remote_wbuf_pos = 0;
+				   session->inbound->udp_fd) {
+				on_udp_read(session->inbound->udp_fd, EV_READ,
+					    session);
 			}
 		}
 	}
@@ -829,7 +779,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 		return;
 	}
 	// ws
-	if (!v2ray_s_ctx->connected) {
+	if (!session->outbound->ready) {
 		if (!strstr((const char *)data, "\r\n\r\n"))
 			return;
 
@@ -838,20 +788,15 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 			on_v2ray_remote_event(bev, BEV_EVENT_ERROR, ctx);
 		} else {
 			evbuffer_drain(input, data_len);
-			v2ray_s_ctx->connected = true;
+			session->outbound->ready = true;
 			if (session->inbound->state == INBOUND_PROXY) {
 				on_v2ray_local_read(bev, ctx);
 			} else if (session->inbound->state ==
 					   INBOUND_UDP_RELAY &&
-				   session->inbound->udp_remote_wbuf != NULL &&
-				   session->inbound->udp_remote_wbuf_pos > 0) {
+				   session->inbound->udp_fd != 0) {
 				// UDP
-				uint64_t total_len = pgs_vmess_write_remote(
-					session,
-					session->inbound->udp_remote_wbuf,
-					session->inbound->udp_remote_wbuf_pos,
-					(pgs_session_write_fn)&vmess_flush_remote);
-				session->inbound->udp_remote_wbuf_pos = 0;
+				on_udp_read(session->inbound->udp_fd, EV_READ,
+					    session);
 			}
 		}
 	} else {
@@ -862,10 +807,6 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 static void on_v2ray_local_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "local read triggered");
-	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
-	if (!v2ray_s_ctx->connected)
-		return;
 
 	pgs_session_debug(session, "write to remote");
 	struct bufferevent *inbev = session->inbound->bev;
@@ -965,21 +906,57 @@ static void on_session_metrics_send(pgs_session_t *session, uint64_t len)
  * udp relay
  * */
 
+static void on_remote_udp_read(int fd, short event, void *ctx)
+{
+	//pgs_session_t *session = (pgs_session_t *)ctx;
+	//uint8_t *buf = session->outbound->udp_rbuf;
+	//socklen_t *size = &session->outbound->udp_server_addr_size;
+	//struct sockaddr_in *server_addr = &session->outbound->udp_server_addr;
+
+	//ssize_t len = recvfrom(fd, buf, BUFSIZE_16K, 0,
+	//		       (struct sockaddr *)server_addr, size);
+
+	//if (len > 0) {
+	//	if (session->inbound->udp_fd) {
+	//		ssize_t n =
+	//			sendto(session->inbound->udp_fd, buf, len, 0,
+	//			       (struct sockaddr *)&session->inbound
+	//				       ->udp_client_addr,
+	//			       session->inbound->udp_client_addr_size);
+	//		pgs_session_debug(
+	//			session,
+	//			"remote UDP read: %d, write %s to local", len,
+	//			n);
+	//	}
+	//}
+}
+
 static void on_udp_read(int fd, short event, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
+	assert(session->outbound != NULL);
+	if (!session->outbound->ready) {
+		// should be called when ready
+		return;
+	}
+
 	pgs_session_debug(session, "udp local read triggered");
-	const pgs_server_config_t *config = session->cur_config;
+
+	const pgs_server_config_t *config = session->outbound->config;
 
 	uint8_t *buf = session->inbound->udp_rbuf;
 	socklen_t *size = &session->inbound->udp_client_addr_size;
 	struct sockaddr_in *client_addr = &session->inbound->udp_client_addr;
 
+	ssize_t len = recvfrom(fd, buf, BUFSIZE_16K, 0,
+			       (struct sockaddr *)client_addr, size);
+
+	// TODO: check if the client ip is the same as the UDP ASSOCIATE IP
+	// if not, we should drop the packet
+
 	char *dest = NULL;
 	int port = 0;
 
-	ssize_t len = recvfrom(fd, buf, BUFSIZE_16K, 0,
-			       (struct sockaddr *)client_addr, size);
 	if (0 == len) {
 		pgs_session_warn(session, "udp connection closed");
 	} else if (len > 0) { /*Max read/cache buffer size is 16K*/
@@ -987,44 +964,55 @@ static void on_udp_read(int fd, short event, void *ctx)
 			pgs_session_error(session, "invalid udp datagram");
 			goto error;
 		}
-		uint8_t atype = buf[3];
-		// check if this should bypass
-		// if bypass, send it directly, do a udp relay
-		// if not send it to outbound via different protocol(trojan/v2ray outbound)
 		bool proxy = true;
+
+		int atyp = buf[3];
+
 		socks5_dest_addr_parse(buf, len, session->local_server->acl,
 				       &proxy, &dest, &port);
 
-		if (proxy) {
-			if (strcmp(config->server_type, "trojan") == 0) {
-				if (session->outbound == NULL) {
-					// TODO: create outbound
-					// session->outbound =
-				}
-				// will cache data in remote_wbuf before connected
+		if (proxy || atyp == SOCKS5_CMD_HOSTNAME) {
+			if (IS_TROJAN_SERVER(config->server_type)) {
 				on_udp_read_trojan(buf, len, session);
-			} else if (strcmp(config->server_type, "v2ray") == 0) {
-				if (session->outbound == NULL) {
-					// TODO: create outbound
-					// session->outbound =
-				}
-				// will cache data in remote_wbuf before connected
+			} else if (IS_V2RAY_SERVER(config->server_type)) {
 				on_udp_read_v2ray(buf, len, session);
+			} else {
+				pgs_session_error(
+					session,
+					"failed to handle udp packet: server type(%s) not supported",
+					config->server_type);
 			}
-			pgs_session_error(
-				session,
-				"failed to handle udp packet: server type(%s) not supported",
-				config->server_type);
 		} else {
-			pgs_session_info(session, "udp bypass: %s:%d", dest,
-					 port);
-			// create an udp outbound and write to it
+			// TODO:
+			//			session->outbound->udp_fd =
+			//				socket(AF_INET, SOCK_DGRAM, 0);
+			//			int flag = fcntl(session->outbound->udp_fd, F_GETFL, 0);
+			//			fcntl(session->outbound->udp_fd, F_SETFL,
+			//			      flag | O_NONBLOCK);
+			//			assert(session->outbound &&
+			//			       session->outbound->udp_client_ev &&
+			//			       session->outbound->udp_fd);
+			struct sockaddr_in sin = { 0 };
+			sin.sin_family = AF_INET;
+			int err = inet_pton(AF_INET, dest, &sin.sin_addr);
+			sin.sin_port = htons(port);
+			if (err <= 0) {
+				goto error;
+			}
+			int host_len = pgs_get_addr_len(buf + 3);
+			int offset = 3 + host_len + 2;
+			//ssize_t n =
+			//	sendto(session->outbound->udp_fd, buf + offset,
+			//	       len - offset, 0, (struct sockaddr *)&sin,
+			//	       sizeof(sin));
+			//pgs_session_info(session, "udp bypass: %s:%d, sent: %d",
+			//		 dest, port, n);
 		}
 	}
-
 	if (dest != NULL) {
 		free(dest);
 	}
+	return;
 
 error:
 	if (dest != NULL) {
@@ -1038,11 +1026,6 @@ static void on_udp_read_trojan(const uint8_t *buf, ssize_t len,
 {
 	uint8_t *packet = NULL;
 
-	// pgs_session_debug_buffer(session, buf, len);
-	if (len <= 3) { /*FRAG is not supported now*/
-		pgs_session_error(session, "invalid udp datagram");
-		goto error;
-	}
 	uint16_t addr_len = 1 + 2; // atype + port
 	addr_len += pgs_get_addr_len(buf + 3);
 	if (len <= (2 + 1 + addr_len)) {
@@ -1067,21 +1050,8 @@ static void on_udp_read_trojan(const uint8_t *buf, ssize_t len,
 	memcpy(packet + addr_len + 4, buf + 3 + addr_len, data_len);
 
 	// build packet then cache or send it
-	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
-	if (!trojan_s_ctx->connected) {
-		// Cache this, send it later
-		int pos = session->inbound->udp_remote_wbuf_pos;
-		if (pos + packet_len >= BUFSIZE_16K) {
-			pgs_session_error(session, "udp payload too large");
-			goto error;
-		}
-		memcpy(session->inbound->udp_remote_wbuf + pos, packet,
-		       packet_len);
-		session->inbound->udp_remote_wbuf_pos += packet_len;
-	} else {
-		// Send data
-		trojan_write_remote(session, packet, packet_len);
-	}
+	trojan_write_remote(session, packet, packet_len);
+
 	if (packet != NULL) {
 		free(packet);
 		packet = NULL;
@@ -1099,12 +1069,7 @@ error:
 static void on_udp_read_v2ray(const uint8_t *buf, ssize_t len,
 			      pgs_session_t *session)
 {
-	if (len <= 3) { /*FRAG is not supported now*/
-		pgs_session_error(session, "invalid udp datagram");
-		goto error;
-	}
-
-	pgs_vmess_ctx_t *v2ray_s_ctx = session->outbound->ctx;
+	pgs_vmess_ctx_t *vctx = session->outbound->ctx;
 	// store target_addr
 	uint16_t addr_len = 1 + 2; // atype + port
 	addr_len += pgs_get_addr_len(buf + 3);
@@ -1115,22 +1080,13 @@ static void on_udp_read_v2ray(const uint8_t *buf, ssize_t len,
 	uint16_t data_len =
 		len - 2 - 1 - addr_len; /*RSV(2) | FRAG(1) | ADDR | DATA*/
 
-	v2ray_s_ctx->target_addr_len = addr_len;
-	memcpy(v2ray_s_ctx->target_addr, buf + 3, addr_len);
+	vctx->target_addr_len = addr_len;
+	memcpy(vctx->target_addr, buf + 3, addr_len);
 
-	if (!v2ray_s_ctx->connected) {
-		// Cache, it will be sent when connected
-		memcpy(session->inbound->udp_remote_wbuf +
-			       session->inbound->udp_remote_wbuf_pos,
-		       buf + 3 + addr_len, data_len);
-		session->inbound->udp_remote_wbuf_pos += data_len;
-	} else {
-		// UDP
-		uint64_t total_len = pgs_vmess_write_remote(
-			session, buf + 3 + addr_len, data_len,
-			(pgs_session_write_fn)&vmess_flush_remote);
-		session->inbound->udp_remote_wbuf_pos = 0;
-	}
+	uint64_t total_len = pgs_vmess_write_remote(
+		session, buf + 3 + addr_len, data_len,
+		(pgs_session_write_fn)&vmess_flush_remote);
+
 	return;
 
 error:

@@ -29,25 +29,29 @@ typedef struct pgs_session_outbound_cbs_s {
 	on_udp_read_cb *on_bypass_remote_udp_read;
 } pgs_session_outbound_cbs_t;
 
+typedef struct pgs_udp_relay_s {
+	int udp_fd;
+	uint8_t *udp_rbuf;
+	struct sockaddr_in udp_server_addr;
+	socklen_t udp_server_addr_size;
+	struct event *udp_client_ev;
+} pgs_udp_relay_t;
+
 typedef struct pgs_session_outbound_s {
+	bool ready;
+	bool bypass;
+
 	struct bufferevent *bev;
 	const pgs_server_config_t *config;
 	char *dest;
 	int port;
 	void *ctx;
-
-	// UDP ASSOCIATE
-	int udp_fd;
-	struct sockaddr_in udp_server_addr;
-	socklen_t udp_server_addr_size;
-	struct event *udp_client_ev;
 } pgs_session_outbound_t;
 
 typedef struct pgs_trojansession_ctx_s {
 	// sha224(password) + "\r\n" + cmd[1] + cmd.substr(3) + "\r\n"
 	char *head;
 	uint64_t head_len;
-	bool connected;
 } pgs_trojansession_ctx_t;
 
 typedef struct pgs_vmess_resp_s {
@@ -68,8 +72,6 @@ typedef struct pgs_vmess_ctx_s {
 	uint8_t remote_rbuf[BUFSIZE_16K];
 	uint8_t remote_wbuf[BUFSIZE_16K];
 	uint8_t target_addr[BUFSIZE_512]; /*atype(1) | addr | port(2)*/
-	// for ws state
-	bool connected;
 	// for request header
 	const uint8_t *cmd;
 	uint64_t cmdlen;
@@ -153,8 +155,9 @@ static void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
 #ifdef WITH_ACL
 	if (acl != NULL) {
 		bool match = pgs_acl_match_host(acl, dest);
-		// TODO: if not match and atype is SOCKS5_CMD_HOSTNAME
-		// should we resolve DNS here?
+		if (!match && atyp == SOCKS5_CMD_HOSTNAME) {
+			// TODO: reolve the DNS and match the ip again
+		}
 		if (pgs_acl_get_mode(acl) == PROXY_ALL_BYPASS_LIST) {
 			*proxy = !match;
 		} else if (pgs_acl_get_mode(acl) == BYPASS_ALL_PROXY_LIST) {
@@ -184,8 +187,6 @@ pgs_trojansession_ctx_new(const uint8_t *encodepass, uint64_t passlen,
 	memcpy(ptr->head + passlen + 3, cmd + 3, cmdlen - 3);
 	ptr->head[ptr->head_len - 2] = '\r';
 	ptr->head[ptr->head_len - 1] = '\n';
-
-	ptr->connected = false;
 	return ptr;
 }
 
@@ -204,7 +205,6 @@ static pgs_vmess_ctx_t *pgs_vmess_ctx_new(const uint8_t *cmd, uint64_t cmdlen,
 {
 	pgs_vmess_ctx_t *ptr =
 		(pgs_vmess_ctx_t *)malloc(sizeof(pgs_vmess_ctx_t));
-	ptr->connected = false;
 
 	memzero(ptr->local_rbuf, BUFSIZE_16K);
 	memzero(ptr->local_wbuf, BUFSIZE_16K);
@@ -258,11 +258,6 @@ static void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 	}
 	if (ptr->dest)
 		free(ptr->dest);
-
-	if (ptr->udp_client_ev != NULL) {
-		event_free(ptr->udp_client_ev);
-		ptr->udp_client_ev = NULL;
-	}
 
 	ptr->bev = NULL;
 	ptr->ctx = NULL;
@@ -347,36 +342,54 @@ static bool pgs_session_bypass_outbound_init(pgs_session_outbound_t *ptr,
 		base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
 	bufferevent_enable(ptr->bev, EV_READ);
+	ptr->ready = true;
+	ptr->bypass = true;
 
 	return true;
 error:
 	return false;
 }
 
+static bool pgs_session_udp_outbound_init(pgs_session_outbound_t *ptr,
+					  const pgs_config_t *config,
+					  struct event_base *base,
+					  on_udp_read_cb *udp_read_cb,
+					  void *cb_ctx)
+{
+	//ptr->udp_rbuf = (uint8_t *)malloc(BUFSIZE_16K);
+	//ptr->udp_client_ev = event_new(base, ptr->udp_fd, EV_READ | EV_PERSIST,
+	//			       udp_read_cb, cb_ctx);
+	//event_add(ptr->udp_client_ev, NULL);
+
+	//return true;
+}
+
 static pgs_session_outbound_t *pgs_session_outbound_new()
 {
 	pgs_session_outbound_t *ptr = malloc(sizeof(pgs_session_outbound_t));
+	ptr->ready = false;
+	ptr->bypass = false;
 	ptr->dest = NULL;
 	ptr->port = 0;
 	ptr->config = NULL;
 	ptr->bev = NULL;
 	ptr->ctx = NULL;
-	ptr->udp_client_ev = NULL;
-	ptr->udp_fd = 0;
 
 	return ptr;
 }
 
 static bool pgs_session_outbound_init(
-	pgs_session_outbound_t *ptr, const pgs_server_config_t *config,
-	const uint8_t *cmd, uint64_t cmd_len, pgs_logger_t *logger,
-	struct event_base *base, struct evdns_base *dns_base, pgs_acl_t *acl,
-	bool *proxy, pgs_session_outbound_cbs_t outbound_cbs, void *cb_ctx)
+	pgs_session_outbound_t *ptr, bool is_udp, const pgs_config_t *gconfig,
+	const pgs_server_config_t *config, const uint8_t *cmd, uint64_t cmd_len,
+	pgs_logger_t *logger, struct event_base *base,
+	struct evdns_base *dns_base, pgs_acl_t *acl,
+	pgs_session_outbound_cbs_t outbound_cbs, void *cb_ctx)
 {
 	ptr->config = config;
 
+	bool proxy = true;
 	// CHECK if all zeros for UDP
-	socks5_dest_addr_parse(cmd, cmd_len, acl, proxy, &ptr->dest,
+	socks5_dest_addr_parse(cmd, cmd_len, acl, &proxy, &ptr->dest,
 			       &ptr->port);
 
 	if (ptr->dest == NULL) {
@@ -384,7 +397,7 @@ static bool pgs_session_outbound_init(
 		goto error;
 	}
 
-	if (*proxy) {
+	if (proxy || is_udp) {
 		if (strcmp(config->server_type, "trojan") == 0) {
 			if (!pgs_session_trojan_outbound_init(
 				    ptr, config, cmd, cmd_len, base,
@@ -417,15 +430,21 @@ static bool pgs_session_outbound_init(
 
 		pgs_logger_debug(logger, "connect: %s:%d",
 				 config->server_address, config->server_port);
-	} else {
-		// TODO: support UDP here ?
-		pgs_session_bypass_outbound_init(
-			ptr, base, outbound_cbs.on_bypass_remote_event,
-			outbound_cbs.on_bypass_remote_read, cb_ctx);
+	}
+	if (!proxy || is_udp) {
+		if (is_udp) {
+			// do nothing
+		} else {
+			pgs_session_bypass_outbound_init(
+				ptr, base, outbound_cbs.on_bypass_remote_event,
+				outbound_cbs.on_bypass_remote_read, cb_ctx);
 
-		pgs_logger_info(logger, "bypass: %s:%d", ptr->dest, ptr->port);
-		bufferevent_socket_connect_hostname(ptr->bev, dns_base, AF_INET,
-						    ptr->dest, ptr->port);
+			pgs_logger_info(logger, "bypass: %s:%d", ptr->dest,
+					ptr->port);
+			bufferevent_socket_connect_hostname(ptr->bev, dns_base,
+							    AF_INET, ptr->dest,
+							    ptr->port);
+		}
 	}
 
 	return true;

@@ -45,8 +45,6 @@ typedef struct pgs_session_inbound_s {
 	socklen_t udp_client_addr_size;
 	struct event *udp_server_ev;
 	uint8_t *udp_rbuf;
-	uint8_t *udp_remote_wbuf;
-	uint16_t udp_remote_wbuf_pos;
 } pgs_session_inbound_t;
 
 typedef struct pgs_session_s {
