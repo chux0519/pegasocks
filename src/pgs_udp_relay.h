@@ -22,7 +22,7 @@ typedef struct pgs_udp_relay_s {
 	int packet_header_len;
 
 	// pointer of session pointer
-	void **session;
+	void **session_ptr;
 } pgs_udp_relay_t;
 
 static pgs_udp_relay_t *pgs_udp_relay_new()
@@ -33,7 +33,7 @@ static pgs_udp_relay_t *pgs_udp_relay_new()
 	ptr->udp_client_ev = NULL;
 	evutil_timerclear(&ptr->timeout);
 	ptr->timeout.tv_sec = 60;
-	ptr->session = NULL;
+	ptr->session_ptr = malloc(sizeof(void *));
 
 	ptr->packet_header = NULL;
 	memzero(&ptr->udp_server_addr, sizeof(struct sockaddr_in));
@@ -58,7 +58,7 @@ static int pgs_udp_relay_trigger(pgs_udp_relay_t *ptr, const char *host,
 	int flag = fcntl(ptr->udp_fd, F_GETFL, 0);
 	fcntl(ptr->udp_fd, F_SETFL, flag | O_NONBLOCK);
 
-	ptr->session = &session;
+	*ptr->session_ptr = session;
 	ptr->udp_client_ev = event_new(base, ptr->udp_fd, EV_READ | EV_TIMEOUT,
 				       read_cb, ptr);
 
@@ -86,7 +86,10 @@ static void pgs_udp_relay_free(pgs_udp_relay_t *ptr)
 		event_free(ptr->udp_client_ev);
 	if (ptr->packet_header != NULL)
 		free(ptr->packet_header);
+	if (ptr->session_ptr)
+		free(ptr->session_ptr);
 
+	ptr->session_ptr = NULL;
 	ptr->packet_header = NULL;
 	ptr->udp_fd = 0;
 	ptr->udp_rbuf = NULL;

@@ -208,6 +208,7 @@ pgs_session_inbound_t *pgs_session_inbound_new(struct bufferevent *bev)
 	ptr->udp_client_addr_size = sizeof(struct sockaddr);
 	ptr->udp_server_ev = NULL;
 	ptr->udp_rbuf = NULL;
+	ptr->rbuf_pos = 0;
 	return ptr;
 }
 
@@ -534,8 +535,13 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 			} else if (session->inbound->state ==
 					   INBOUND_UDP_RELAY &&
 				   session->inbound->udp_fd != 0) {
-				on_udp_read(session->inbound->udp_fd, EV_READ,
-					    session);
+				if (session->inbound->rbuf_pos > 0) {
+					on_udp_read_trojan(
+						session->inbound->udp_rbuf,
+						session->inbound->rbuf_pos,
+						session);
+					session->inbound->rbuf_pos = 0;
+				}
 			}
 		}
 	}
@@ -599,8 +605,13 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 			} else if (session->inbound->state ==
 					   INBOUND_UDP_RELAY &&
 				   session->inbound->udp_fd != 0) {
-				on_udp_read(session->inbound->udp_fd, EV_READ,
-					    session);
+				if (session->inbound->rbuf_pos > 0) {
+					on_udp_read_trojan(
+						session->inbound->udp_rbuf,
+						session->inbound->rbuf_pos,
+						session);
+					session->inbound->rbuf_pos = 0;
+				}
 			}
 		}
 	} else {
@@ -737,8 +748,13 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 			} else if (session->inbound->state ==
 					   INBOUND_UDP_RELAY &&
 				   session->inbound->udp_fd) {
-				on_udp_read(session->inbound->udp_fd, EV_READ,
-					    session);
+				if (session->inbound->rbuf_pos > 0) {
+					on_udp_read_v2ray(
+						session->inbound->udp_rbuf,
+						session->inbound->rbuf_pos,
+						session);
+					session->inbound->rbuf_pos = 0;
+				}
 			}
 		}
 	}
@@ -800,8 +816,13 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 					   INBOUND_UDP_RELAY &&
 				   session->inbound->udp_fd != 0) {
 				// UDP
-				on_udp_read(session->inbound->udp_fd, EV_READ,
-					    session);
+				if (session->inbound->rbuf_pos > 0) {
+					on_udp_read_v2ray(
+						session->inbound->udp_rbuf,
+						session->inbound->rbuf_pos,
+						session);
+					session->inbound->rbuf_pos = 0;
+				}
 			}
 		}
 	} else {
@@ -919,11 +940,11 @@ static void on_remote_udp_read(int fd, short event, void *ctx)
 	if (event & EV_TIMEOUT) {
 		goto error;
 	}
-	if (relay->session == NULL) {
+	if (relay->session_ptr == NULL) {
 		goto error;
 	}
 
-	pgs_session_t *session = (pgs_session_t *)(*relay->session);
+	pgs_session_t *session = (pgs_session_t *)(*relay->session_ptr);
 
 	uint8_t *buf = relay->udp_rbuf;
 	socklen_t size;
@@ -972,10 +993,6 @@ static void on_udp_read(int fd, short event, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	assert(session->outbound != NULL);
-	if (!session->outbound->ready) {
-		// should be called when ready
-		return;
-	}
 
 	pgs_session_debug(session, "udp local read triggered");
 
@@ -1009,6 +1026,12 @@ static void on_udp_read(int fd, short event, void *ctx)
 				       &proxy, &dest, &port);
 
 		if (proxy || atype == SOCKS5_CMD_HOSTNAME) {
+			if (!session->outbound->ready) {
+				session->inbound->rbuf_pos = len;
+				// should be called once ready
+				// notice, this will lost data if client send more than one udp packet before the remote is ready
+				return;
+			}
 			if (IS_TROJAN_SERVER(config->server_type)) {
 				on_udp_read_trojan(buf, len, session);
 			} else if (IS_V2RAY_SERVER(config->server_type)) {
