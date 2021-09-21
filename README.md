@@ -97,7 +97,7 @@ Default compile binary without GUI, take parameter `-DWITH_APPLET=ON` to enable 
 
 <img src="https://i.imgur.com/Ny0WMJA.png" width="512" />
 
-When booting from the command line, put `logo/icon.svg` into the pegas sibling directory and use it normally.
+To show the icon, put `logo/icon.svg` to where pegas sit.
 
 
 ### OSX
