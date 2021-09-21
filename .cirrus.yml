@@ -13,14 +13,21 @@ freebsd_task:
         - sed -i.bak -e 's,pkg+http://pkg.FreeBSD.org/\${ABI}/quarterly,pkg+http://pkg.FreeBSD.org/\${ABI}/latest,' /etc/pkg/FreeBSD.conf        
         - pkg update -f
         - pkg upgrade -y
-        - pkg install -y gmake cmake json-c openssl libevent
-    setup_script:
-        - pw groupadd testgroup
-        - pw useradd testuser -g testgroup -w none -m
-        - cp -R . $HOME
-        - chown -R testuser:testgroup $HOME
-    build_script: su testuser -c 'mkdir -p ~/build && cd ~/build && cmake .. && gmake --jobs=5'
-    test_script: su testuser -c 'cd ~/build && gmake test'
+        - pkg install -y gmake cmake json-c openssl libevent git pcre
+    prepare_script:
+        - git submodule update --init
+    build_default_test_script:
+        - mkdir -p build/default
+        - cd build/default
+        - cmake ../..
+        - gmake
+        - gmake test
+    build_acl_test_script:
+        - mkdir -p build/acl
+        - cd build/acl
+        - cmake -DWITH_ACL=ON ../..
+        - gmake
+        - gmake test
 
 linux_task:
     container:
@@ -30,12 +37,18 @@ linux_task:
 
     install_script:
         - apt update && apt upgrade -y
-        - DEBIAN_FRONTEND=noninteractive apt install -y cmake build-essential libjson-c-dev libevent-dev libssl-dev
-    build_script:
-        - mkdir -p build
-        - cd build
-        - cmake ..
+        - DEBIAN_FRONTEND=noninteractive apt install -y git cmake build-essential libjson-c-dev libevent-dev libssl-dev libpcre3-dev
+    prepare_script:
+        - git submodule update --init
+    build_default_test_script:
+        - mkdir -p build/default
+        - cd build/default
+        - cmake ../..
         - make
-    test_script:
-        - cd build
+        - make test
+    build_acl_test_script:
+        - mkdir -p build/acl
+        - cd build/acl
+        - cmake -DWITH_ACL=ON ../..
+        - make
         - make test

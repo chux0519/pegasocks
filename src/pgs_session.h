@@ -45,8 +45,7 @@ typedef struct pgs_session_inbound_s {
 	socklen_t udp_client_addr_size;
 	struct event *udp_server_ev;
 	uint8_t *udp_rbuf;
-	uint8_t *udp_remote_wbuf;
-	uint16_t udp_remote_wbuf_pos;
+	int rbuf_pos;
 } pgs_session_inbound_t;
 
 typedef struct pgs_session_s {
@@ -54,12 +53,15 @@ typedef struct pgs_session_s {
 	pgs_session_outbound_t *outbound;
 	pgs_local_server_t *local_server;
 	pgs_session_stats_t *metrics;
+	// needed by UDP ASSOCIATE
+	const pgs_server_config_t *cur_config;
 } pgs_session_t;
 
 typedef struct pgs_session_inbound_cbs_s {
 	on_event_cb *on_local_event;
 	on_read_cb *on_trojan_local_read;
 	on_read_cb *on_v2ray_local_read;
+	on_read_cb *on_bypass_local_read;
 } pgs_session_inbound_cbs_t;
 
 // inbound

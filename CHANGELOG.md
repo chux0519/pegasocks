@@ -8,3 +8,11 @@
 - support UDP
 - ssl config changed, sni is supported now, by specifying `ssl.sni`
 - remove deprecated methods of openssl and json-c
+
+## 20210921
+
+- support ACL
+- support mbedtls
+- support jemalloc
+- use git submodule to manage dependencies
+

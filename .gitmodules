@@ -1,0 +1,9 @@
+[submodule "3rd-party/parson"]
+	path = 3rd-party/parson
+	url = https://github.com/kgabis/parson.git
+[submodule "3rd-party/libcork"]
+	path = 3rd-party/libcork
+	url = https://github.com/shadowsocks/libcork
+[submodule "3rd-party/ipset"]
+	path = 3rd-party/ipset
+	url = https://github.com/shadowsocks/ipset

@@ -40,7 +40,23 @@ set(CMAKE_C_FLAGS_UBSAN
     FORCE)
 # SAN end =======================================
 
-file(GLOB SOURCES src/*.c 3rd-party/*.c 3rd-party/parson/parson.c)
+set(PEGAS_SOURCES src/pegas.c
+                  src/pgs_codec.c
+                  src/pgs_config.c
+                  src/pgs_control.c
+                  src/pgs_crypto.c
+                  src/pgs_helper_thread.c
+                  src/pgs_local_server.c
+                  src/pgs_log.c
+                  src/pgs_metrics.c
+                  src/pgs_mpsc.c
+                  src/pgs_server_manager.c
+                  src/pgs_session.c
+)
+set(THIRDPARTY_SOURCES 3rd-party/parson/parson.c
+                       3rd-party/hash_32a.c
+                       3rd-party/sha3.c
+)
 
 include_directories(src)
 include_directories(3rd-party)
@@ -50,6 +66,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 option(USE_MBEDTLS "Define if pegasocks should build with mbedtls instead of openssl" OFF)
 option(USE_JEMALLOC "Define if pegasocks should build with jemalloc" OFF)
 option(USE_STATIC "Define if static builds" OFF)
+option(WITH_ACL "Define if pegasocks with acl support" OFF)
 option(WITH_APPLET "Define if pegasocks with applet support" OFF)
 
 execute_process(
@@ -88,6 +105,7 @@ find_package(Libevent2 REQUIRED)
 include_directories(${LIBEVENT2_INCLUDE_DIR})
 list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_LIBRARIES})
 
+
 if(USE_MBEDTLS)
   find_package(MbedTLS REQUIRED)
   add_definitions(-DUSE_MBEDTLS=1)
@@ -97,6 +115,7 @@ if(USE_MBEDTLS)
   include_directories(${MBEDTLS_INCLUDE_DIR})
 
   list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES})
+
 else()
   find_package(OpenSSLx REQUIRED)
   include_directories(${OPENSSL_INCLUDE_DIR})
@@ -104,57 +123,107 @@ else()
   list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES})
 endif()
 
-add_executable(pegas ${SOURCES} ./3rd-party/tray/tray.h)
+if(WITH_ACL)
+  find_package(PCRE REQUIRED)
+  include_directories(${PCRE_INCLUDE_DIRS})
+  list(APPEND THIRDPARTY_LIBS ${PCRE_LIBRARIES})
+
+  set(PEGAS_SOURCES ${PEGAS_SOURCES}
+                    src/pgs_acl.c
+  )
+
+  include_directories(3rd-party/libcork/include)
+  include_directories(3rd-party/ipset/include)
+
+  set(LIBCORK_SOURCE
+        3rd-party/libcork/src/libcork/ds/array.c
+        3rd-party/libcork/src/libcork/ds/buffer.c
+        3rd-party/libcork/src/libcork/ds/managed-buffer.c
+        3rd-party/libcork/src/libcork/ds/slice.c
+        3rd-party/libcork/src/libcork/posix/process.c
+        3rd-party/libcork/src/libcork/ds/hash-table.c
+        3rd-party/libcork/src/libcork/core/hash.c
+        3rd-party/libcork/src/libcork/ds/dllist.c
+        3rd-party/libcork/src/libcork/core/allocator.c
+        3rd-party/libcork/src/libcork/core/error.c
+        3rd-party/libcork/src/libcork/core/ip-address.c
+        )
+  add_library(cork ${LIBCORK_SOURCE})
+
+  set(LIBIPSET_SOURCE
+        3rd-party/ipset/src/libipset/general.c
+        3rd-party/ipset/src/libipset/bdd/assignments.c
+        3rd-party/ipset/src/libipset/bdd/basics.c
+        3rd-party/ipset/src/libipset/bdd/bdd-iterator.c
+        3rd-party/ipset/src/libipset/bdd/expanded.c
+        3rd-party/ipset/src/libipset/bdd/reachable.c
+        3rd-party/ipset/src/libipset/set/allocation.c
+        3rd-party/ipset/src/libipset/set/inspection.c
+        3rd-party/ipset/src/libipset/set/ipv4_set.c
+        3rd-party/ipset/src/libipset/set/ipv6_set.c
+        3rd-party/ipset/src/libipset/set/iterator.c
+        )
+
+  add_library(ipset ${LIBIPSET_SOURCE})
+  target_link_libraries(ipset cork)
+  list(APPEND THIRDPARTY_LIBS ipset)
+
+  add_definitions(-DWITH_ACL=1)
+endif(WITH_ACL)
+
 
 if(WITH_APPLET)
-add_definitions(-DWITH_APPLET=1)
-if(UNIX AND NOT APPLE)
-  find_package(PkgConfig REQUIRED)
-  pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
-  include_directories(${APPINDICATOR_INCLUDE_DIRS})
-  list(APPEND THIRDPARTY_LIBS ${APPINDICATOR_LIBRARIES})
-endif(UNIX AND NOT APPLE)
-if(APPLE)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DTRAY_APPKIT=1 -DOBJC_OLD_DISPATCH_PROTOTYPES=1 -framework Cocoa")
-  # add app bundle
-  set(BUNDLE_TARGET PegasApp)
-  add_executable(${BUNDLE_TARGET} ${SOURCES} ./3rd-party/tray/tray.h)
-  target_link_libraries(${BUNDLE_TARGET} pthread ${THIRDPARTY_LIBS})
+  set(PEGAS_SOURCES ${PEGAS_SOURCES}
+                    src/pgs_applet.c
+  )
+  add_definitions(-DWITH_APPLET=1)
+  if(UNIX AND NOT APPLE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(APPINDICATOR REQUIRED appindicator3-0.1)
+    include_directories(${APPINDICATOR_INCLUDE_DIRS})
+    list(APPEND THIRDPARTY_LIBS ${APPINDICATOR_LIBRARIES})
+  endif(UNIX AND NOT APPLE)
+  if(APPLE)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DTRAY_APPKIT=1 -DOBJC_OLD_DISPATCH_PROTOTYPES=1 -framework Cocoa")
+    # add app bundle
+    set(BUNDLE_TARGET PegasApp)
+    add_executable(${BUNDLE_TARGET} ${PEGAS_SOURCES} ${THIRDPARTY_SOURCES})
+    target_link_libraries(${BUNDLE_TARGET} pthread ${THIRDPARTY_LIBS})
 
-  set_target_properties(${BUNDLE_TARGET} PROPERTIES
-        MACOSX_BUNDLE ON
-        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/distribution/macos/Info.plist.in)
+    set_target_properties(${BUNDLE_TARGET} PROPERTIES
+          MACOSX_BUNDLE ON
+          MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/distribution/macos/Info.plist.in)
 
-  set(MACOSX_BUNDLE_BUNDLE_NAME "Pegas")
-  set(MACOSX_BUNDLE_BUNDLE_VERSION "${SHORT_HASH}")
-  set(MACOSX_BUNDLE_COPYRIGHT "Pegas is licensed under the BSD 3-Clause License")
-  set(MACOSX_BUNDLE_GUI_IDENTIFIER "club.chux0519.hexyoungs")
-  set(MACOSX_BUNDLE_ICON_FILE "AppIcon")
+    set(MACOSX_BUNDLE_BUNDLE_NAME "Pegas")
+    set(MACOSX_BUNDLE_BUNDLE_VERSION "${SHORT_HASH}")
+    set(MACOSX_BUNDLE_COPYRIGHT "Pegas is licensed under the BSD 3-Clause License")
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER "club.chux0519.hexyoungs")
+    set(MACOSX_BUNDLE_ICON_FILE "AppIcon")
 
-  file(COPY ${CMAKE_SOURCE_DIR}/distribution/macos/AppIcon.iconset DESTINATION ${CMAKE_BINARY_DIR})
-  set(ICON_TARGET "${CMAKE_BINARY_DIR}/AppIcon.iconset")
-  set(ICON_OUTPUT "${CMAKE_BINARY_DIR}/AppIcon.icns")
+    file(COPY ${CMAKE_SOURCE_DIR}/distribution/macos/AppIcon.iconset DESTINATION ${CMAKE_BINARY_DIR})
+    set(ICON_TARGET "${CMAKE_BINARY_DIR}/AppIcon.iconset")
+    set(ICON_OUTPUT "${CMAKE_BINARY_DIR}/AppIcon.icns")
 
-  add_custom_command(OUTPUT ${ICON_OUTPUT}
-      COMMAND sips -z 16 16 ./iconx1024.png --out ${ICON_TARGET}/icon_16x16.png
-      COMMAND sips -z 32 32 ./iconx1024.png --out ${ICON_TARGET}/icon_16x16@2x.png
-      COMMAND sips -z 32 32 ./iconx1024.png --out ${ICON_TARGET}/icon_32x32.png
-      COMMAND sips -z 64 64 ./iconx1024.png --out ${ICON_TARGET}/icon_32x32@2x.png
-      COMMAND sips -z 128 128 ./iconx1024.png --out ${ICON_TARGET}/icon_128x128.png
-      COMMAND sips -z 256 256 ./iconx1024.png --out ${ICON_TARGET}/icon_128x128@2x.png
-      COMMAND sips -z 256 256 ./iconx1024.png --out ${ICON_TARGET}/icon_256x256.png
-      COMMAND sips -z 512 512 ./iconx1024.png --out ${ICON_TARGET}/icon_256x256@2x.png
-      COMMAND sips -z 512 512 ./iconx1024.png --out ${ICON_TARGET}/icon_512x512.png
-      COMMAND cp iconx1024.png ${ICON_TARGET}/icon_512x512@2x.png
-      COMMAND iconutil -c icns ${ICON_TARGET}
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/logo"
-      )
+    add_custom_command(OUTPUT ${ICON_OUTPUT}
+        COMMAND sips -z 16 16 ./iconx1024.png --out ${ICON_TARGET}/icon_16x16.png
+        COMMAND sips -z 32 32 ./iconx1024.png --out ${ICON_TARGET}/icon_16x16@2x.png
+        COMMAND sips -z 32 32 ./iconx1024.png --out ${ICON_TARGET}/icon_32x32.png
+        COMMAND sips -z 64 64 ./iconx1024.png --out ${ICON_TARGET}/icon_32x32@2x.png
+        COMMAND sips -z 128 128 ./iconx1024.png --out ${ICON_TARGET}/icon_128x128.png
+        COMMAND sips -z 256 256 ./iconx1024.png --out ${ICON_TARGET}/icon_128x128@2x.png
+        COMMAND sips -z 256 256 ./iconx1024.png --out ${ICON_TARGET}/icon_256x256.png
+        COMMAND sips -z 512 512 ./iconx1024.png --out ${ICON_TARGET}/icon_256x256@2x.png
+        COMMAND sips -z 512 512 ./iconx1024.png --out ${ICON_TARGET}/icon_512x512.png
+        COMMAND cp iconx1024.png ${ICON_TARGET}/icon_512x512@2x.png
+        COMMAND iconutil -c icns ${ICON_TARGET}
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/logo"
+        )
 
-    set(BUNDLE_RESOURCES ${ICON_OUTPUT} )
-    list(APPEND BUNDLE_RESOURCES "${CMAKE_SOURCE_DIR}/logo/icon.png")
-  set_target_properties(${BUNDLE_TARGET} PROPERTIES RESOURCE "${BUNDLE_RESOURCES}")
-  target_sources(${BUNDLE_TARGET} PUBLIC ${BUNDLE_RESOURCES})
-endif(APPLE)
+      set(BUNDLE_RESOURCES ${ICON_OUTPUT} )
+      list(APPEND BUNDLE_RESOURCES "${CMAKE_SOURCE_DIR}/logo/icon.png")
+    set_target_properties(${BUNDLE_TARGET} PROPERTIES RESOURCE "${BUNDLE_RESOURCES}")
+    target_sources(${BUNDLE_TARGET} PUBLIC ${BUNDLE_RESOURCES})
+  endif(APPLE)
 endif(WITH_APPLET)
 
 if(DEFINED DEBUG_EVENT)
@@ -164,6 +233,7 @@ endif(DEFINED DEBUG_EVENT)
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Android")
   list(APPEND THIRDPARTY_LIBS pthread)
 endif()
+add_executable(pegas ${PEGAS_SOURCES} ${THIRDPARTY_SOURCES})
 target_link_libraries(pegas ${THIRDPARTY_LIBS})
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)
@@ -171,5 +241,4 @@ install(DIRECTORY logo DESTINATION share/pegasocks)
 # tests
 enable_testing()
 add_subdirectory(test)
-
 

@@ -56,6 +56,7 @@ pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 
 	ptr->config = ctx->config;
 	ptr->sm = ctx->sm;
+	ptr->acl = ctx->acl;
 	ptr->listener =
 		evconnlistener_new(ptr->base, accept_conn_cb, ptr,
 				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
