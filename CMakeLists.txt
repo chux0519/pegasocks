@@ -114,12 +114,18 @@ if(USE_MBEDTLS)
   message(STATUS "mbed TLS lib: ${MBEDTLS_LIBRARIES}")
   include_directories(${MBEDTLS_INCLUDE_DIR})
 
+  set(PEGAS_SOURCES ${PEGAS_SOURCES}
+                    src/pgs_ssl_mbedtls.c
+  )
   list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES})
 
 else()
   find_package(OpenSSLx REQUIRED)
   include_directories(${OPENSSL_INCLUDE_DIR})
 
+  set(PEGAS_SOURCES ${PEGAS_SOURCES}
+                    src/pgs_ssl_openssl.c
+  )
   list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES})
 endif()
 
