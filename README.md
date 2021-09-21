@@ -2,107 +2,111 @@
 
 # pegasocks [![Cirrus CI Build Status](https://api.cirrus-ci.com/github/chux0519/pegasocks.svg)](https://cirrus-ci.com/github/chux0519/pegasocks)
 
-是一个基于 socks5 协议的代理客户端，意图在于支持多种类型的代理服务。
-C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
+is a (socks5)proxy client written in C, intended to support multiple types of proxy protocols(trojan, v2ray, ..).
+It is lightweight and supports unix-like systems(Linux/WSL/BSDs/OSX).
 
-⚠️ 这是一个正在开发中的项目，请自行考虑使用成本和风险。
+⚠️ This project is under development, please consider the cost and risk of use at your own discretion.
 
-中文 | [English](./README_en.md)
+[中文](./README_zh.md) | English
 
-## 特点
+## Features
 
-与其他大多数支持多协议的客户端不同，pegasocks 不依赖各种第三方 core(比如 v2ray-core 等)，而是真的去实现相关协议的拆装，并且尽可能的照顾性能。因此它
+Unlike most other clients that support multiple protocols, pegasocks does not rely on various third-party cores (e.g. v2ray-core, etc.), but really goes for the disassembly of the relevant protocols and takes care of performance as much as possible. Therefore it
 
-1. 🍃 足够轻量，没有 QT 或是 boost 或是其他第三方二进制的依赖。
-2. 🚀 性能优先，默认多个 worker 线程，因此理论上吞吐量会比较高（待benchmark）
-3. 🚥 这是一个 learn by doing 项目，欢迎大家 review 代码，提供优化思路和 C 语言编程相关的指导。
-4. ❌ 没有 GUI，可以直接配合 systemd, launchd, rc 或是各种自定义脚本配置开机启动。后期计划开发一个简单的 tray indicator，在系统的托盘里显示，并且提供一些简单的交互，总之重型的 GUI 是不在考虑范围内的。
+1. 🍃 is light enough that there are no QT or boost or other third-party binary dependencies.
+2. 🚀 Performance-first, with multiple worker threads by default, so theoretically higher throughput to be benchmarked)
+3. 🚥 This is a learn by doing project, feel free to review the code, provide optimization ideas and C programming related guidance.
+4. ❌ There is no GUI, you can directly work with systemd, launchd, rc or various custom scripts toconfigure the bootu.But you can optianly choose to build a simple tray indicator to interact with it, but in short, a heavy-duty GUI is not under consideration.
 
-## 依赖
+## Dependencies
 
 - openssl 1.1.1 / mbedtls 2.27.0
 - libevent2
+- pcre (lagacy) optional，will need it when ACL is enabled
 
-## 安装
+Other dependencies are managed through git submodule, so you need to run following command after git clone.
 
-如果你使用 Arch Linux，可以使用 aur 进行安装
+> git submodule update --init
+
+Or add `--recursive` parameter in `git clone` command.
+
+## Install
+
+If you use Arch Linux, you can install the latest version via AUR
 
 > yay -S pegasocks-git --overwrite /usr/local/bin/pegas,/usr/local/share/pegasocks/*
 
-或者直接编译如下
+Or you can build it yourself as following
 
-## 编译
+## Build
 
 > mkdir build && cd build
 >
-> cmake -DCMAKE_BUILD_TYPE=Release .. && make
+> cmake -DCMAKE_BUILD_TYPE=Release -DWITH_ACL=ON -DUSE_JEMALLOC=ON .. && make
 
+### Cmake Options
 
-注: OSX 系统下默认检测 `/usr/local/Cellar/openssl@1.1/` 目录下最新的 openssl 作为 openssl 根目录。另外支持手动设置 cmake 参数设置自定义版本的依赖
+|option|meaning|default|
+| --- | --- | --- |
+|-DUSE_MBEDTLS|Whether to use mbedtls instead of openssl| OFF|
+|-DUSE_JEMALLOC|Whether to use jemalloc| OFF|
+|-DUSE_STATIC|Whether to use static links| OFF |
+|-DWITH_ACL|Whether to open ACL support (this will use more dependencies( libcork/ipset/PCRE ), so it will increase the final size of the program)| OFF |
+|-DWITH_APPLET|Whether to enable system tray support (this will depend on some system libraries and will therefore increase the final size of the program)| OFF |
 
-> -DOpenSSLx_ROOT=/xxxxxx/xxx/xxx 指定 openssl root
+You can also customize the search root of JeMalloc/Libevent2/MbedTLS/OpenSSLx/PCRE with the following parameters.
+
+> -DOpenSSLx_ROOT=/xxxxxx/xxx/xxx for openssl root
 > 
-> -DLibevent2_ROOT=xxxxxx  指定 libevent root
+> -DLibevent2_ROOT=xxxxxx  for libevent root
+> 
+> and so on
 
-### mbedtls
-
-如果你想使用 mbedtls (在移动端的体积比 openssl 小很多) 添加下列参数
-
-> -DUSE_MBEDTLS=ON
-
-### jemalloc
-
-如果你想使用 jemalloc, 添加参数
-
-> -DUSE_JEMALLOC=ON
-
-## 运行
+## Run
 
 > pegas -c config.json -t 4
 
-- `-c` 指定配置文件，默认会依次尝试 `$XDG_CONFIG_HOME/.pegasrc` 或者 `$XDG_CONFIG_HOME/pegas/config` 
-- `-t` 指定工作线程数量，默认为 4
+- `-c` specifies the configuration file, by default it will try `$XDG_CONFIG_HOME/.pegasrc` or `$XDG_CONFIG_HOME/pegas/config` in order 
+- `-t` specifies the number of worker threads, default is 4
 
-## 配置
+## Configuration
 
-见[配置文档](https://github.com/chux0519/pegasocks/wiki/%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E)
+see [wiki](https://github.com/chux0519/pegasocks/wiki/%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E)
 
 
-## 交互
+## Interaction
 
-程序启动后，默认监听 `/tmp/pegas.sock`(可以配置，同时支持 TCP 端口和 unix socket)，通过 unix socket 可以和主程序进行交互。支持的命令有：
+The "control_port" or "control_file" field of the configuration file can be used to open a TCP port or a unix socket to interact with the program. Use netcat / socat to interact with the relevant port or file.
 
-- `GET SERVERS`，将返回服务器的信息
-- `SET SERVER $idx`，设置当前服务器
+- `GET SERVERS`, which will return information about the server
+- `SET SERVER $idx`, which sets the current server
 
-在 linux 下 socat 演示
+In linux socat demo
 
 <img src="https://i.imgur.com/dlFuKtg.png" width="512" />
 
-另外，支持系统托盘，见下
+Also, the system tray is supported, see below
 
-## 系统托盘
+## System Tray
 
-默认编译二进制文件不带 GUI，带上参数 `-DWITH_APPLET=ON` 开启系统托盘功能。
+Default compile binary without GUI, take parameter `-DWITH_APPLET=ON` to enable system tray.
 
-> cmake -DCMAKE_BUILD_TYPE=Release -DWITH_APPLET=ON .. && make
+> cmake -DCMAKE_BUILD_TYPE=Release -DWITH_APPLET=ON . && make
 
 ### Linux 
 
 <img src="https://i.imgur.com/Ny0WMJA.png" width="512" />
 
-从命令行启动时，将 `logo/icon.svg` 放到 pegas 同级目录，然后正常使用即可。
+When booting from the command line, put `logo/icon.svg` into the pegas sibling directory and use it normally.
 
 
 ### OSX
 
 <img src="https://i.imgur.com/jOA04aU.png" width="512" />
 
-从命令行运行时，将 `logo/icon.png` 放到 pegas 同级目录，然后正常使用即可。
+On OSX, the binary will be packaged into an app bundle by default, just copy the packaged `build/PegasApp.app` to the application directly.
 
-OSX上，默认会将二进制打包成 app bundle，直接将打包出的 `build/PegasApp.app` 复制到应用程序即可。
+⚠️Note: If you encounter a situation where you can't start, please make sure that
 
-⚠️注:如果遇到无法启动的状况，请确认
-
-1. 系统安装了 libevent (brew install libevent)
-2. 是否有 **配置文件**，app bundle 会检测 `~/.config/.pegasrc`
+1. libevent and are installed on your system (brew install libevent)
+2. if there is a **configuration** file, the app bundle will detect `~/.config/.pegasrc` or `~/.config/pegas/config`
