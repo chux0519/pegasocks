@@ -44,7 +44,6 @@ set(PEGAS_SOURCES src/pegas.c
                   src/pgs_codec.c
                   src/pgs_config.c
                   src/pgs_control.c
-                  src/pgs_crypto.c
                   src/pgs_helper_thread.c
                   src/pgs_local_server.c
                   src/pgs_log.c
@@ -116,6 +115,7 @@ if(USE_MBEDTLS)
 
   set(PEGAS_SOURCES ${PEGAS_SOURCES}
                     src/pgs_ssl_mbedtls.c
+                    src/pgs_crypto_mbedtls.c
   )
   list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES})
 
@@ -125,6 +125,7 @@ else()
 
   set(PEGAS_SOURCES ${PEGAS_SOURCES}
                     src/pgs_ssl_openssl.c
+                    src/pgs_crypto_openssl.c
   )
   list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES})
 endif()
