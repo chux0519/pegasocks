@@ -309,10 +309,6 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 		case 0x01: {
 			// CMD connect
 			const uint8_t *cmd = session->inbound->cmd;
-			pgs_session_inbound_cbs_t inbound_cbs = {
-				on_local_event, on_trojan_local_read,
-				on_v2ray_local_read, on_bypass_local_read
-			};
 			pgs_session_outbound_cbs_t outbound_cbs = {
 				on_trojan_remote_event,
 				on_v2ray_remote_event,

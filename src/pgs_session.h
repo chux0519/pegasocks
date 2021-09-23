@@ -25,7 +25,6 @@ typedef enum {
 	INBOUND_UDP_RELAY,
 	INBOUND_ERR
 } pgs_session_inbound_state;
-typedef void(free_ctx_fn)(void *ctx);
 
 typedef struct pgs_server_session_stats_s {
 	struct timeval start;
@@ -53,16 +52,7 @@ typedef struct pgs_session_s {
 	pgs_session_outbound_t *outbound;
 	pgs_local_server_t *local_server;
 	pgs_session_stats_t *metrics;
-	// needed by UDP ASSOCIATE
-	const pgs_server_config_t *cur_config;
 } pgs_session_t;
-
-typedef struct pgs_session_inbound_cbs_s {
-	on_event_cb *on_local_event;
-	on_read_cb *on_trojan_local_read;
-	on_read_cb *on_v2ray_local_read;
-	on_read_cb *on_bypass_local_read;
-} pgs_session_inbound_cbs_t;
 
 // inbound
 pgs_session_inbound_t *pgs_session_inbound_new(struct bufferevent *bev);
