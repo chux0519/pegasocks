@@ -80,6 +80,32 @@ int aes_128_cfb_decrypt(const uint8_t *ciphertext, int ciphertext_len,
 			const uint8_t *key, const uint8_t *iv,
 			uint8_t *plaintext);
 
+/* shadowsocks password to subpass transform */
+static void evp_bytes_to_key(const uint8_t *input, size_t input_len,
+			     uint8_t *key, size_t key_len)
+{
+	uint8_t round_res[16] = { 0 };
+	size_t cur_pos = 0;
+
+	uint8_t *buf = (uint8_t *)malloc(input_len + 16);
+	memcpy(buf, input, input_len);
+
+	while (cur_pos < key_len) {
+		if (cur_pos == 0) {
+			md5(buf, input_len, round_res);
+		} else {
+			memcpy(buf, round_res, 16);
+			memcpy(buf + 16, input, input_len);
+			md5(buf, input_len + 16, round_res);
+		}
+		for (int p = cur_pos; p < key_len && p < cur_pos + 16; p++) {
+			key[p] = round_res[p - cur_pos];
+		}
+		cur_pos += 16;
+	}
+	free(buf);
+}
+
 // =========================== static helpers
 
 static void shake128(const uint8_t *input, uint64_t input_len, uint8_t *out,

@@ -255,6 +255,21 @@ void test_crypto_aead_decrypt()
 	pgs_aead_cryptor_free(decryptor);
 }
 
+void test_evp_bytes_to_key()
+{
+	const uint8_t input[] = "key";
+	size_t input_len = 3;
+	uint8_t output[32] = { 0 };
+	size_t output_len = 32;
+	const char *res =
+		"3c6e0b8a9c15224a8228b9a98ca1531dd1e2a35fba509b6432edb96d850e119f";
+
+	evp_bytes_to_key(input, input_len, output, output_len);
+	uint8_t *hexstring = to_hexstring(output, output_len);
+	assert(strcmp(res, (const char *)hexstring) == 0);
+	free(hexstring);
+}
+
 int main()
 {
 	test_sha224();
@@ -277,5 +292,7 @@ int main()
 	printf("test_crypto_aead_encrypt passed\n");
 	test_crypto_aead_decrypt();
 	printf("test_crypto_aead_decrypt passed\n");
+	test_evp_bytes_to_key();
+	printf("test_evp_bytes_to_key passed\n");
 	return 0;
 }
