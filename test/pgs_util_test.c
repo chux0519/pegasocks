@@ -270,6 +270,34 @@ void test_evp_bytes_to_key()
 	free(hexstring);
 }
 
+void test_hkdf_sha1()
+{
+	uint8_t salt[32] = { 0x4b, 0x7a, 0x8b, 0x2d, 0x6e, 0x8b, 0xfe, 0x11,
+			     0x9e, 0xca, 0x2f, 0x62, 0x4f, 0x60, 0x23, 0x9c,
+			     0xcf, 0xc9, 0xf6, 0x29, 0xb7, 0x8e, 0x5f, 0x6e,
+			     0x36, 0xef, 0xab, 0x0f, 0xf8, 0x71, 0x94, 0x56 };
+
+	uint8_t okm_str[] =
+		"bae0e694e5f042b126f55d88be19804ad9b1b90beac5b9494a60b7768856b4c2";
+	uint8_t SS_INFO[] = "ss-subkey";
+	uint8_t password[] = "password";
+	uint8_t ikm_str[] =
+		"5f4dcc3b5aa765d61d8327deb882cf992b95990a9151374abd8ff8c5a7a0fe08";
+
+	uint8_t ikm[32];
+	evp_bytes_to_key(password, 8, ikm, 32);
+	uint8_t *hexstring = to_hexstring(ikm, 32);
+	assert(strcmp((const char *)ikm_str, (const char *)hexstring) == 0);
+	free(hexstring);
+
+	uint8_t okm[32];
+	bool ok = hkdf_sha1(salt, 32, ikm, 32, SS_INFO, 9, okm, 32);
+	assert(ok);
+	hexstring = to_hexstring(okm, 32);
+	assert(strcmp((const char *)okm_str, (const char *)hexstring) == 0);
+	free(hexstring);
+}
+
 int main()
 {
 	test_sha224();
@@ -294,5 +322,7 @@ int main()
 	printf("test_crypto_aead_decrypt passed\n");
 	test_evp_bytes_to_key();
 	printf("test_evp_bytes_to_key passed\n");
+	test_hkdf_sha1();
+	printf("test_hkdf_sha1 passed\n");
 	return 0;
 }

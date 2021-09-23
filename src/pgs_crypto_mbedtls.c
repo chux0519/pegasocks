@@ -6,7 +6,9 @@
 #include <mbedtls/gcm.h>
 #include <mbedtls/sha256.h>
 #include <mbedtls/md5.h>
+#include <mbedtls/sha1.h>
 #include <mbedtls/md.h>
+#include <mbedtls/hkdf.h>
 
 pgs_base_cryptor_t *pgs_cryptor_new(pgs_v2ray_secure_t secure,
 				    const uint8_t *key, const uint8_t *iv,
@@ -265,6 +267,11 @@ void md5(const uint8_t *input, uint64_t input_len, uint8_t *res)
 	mbedtls_md5_ret(input, input_len, res);
 }
 
+void sha1(const uint8_t *input, uint64_t input_len, uint8_t *res)
+{
+	mbedtls_sha1_ret(input, input_len, res);
+}
+
 void hmac_md5(const uint8_t *key, uint64_t key_len, const uint8_t *data,
 	      uint64_t data_len, uint8_t *out, uint64_t *out_len)
 {
@@ -356,4 +363,16 @@ int aes_128_cfb_decrypt(const uint8_t *ciphertext, int ciphertext_len,
 error:
 	perror("aes_128_cfb_decrypt");
 	return -1;
+}
+
+bool hkdf_sha1(const uint8_t *salt, size_t salt_len, const uint8_t *ikm,
+	       size_t ikm_len, const uint8_t *info, size_t info_len,
+	       uint8_t *okm, size_t okm_len)
+{
+	const mbedtls_md_info_t *md =
+		mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
+
+	int ret = mbedtls_hkdf(md, salt, salt_len, ikm, ikm_len, info, info_len,
+			       okm, okm_len);
+	return ret == 0;
 }

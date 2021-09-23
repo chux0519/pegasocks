@@ -70,7 +70,10 @@ void pgs_aead_cryptor_increase_iv(pgs_aead_cryptor_t *ptr);
 int rand_bytes(unsigned char *buf, int num);
 void sha224(const uint8_t *input, uint64_t input_len, uint8_t *res,
 	    uint64_t *res_len);
-void md5(const uint8_t *input, uint64_t input_len, uint8_t *res);
+void md5(const uint8_t *input, uint64_t input_len,
+	 uint8_t *res /* output len should be 16 */);
+void sha1(const uint8_t *input, uint64_t input_len,
+	  uint8_t *res /* output len should be 20 */);
 void hmac_md5(const uint8_t *key, uint64_t key_len, const uint8_t *data,
 	      uint64_t data_len, uint8_t *out, uint64_t *out_len);
 int aes_128_cfb_encrypt(const uint8_t *plaintext, int plaintext_len,
@@ -80,7 +83,19 @@ int aes_128_cfb_decrypt(const uint8_t *ciphertext, int ciphertext_len,
 			const uint8_t *key, const uint8_t *iv,
 			uint8_t *plaintext);
 
-/* shadowsocks password to subpass transform */
+/* shadowsocks AEAD key and salt generation
+ * password --(evp_bytes_to_key)--> ikm
+ * random salt + ikm  --(hkdf_sha1_extract) --> prk(pseudorandom key)
+ * prk + "ss-subkey"(as info) --(hkdf_sha1_expand)--> AEAD key
+ * Extract-and-Expand mode HKDF
+ * */
+bool hkdf_sha1(const uint8_t *salt, size_t salt_len, const uint8_t *ikm,
+	       size_t ikm_len, const uint8_t *info, size_t info_len,
+	       uint8_t *okm, size_t okm_len);
+
+// =========================== static helpers
+
+/* shadowsocks password to key transform */
 static void evp_bytes_to_key(const uint8_t *input, size_t input_len,
 			     uint8_t *key, size_t key_len)
 {
@@ -105,8 +120,6 @@ static void evp_bytes_to_key(const uint8_t *input, size_t input_len,
 	}
 	free(buf);
 }
-
-// =========================== static helpers
 
 static void shake128(const uint8_t *input, uint64_t input_len, uint8_t *out,
 		     uint64_t out_len)

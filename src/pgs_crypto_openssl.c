@@ -4,6 +4,8 @@
 #include <openssl/md5.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
+#include <openssl/sha.h>
+#include <openssl/kdf.h>
 
 pgs_base_cryptor_t *pgs_cryptor_new(pgs_v2ray_secure_t secure,
 				    const uint8_t *key, const uint8_t *iv,
@@ -287,6 +289,11 @@ void md5(const uint8_t *input, uint64_t input_len, uint8_t *res)
 	MD5(input, input_len, res);
 }
 
+void sha1(const uint8_t *input, uint64_t input_len, uint8_t *res)
+{
+	SHA1(input, input_len, res);
+}
+
 void hmac_md5(const uint8_t *key, uint64_t key_len, const uint8_t *data,
 	      uint64_t data_len, uint8_t *out, uint64_t *out_len)
 {
@@ -356,4 +363,35 @@ int aes_128_cfb_decrypt(const uint8_t *ciphertext, int ciphertext_len,
 error:
 	perror("aes_128_cfb_decrypt");
 	return -1;
+}
+
+bool hkdf_sha1(const uint8_t *salt, size_t salt_len, const uint8_t *ikm,
+	       size_t ikm_len, const uint8_t *info, size_t info_len,
+	       uint8_t *okm, size_t okm_len)
+
+{
+	size_t outlen = okm_len;
+	EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, NULL);
+
+	if (EVP_PKEY_derive_init(pctx) <= 0)
+		goto error;
+	if (EVP_PKEY_CTX_hkdf_mode(pctx,
+				   EVP_PKEY_HKDEF_MODE_EXTRACT_AND_EXPAND) <= 0)
+		goto error;
+	if (EVP_PKEY_CTX_set_hkdf_md(pctx, EVP_sha1()) <= 0)
+		goto error;
+	if (EVP_PKEY_CTX_set1_hkdf_salt(pctx, salt, salt_len) <= 0)
+		goto error;
+	if (EVP_PKEY_CTX_set1_hkdf_key(pctx, ikm, ikm_len) <= 0)
+		goto error;
+	if (EVP_PKEY_CTX_add1_hkdf_info(pctx, info, info_len) <= 0)
+		goto error;
+	if (EVP_PKEY_derive(pctx, okm, &outlen) <= 0)
+		goto error;
+
+	assert(outlen == okm_len);
+	EVP_PKEY_CTX_free(pctx);
+	return true;
+error:
+	return false;
 }
