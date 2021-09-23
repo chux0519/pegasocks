@@ -14,10 +14,6 @@ struct pgs_ssl_ctx_s {
 	mbedtls_ctr_drbg_context ctr_drbg;
 };
 
-struct pgs_ssl_s {
-	mbedtls_ssl_context _;
-};
-
 pgs_ssl_ctx_t *pgs_ssl_ctx_new()
 {
 	pgs_ssl_ctx_t *ctx = malloc(sizeof(pgs_ssl_ctx_t));
@@ -57,42 +53,24 @@ void pgs_ssl_ctx_free(pgs_ssl_ctx_t *ctx)
 	free(ctx);
 }
 
-pgs_ssl_t *pgs_ssl_new(pgs_ssl_ctx_t *ctx, void *hostname)
-{
-	pgs_ssl_t *ssl = malloc(sizeof(pgs_ssl_t));
-	int ret;
-	mbedtls_ssl_init(&ssl->_);
-
-	if ((ret = mbedtls_ssl_setup(&ssl->_, &ctx->conf)) != 0) {
-		goto error;
-	}
-	if ((ret = mbedtls_ssl_set_hostname(&ssl->_, hostname)) != 0) {
-		goto error;
-	}
-
-	return ssl;
-error:
-	pgs_ssl_close(ssl);
-	return NULL;
-}
-
-void pgs_ssl_close(pgs_ssl_t *ssl)
-{
-	mbedtls_ssl_free(&ssl->_);
-	free(ssl);
-}
-
 int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev,
 				      struct event_base *base,
 				      pgs_ssl_ctx_t *ssl_ctx, const char *sni)
 {
-	pgs_ssl_t *ssl = pgs_ssl_new(ssl_ctx, (void *)sni);
+	mbedtls_ssl_context *ssl = malloc(sizeof(mbedtls_ssl_context));
 
-	if (ssl == NULL) {
+	mbedtls_ssl_init(ssl);
+
+	int ret = 0;
+	if ((ret = mbedtls_ssl_setup(ssl, &ssl_ctx->conf)) != 0) {
 		return -1;
 	}
+	if ((ret = mbedtls_ssl_set_hostname(ssl, sni)) != 0) {
+		return -1;
+	}
+
 	*bev = bufferevent_mbedtls_socket_new(
-		base, -1, &ssl->_, BUFFEREVENT_SSL_CONNECTING,
+		base, -1, ssl, BUFFEREVENT_SSL_CONNECTING,
 		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 #ifdef BUFFEREVENT_SSL_BATCH_WRITE
 	bufferevent_ssl_set_flags(*bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN |
@@ -102,13 +80,4 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev,
 #endif
 
 	return 0;
-}
-
-void pgs_free_bev_ssl_ctx(struct bufferevent *bev)
-{
-	mbedtls_ssl_context *ssl_ = bufferevent_mbedtls_get_ssl(bev);
-	pgs_ssl_t *ssl = container_of(ssl_, pgs_ssl_t, _);
-
-	if (ssl)
-		pgs_ssl_close(ssl);
 }

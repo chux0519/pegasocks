@@ -51,6 +51,8 @@ set(PEGAS_SOURCES src/core/pegas.c
                   src/core/mpsc.c
                   src/core/server_manager.c
                   src/core/session.c
+                  src/core/session_inbound.c
+                  src/core/session_outbound.c
 )
 set(THIRDPARTY_SOURCES 3rd-party/parson/parson.c
                        3rd-party/hash_32a.c

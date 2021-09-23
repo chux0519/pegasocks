@@ -111,7 +111,8 @@ bool pgs_ws_parse_head(uint8_t *data, uint64_t data_len, pgs_ws_resp_t *meta)
 	return true;
 }
 
-uint64_t pgs_vmess_write_head(pgs_session_t *session, pgs_vmess_ctx_t *ctx)
+uint64_t pgs_vmess_write_head(pgs_session_t *session,
+			      pgs_outbound_ctx_v2ray_t *ctx)
 {
 	const uint8_t *uuid = session->outbound->config->password;
 	int is_udp = (session->inbound != NULL &&
@@ -263,7 +264,7 @@ uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 			      uint64_t data_len, uint64_t head_len,
 			      pgs_session_write_fn flush)
 {
-	pgs_vmess_ctx_t *ctx = session->outbound->ctx;
+	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
 	uint8_t *localr = ctx->local_rbuf;
 	uint8_t *buf = ctx->remote_wbuf + head_len;
 	uint64_t sent = 0;
@@ -341,7 +342,7 @@ uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 uint64_t pgs_vmess_write_remote(pgs_session_t *session, const uint8_t *data,
 				uint64_t data_len, pgs_session_write_fn flush)
 {
-	pgs_vmess_ctx_t *ctx = session->outbound->ctx;
+	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
 	uint64_t head_len = 0;
 	if (!ctx->header_sent) {
 		// will setup crytors and remote_wbuf
@@ -357,7 +358,7 @@ uint64_t pgs_vmess_write_remote(pgs_session_t *session, const uint8_t *data,
 bool pgs_vmess_parse(pgs_session_t *session, const uint8_t *data,
 		     uint64_t data_len, pgs_session_write_fn flush)
 {
-	pgs_vmess_ctx_t *ctx = session->outbound->ctx;
+	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
 	switch (ctx->secure) {
 	case V2RAY_SECURE_CFB:
 		return pgs_vmess_parse_cfb(session, data, data_len, flush);
@@ -374,8 +375,8 @@ bool pgs_vmess_parse(pgs_session_t *session, const uint8_t *data,
 bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 			 uint64_t data_len, pgs_session_write_fn flush)
 {
-	pgs_vmess_ctx_t *ctx = session->outbound->ctx;
-	pgs_vmess_resp_t *meta = &ctx->resp_meta;
+	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
+	pgs_vmess_resp_t meta = { 0 };
 	uint8_t *rrbuf = ctx->remote_rbuf;
 	uint8_t *lwbuf = ctx->local_wbuf;
 	pgs_aes_cryptor_t *decryptor = ctx->decryptor;
@@ -385,11 +386,11 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 			return false;
 		if (!pgs_aes_cryptor_decrypt(decryptor, data, 4, rrbuf))
 			return false;
-		meta->v = rrbuf[0];
-		meta->opt = rrbuf[1];
-		meta->cmd = rrbuf[2];
-		meta->m = rrbuf[3];
-		if (meta->m != 0) // support no cmd
+		meta.v = rrbuf[0];
+		meta.opt = rrbuf[1];
+		meta.cmd = rrbuf[2];
+		meta.m = rrbuf[3];
+		if (meta.m != 0) // support no cmd
 			return false;
 		ctx->header_recved = true;
 		ctx->resp_len = 0;
@@ -444,8 +445,8 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 			 uint64_t data_len, pgs_session_write_fn flush)
 {
-	pgs_vmess_ctx_t *ctx = session->outbound->ctx;
-	pgs_vmess_resp_t *meta = &ctx->resp_meta;
+	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
+	pgs_vmess_resp_t meta = { 0 };
 	uint8_t *rrbuf = ctx->remote_rbuf;
 	uint8_t *lwbuf = ctx->local_wbuf;
 	pgs_aead_cryptor_t *decryptor = (pgs_aead_cryptor_t *)ctx->decryptor;
@@ -456,11 +457,11 @@ bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 		if (!aes_128_cfb_decrypt(data, 4, (const uint8_t *)ctx->rkey,
 					 (const uint8_t *)ctx->riv, rrbuf))
 			return false;
-		meta->v = rrbuf[0];
-		meta->opt = rrbuf[1];
-		meta->cmd = rrbuf[2];
-		meta->m = rrbuf[3];
-		if (meta->m != 0) // support no cmd
+		meta.v = rrbuf[0];
+		meta.opt = rrbuf[1];
+		meta.cmd = rrbuf[2];
+		meta.m = rrbuf[3];
+		if (meta.m != 0) // support no cmd
 			return false;
 		ctx->header_recved = true;
 		ctx->resp_len = 0;

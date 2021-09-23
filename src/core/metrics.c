@@ -82,19 +82,50 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 	pgs_metrics_task_ctx_t *mctx =
 		pgs_metrics_task_ctx_new(base, config, sm, idx, logger, NULL);
 
-	pgs_session_outbound_cbs_t outbound_cbs = { on_trojan_g204_event,
-						    on_v2ray_g204_event,
-						    NULL,
-						    on_trojan_g204_read,
-						    on_v2ray_g204_read,
-						    NULL,
-						    NULL };
-
 	pgs_session_outbound_t *ptr = pgs_session_outbound_new();
-	pgs_session_outbound_init(ptr, false, NULL, config, cmd, cmd_len,
-				  logger, base, mctx->dns_base, NULL,
-				  outbound_cbs, mctx);
 	mctx->outbound = ptr;
+	ptr->config = config;
+
+	bool proxy = true;
+	socks5_dest_addr_parse(cmd, cmd_len, NULL, &proxy, &ptr->dest,
+			       &ptr->port);
+	if (ptr->dest == NULL) {
+		pgs_logger_error(logger, "socks5_dest_addr_parse");
+		goto error;
+	}
+
+	if (IS_TROJAN_SERVER(config->server_type)) {
+		if (!pgs_session_trojan_outbound_init(
+			    ptr, config, cmd, cmd_len, base,
+			    on_trojan_g204_event, on_trojan_g204_read, mctx)) {
+			pgs_logger_error(logger,
+					 "Failed to init trojan outbound");
+			goto error;
+		}
+	} else if (IS_V2RAY_SERVER(config->server_type)) {
+		if (!pgs_session_v2ray_outbound_init(
+			    ptr, config, cmd, cmd_len, base,
+			    on_v2ray_g204_event, on_v2ray_g204_read, mctx)) {
+			pgs_logger_error(logger,
+					 "Failed to init v2ray outbound");
+			goto error;
+		}
+	}
+
+	bufferevent_enable(ptr->bev, EV_READ);
+
+	bufferevent_socket_connect_hostname(ptr->bev, mctx->dns_base, AF_INET,
+					    config->server_address,
+					    config->server_port);
+
+	pgs_logger_debug(logger, "connect: %s:%d", config->server_address,
+			 config->server_port);
+
+	return;
+
+error:
+	if (mctx)
+		pgs_metrics_task_ctx_free(mctx);
 }
 
 static void on_ws_g204_event(struct bufferevent *bev, short events, void *ctx)
@@ -121,7 +152,7 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 	uint64_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
-	pgs_trojansession_ctx_t *trojan_s_ctx = mctx->outbound->ctx;
+	pgs_outbound_ctx_trojan_t *trojan_s_ctx = mctx->outbound->ctx;
 	if (!mctx->outbound->ready) {
 		if (!strstr((const char *)data, "\r\n\r\n"))
 			return;
@@ -178,7 +209,7 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 	uint64_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
-	pgs_vmess_ctx_t *v2ray_s_ctx = mctx->outbound->ctx;
+	pgs_outbound_ctx_v2ray_t *v2ray_s_ctx = mctx->outbound->ctx;
 	if (!mctx->outbound->ready) {
 		if (!strstr((const char *)data, "\r\n\r\n"))
 			return;
@@ -225,7 +256,7 @@ static void on_trojan_gfw_g204_event(struct bufferevent *bev, short events,
 	pgs_metrics_task_ctx_t *mctx = ctx;
 	if (events & BEV_EVENT_CONNECTED) {
 		// set connected
-		pgs_trojansession_ctx_t *sctx = mctx->outbound->ctx;
+		pgs_outbound_ctx_trojan_t *sctx = mctx->outbound->ctx;
 		mctx->outbound->ready = true;
 		double connect_time = elapse(mctx->start_at);
 		pgs_logger_debug(mctx->logger, "trojan gfw connected: %f",
@@ -270,7 +301,7 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 	pgs_metrics_task_ctx_t *mctx = ctx;
 	if (events & BEV_EVENT_CONNECTED) {
 		// set connected
-		pgs_vmess_ctx_t *sctx = mctx->outbound->ctx;
+		pgs_outbound_ctx_v2ray_t *sctx = mctx->outbound->ctx;
 		mctx->outbound->ready = true;
 		double connect_time = elapse(mctx->start_at);
 		pgs_logger_debug(mctx->logger, "connect: %f", connect_time);

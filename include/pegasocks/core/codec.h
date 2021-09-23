@@ -1,5 +1,5 @@
-#ifndef _PGS_CODEC
-#define _PGS_CODEC
+#ifndef _PGS_CODEC_H
+#define _PGS_CODEC_H
 
 #include <arpa/inet.h>
 #include <event2/buffer.h>
@@ -44,8 +44,17 @@ void pgs_ws_write(struct evbuffer *buf, uint8_t *msg, uint64_t len, int opcode);
 bool pgs_ws_parse_head(uint8_t *data, uint64_t data_len, pgs_ws_resp_t *meta);
 
 /* vmess */
+
+typedef struct pgs_vmess_resp_s {
+	uint8_t v;
+	uint8_t opt;
+	uint8_t cmd;
+	uint8_t m;
+} pgs_vmess_resp_t;
+
 // to remote
-uint64_t pgs_vmess_write_head(pgs_session_t *session, pgs_vmess_ctx_t *ctx);
+uint64_t pgs_vmess_write_head(pgs_session_t *session,
+			      pgs_outbound_ctx_v2ray_t *ctx);
 uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 			      uint64_t data_len, uint64_t head_len,
 			      pgs_session_write_fn flush);
@@ -60,13 +69,30 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 			 uint64_t data_len, pgs_session_write_fn flush);
 
+static inline int pgs_get_addr_len(const uint8_t *data)
+{
+	switch (data[0] /*atype*/) {
+	case 0x01:
+		// IPv4
+		return 4;
+	case 0x03:
+		return 1 + data[1];
+	case 0x04:
+		// IPv6
+		return 16;
+	default:
+		break;
+	}
+	return 0;
+}
+
 // helper flush functions
 static void trojan_write_remote(pgs_session_t *session, uint8_t *msg,
 				uint64_t len)
 {
 	struct bufferevent *outbev = session->outbound->bev;
 	struct evbuffer *outboundw = bufferevent_get_output(outbev);
-	pgs_trojansession_ctx_t *trojan_s_ctx = session->outbound->ctx;
+	pgs_outbound_ctx_trojan_t *trojan_s_ctx = session->outbound->ctx;
 	uint64_t head_len = trojan_s_ctx->head_len;
 	if (head_len > 0) {
 		evbuffer_add(outboundw, trojan_s_ctx->head, head_len);
@@ -157,7 +183,7 @@ static void vmess_flush_local(pgs_session_t *session, uint8_t *data,
 	} else if (session->inbound->state == INBOUND_UDP_RELAY &&
 		   session->inbound->udp_fd != -1) {
 		// pack to socks5 packet
-		pgs_vmess_ctx_t *ctx = session->outbound->ctx;
+		pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
 		uint64_t udp_packet_len = 2 + 1 + ctx->target_addr_len + len;
 		udp_packet = malloc(udp_packet_len);
 		if (udp_packet == NULL) {
