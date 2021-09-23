@@ -168,8 +168,7 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 				to_hexstring(encoded_pass, encoded_len);
 
 			ptr[i].password = hexpass;
-		}
-		if (IS_V2RAY_SERVER(server_type)) {
+		} else if (IS_V2RAY_SERVER(server_type)) {
 			size_t len = strlen(password);
 			if (len != 36) // invalid uuid
 				goto error;
@@ -183,6 +182,9 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 			uint8_t *uuid = malloc(16 * sizeof(uint8_t));
 			hextobin(uuid_hex, uuid, 16);
 			ptr[i].password = uuid;
+		} else if (IS_SHADOWSOCKS_SERVER(server_type)) {
+			uint8_t *pass = (uint8_t *)strdup(password);
+			ptr[i].password = pass;
 		}
 		if (ptr[i].password == NULL)
 			goto error;
@@ -206,6 +208,8 @@ void pgs_server_config_free_extra(const char *server_type, void *ptr)
 		return pgs_config_extra_trojan_free(ptr);
 	} else if (IS_V2RAY_SERVER(server_type)) {
 		return pgs_config_extra_v2ray_free(ptr);
+	} else if (IS_SHADOWSOCKS_SERVER(server_type)) {
+		return pgs_config_extra_ss_free(ptr);
 	}
 }
 
@@ -259,10 +263,10 @@ void pgs_servers_config_free(pgs_server_config_t *ptr, uint64_t len)
 		if (ptr[i].extra)
 			pgs_server_config_free_extra(ptr[i].server_type,
 						     ptr[i].extra);
-		if (ptr[i].server_type != NULL &&
-			    IS_TROJAN_SERVER(ptr[i].server_type) ||
-		    IS_V2RAY_SERVER(ptr[i].server_type) &&
-			    ptr[i].password != NULL)
+		if (ptr[i].server_type != NULL && ptr[i].password != NULL &&
+		    (IS_TROJAN_SERVER(ptr[i].server_type) ||
+		     IS_V2RAY_SERVER(ptr[i].server_type) ||
+		     IS_SHADOWSOCKS_SERVER(ptr[i].server_type)))
 			free(ptr[i].password);
 	}
 	free(ptr);
@@ -416,13 +420,13 @@ pgs_config_extra_ss_t *pgs_config_extra_ss_parse(pgs_config_t *config,
 {
 	pgs_config_extra_ss_t *ptr = pgs_config_extra_ss_new();
 
-	const char *secure = json_object_get_string(jobj, CONFIG_SS_METHOD);
-	if (secure != NULL) {
-		if (strcasecmp(secure, "aes-128-gcm") == 0) {
+	const char *method = json_object_get_string(jobj, CONFIG_SS_METHOD);
+	if (method != NULL) {
+		if (strcasecmp(method, "aes-128-gcm") == 0) {
 			ptr->method = SS_AEAD_AES_128_GCM;
-		} else if (strcasecmp(secure, "aes-256-gcm") == 0) {
+		} else if (strcasecmp(method, "aes-256-gcm") == 0) {
 			ptr->method = SS_AEAD_AES_256_GCM;
-		} else if (strcasecmp(secure, "chacha20-ietf-poly1305") == 0) {
+		} else if (strcasecmp(method, "chacha20-ietf-poly1305") == 0) {
 			ptr->method = SS_AEAD_CHACHA20_POLY1305;
 		}
 	}
@@ -433,7 +437,7 @@ pgs_config_extra_ss_t *pgs_config_extra_ss_parse(pgs_config_t *config,
 	if (plugin != NULL)
 		ptr->plugin = plugin;
 	if (plugin_opts != NULL)
-		ptr->plugin = plugin;
+		ptr->plugin_opts = plugin_opts;
 
 	return ptr;
 
