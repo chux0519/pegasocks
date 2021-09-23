@@ -85,8 +85,8 @@ void test_trojan_gfw_config()
 	assert(server->server_port == 443);
 
 	assert(server->extra != NULL);
-	pgs_trojanserver_config_t *tconf =
-		(pgs_trojanserver_config_t *)server->extra;
+	pgs_config_extra_trojan_t *tconf =
+		(pgs_config_extra_trojan_t *)server->extra;
 	assert(tconf->ssl.enabled == true);
 	assert(tconf->ssl_ctx != NULL);
 	PGS_STREUQAL(tconf->ssl.sni, "trojan.example.com");
@@ -140,8 +140,8 @@ void test_trojan_ws_config()
 	assert(server->server_port == 443);
 
 	assert(server->extra != NULL);
-	pgs_trojanserver_config_t *tconf =
-		(pgs_trojanserver_config_t *)server->extra;
+	pgs_config_extra_trojan_t *tconf =
+		(pgs_config_extra_trojan_t *)server->extra;
 	assert(tconf->ssl.enabled == true);
 	assert(tconf->ssl_ctx != NULL);
 	PGS_STREUQAL(tconf->ssl.sni, "trojan.example.com");
@@ -235,8 +235,8 @@ void test_v2ray_tcp_ssl_config()
 	assert(server->server_port == 10086);
 
 	assert(server->extra != NULL);
-	pgs_v2rayserver_config_t *vconf =
-		(pgs_v2rayserver_config_t *)server->extra;
+	pgs_config_extra_v2ray_t *vconf =
+		(pgs_config_extra_v2ray_t *)server->extra;
 	assert(vconf->ssl.enabled == true);
 	assert(vconf->ssl_ctx != NULL);
 	PGS_STREUQAL(vconf->ssl.sni, "v2ray.example.com");
@@ -287,8 +287,8 @@ void test_v2ray_ws_config()
 	assert(server->server_port == 10086);
 
 	assert(server->extra != NULL);
-	pgs_v2rayserver_config_t *vconf =
-		(pgs_v2rayserver_config_t *)server->extra;
+	pgs_config_extra_v2ray_t *vconf =
+		(pgs_config_extra_v2ray_t *)server->extra;
 	assert(vconf->websocket.enabled == true);
 	PGS_STREUQAL(vconf->websocket.path, "/path");
 	PGS_STREUQAL(vconf->websocket.hostname, "v2ray.example.com");
@@ -342,8 +342,8 @@ void test_v2ray_wss_config()
 	assert(server->server_port == 10086);
 
 	assert(server->extra != NULL);
-	pgs_v2rayserver_config_t *vconf =
-		(pgs_v2rayserver_config_t *)server->extra;
+	pgs_config_extra_v2ray_t *vconf =
+		(pgs_config_extra_v2ray_t *)server->extra;
 	assert(vconf->websocket.enabled == true);
 	PGS_STREUQAL(vconf->websocket.path, "/path");
 	PGS_STREUQAL(vconf->websocket.hostname, "v2ray.example.com");

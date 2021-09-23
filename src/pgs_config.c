@@ -203,9 +203,9 @@ error:
 void pgs_server_config_free_extra(const char *server_type, void *ptr)
 {
 	if (IS_TROJAN_SERVER(server_type)) {
-		return pgs_trojanserver_config_free(ptr);
+		return pgs_config_extra_trojan_free(ptr);
 	} else if (IS_V2RAY_SERVER(server_type)) {
-		return pgs_v2rayserver_config_free(ptr);
+		return pgs_config_extra_v2ray_free(ptr);
 	}
 }
 
@@ -213,9 +213,9 @@ void *pgs_server_config_parse_extra(pgs_config_t *config,
 				    const char *server_type, JSON_Object *jobj)
 {
 	if (IS_TROJAN_SERVER(server_type)) {
-		return pgs_trojanserver_config_parse(config, jobj);
+		return pgs_config_extra_trojan_parse(config, jobj);
 	} else if (IS_V2RAY_SERVER(server_type)) {
-		return pgs_v2rayserver_config_parse(config, jobj);
+		return pgs_config_extra_v2ray_parse(config, jobj);
 	}
 
 	return NULL;
@@ -286,10 +286,10 @@ void pgs_config_free(pgs_config_t *config)
 }
 
 /* trojan config */
-pgs_trojanserver_config_t *pgs_trojanserver_config_parse(pgs_config_t *config,
+pgs_config_extra_trojan_t *pgs_config_extra_trojan_parse(pgs_config_t *config,
 							 JSON_Object *jobj)
 {
-	pgs_trojanserver_config_t *ptr = pgs_trojanserver_config_new();
+	pgs_config_extra_trojan_t *ptr = pgs_config_extra_trojan_new();
 	ptr->ssl.enabled = true;
 	ptr->ssl_ctx = pgs_ssl_ctx_new();
 	if (ptr->ssl_ctx == NULL) {
@@ -315,15 +315,15 @@ pgs_trojanserver_config_t *pgs_trojanserver_config_parse(pgs_config_t *config,
 	return ptr;
 
 error:
-	pgs_config_error(config, "Error: pgs_trojanserver_config_parse");
-	pgs_trojanserver_config_free(ptr);
+	pgs_config_error(config, "Error: pgs_config_extra_trojan_parse");
+	pgs_config_extra_trojan_free(ptr);
 	return NULL;
 }
 
-pgs_trojanserver_config_t *pgs_trojanserver_config_new()
+pgs_config_extra_trojan_t *pgs_config_extra_trojan_new()
 {
-	pgs_trojanserver_config_t *ptr =
-		malloc(sizeof(pgs_trojanserver_config_t));
+	pgs_config_extra_trojan_t *ptr =
+		malloc(sizeof(pgs_config_extra_trojan_t));
 	ptr->ssl.enabled = true;
 	ptr->ssl.cert = NULL;
 	ptr->ssl.sni = NULL;
@@ -335,7 +335,7 @@ pgs_trojanserver_config_t *pgs_trojanserver_config_new()
 	return ptr;
 }
 
-void pgs_trojanserver_config_free(pgs_trojanserver_config_t *ptr)
+void pgs_config_extra_trojan_free(pgs_config_extra_trojan_t *ptr)
 {
 	if (ptr->ssl_ctx != NULL)
 		pgs_ssl_ctx_free(ptr->ssl_ctx);
@@ -344,10 +344,10 @@ void pgs_trojanserver_config_free(pgs_trojanserver_config_t *ptr)
 }
 
 /* v2ray */
-pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
+pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_parse(pgs_config_t *config,
 						       JSON_Object *jobj)
 {
-	pgs_v2rayserver_config_t *ptr = pgs_v2rayserver_config_new();
+	pgs_config_extra_v2ray_t *ptr = pgs_config_extra_v2ray_new();
 
 	const char *secure = json_object_get_string(jobj, CONFIG_VMESS_SECURE);
 	if (secure != NULL && strcasecmp(secure, "aes-128-gcm") == 0) {
@@ -381,15 +381,15 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
 	return ptr;
 
 error:
-	pgs_config_error(config, "Error: pgs_v2rayserver_config_parse");
-	pgs_v2rayserver_config_free(ptr);
+	pgs_config_error(config, "Error: pgs_config_extra_v2ray_parse");
+	pgs_config_extra_v2ray_free(ptr);
 	return NULL;
 }
 
-pgs_v2rayserver_config_t *pgs_v2rayserver_config_new()
+pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_new()
 {
-	pgs_v2rayserver_config_t *ptr =
-		malloc(sizeof(pgs_v2rayserver_config_t));
+	pgs_config_extra_v2ray_t *ptr =
+		malloc(sizeof(pgs_config_extra_v2ray_t));
 	ptr->ssl.enabled = false;
 	ptr->ssl.cert = NULL;
 	ptr->ssl.sni = NULL;
@@ -401,7 +401,7 @@ pgs_v2rayserver_config_t *pgs_v2rayserver_config_new()
 
 	return ptr;
 }
-void pgs_v2rayserver_config_free(pgs_v2rayserver_config_t *ptr)
+void pgs_config_extra_v2ray_free(pgs_config_extra_v2ray_t *ptr)
 {
 	if (ptr->ssl_ctx != NULL)
 		pgs_ssl_ctx_free(ptr->ssl_ctx);

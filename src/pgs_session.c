@@ -508,7 +508,7 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 	if (events & BEV_EVENT_CONNECTED) {
 		pgs_session_t *session = (pgs_session_t *)ctx;
 		const pgs_server_config_t *config = session->outbound->config;
-		const pgs_trojanserver_config_t *trojanconfig = config->extra;
+		const pgs_config_extra_trojan_t *trojanconfig = config->extra;
 		if (trojanconfig->websocket.enabled) {
 			// ws conenct
 			pgs_session_debug(session,
@@ -577,8 +577,8 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 		pgs_session_error(session, "current server config not found");
 		goto error;
 	}
-	pgs_trojanserver_config_t *trojanconf =
-		(pgs_trojanserver_config_t *)config->extra;
+	pgs_config_extra_trojan_t *trojanconf =
+		(pgs_config_extra_trojan_t *)config->extra;
 	if (!trojanconf->websocket.enabled) {
 		// trojan-gfw
 		trojan_write_local(session, data, data_len);
@@ -690,8 +690,8 @@ static void on_trojan_local_read(struct bufferevent *bev, void *ctx)
 		pgs_session_error(session, "current server config not found");
 		goto error;
 	}
-	pgs_trojanserver_config_t *tsconf =
-		(pgs_trojanserver_config_t *)config->extra;
+	pgs_config_extra_trojan_t *tsconf =
+		(pgs_config_extra_trojan_t *)config->extra;
 	if (tsconf->websocket.enabled) {
 		//ws
 		uint64_t head_len = tctx->head_len;
@@ -725,7 +725,7 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 
 	if (events & BEV_EVENT_CONNECTED) {
 		const pgs_server_config_t *config = session->outbound->config;
-		const pgs_v2rayserver_config_t *vconfig = config->extra;
+		const pgs_config_extra_v2ray_t *vconfig = config->extra;
 		if (vconfig->websocket.enabled) {
 			pgs_session_debug(session,
 					  "do_v2ray_ws_remote_request");
@@ -774,7 +774,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "remote read triggered");
 	const pgs_server_config_t *config = session->outbound->config;
-	const pgs_v2rayserver_config_t *vconfig = config->extra;
+	const pgs_config_extra_v2ray_t *vconfig = config->extra;
 
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);

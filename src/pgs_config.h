@@ -10,8 +10,12 @@
 
 #define SERVER_TYPE_TROJAN "trojan"
 #define SERVER_TYPE_V2RAY "v2ray"
+#define SERVER_TYPE_SHADOWSOCKS "shadowsocks"
+
 #define IS_TROJAN_SERVER(type) (strcasecmp((type), SERVER_TYPE_TROJAN) == 0)
 #define IS_V2RAY_SERVER(type) (strcasecmp((type), SERVER_TYPE_V2RAY) == 0)
+#define IS_SHADOWSOCKS_SERVER(type)                                            \
+	(strcasecmp((type), SERVER_TYPE_SHADOWSOCKS) == 0)
 
 // root config fields
 #define CONFIG_LOCAL_ADDRESS "local_address"
@@ -40,6 +44,11 @@
 // VMESS secure
 #define CONFIG_VMESS_SECURE "secure"
 
+// SHADOWSOCKS
+#define CONFIG_SS_METHOD "method"
+#define CONFIG_SS_PLUGIN "plugin"
+#define CONFIG_SS_PLUGIN_OPS "plugin_opts"
+
 typedef struct pgs_config_ssl_s pgs_trojanserver_ssl_t;
 typedef struct pgs_config_ssl_s pgs_v2rayserver_ssl_t;
 
@@ -49,6 +58,13 @@ typedef enum {
 	V2RAY_SECURE_GCM = 3,
 	V2RAY_SECURE_CHACHA = 4
 } pgs_v2ray_secure_t;
+
+typedef enum {
+	/* stream ciphers will be removed, not to implement it by now */
+	SS_AEAD_AES_128_GCM,
+	SS_AEAD_AES_256_GCM,
+	SS_AEAD_CHACHA20_POLY1305,
+} pgs_ss_method_t;
 
 #define pgs_config_info(config, ...)                                           \
 	pgs_logger_main_info(config->log_file, __VA_ARGS__)
@@ -90,23 +106,18 @@ typedef struct pgs_config_ws_s {
 	const char *hostname;
 } pgs_config_ws_t;
 
-typedef struct pgs_server_ws_config_base_s {
-	pgs_config_ssl_t ssl;
+typedef struct pgs_config_extra_trojan_s {
 	pgs_config_ws_t websocket;
-} pgs_server_ws_config_base_t;
-
-typedef struct pgs_trojanserver_config_s {
 	pgs_config_ssl_t ssl;
-	pgs_config_ws_t websocket;
 	pgs_ssl_ctx_t *ssl_ctx;
-} pgs_trojanserver_config_t;
+} pgs_config_extra_trojan_t;
 
-typedef struct pgs_v2rayserver_config_s {
-	pgs_v2rayserver_ssl_t ssl;
+typedef struct pgs_config_extra_v2ray_s {
 	pgs_config_ws_t websocket;
+	pgs_config_ssl_t ssl;
 	pgs_v2ray_secure_t secure;
 	pgs_ssl_ctx_t *ssl_ctx;
-} pgs_v2rayserver_config_t;
+} pgs_config_extra_v2ray_t;
 
 /* common */
 // load config from file
@@ -125,15 +136,15 @@ void *pgs_server_config_parse_extra(pgs_config_t *config,
 void pgs_server_config_free_extra(const char *server_type, void *ptr);
 
 /* trojan config */
-pgs_trojanserver_config_t *pgs_trojanserver_config_parse(pgs_config_t *config,
+pgs_config_extra_trojan_t *pgs_config_extra_trojan_parse(pgs_config_t *config,
 							 JSON_Object *jobj);
-pgs_trojanserver_config_t *pgs_trojanserver_config_new();
-void pgs_trojanserver_config_free(pgs_trojanserver_config_t *tconf);
+pgs_config_extra_trojan_t *pgs_config_extra_trojan_new();
+void pgs_config_extra_trojan_free(pgs_config_extra_trojan_t *tconf);
 
 /* v2ray config */
-pgs_v2rayserver_config_t *pgs_v2rayserver_config_parse(pgs_config_t *config,
+pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_parse(pgs_config_t *config,
 						       JSON_Object *jobj);
-pgs_v2rayserver_config_t *pgs_v2rayserver_config_new();
-void pgs_v2rayserver_config_free(pgs_v2rayserver_config_t *ptr);
+pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_new();
+void pgs_config_extra_v2ray_free(pgs_config_extra_v2ray_t *ptr);
 
 #endif

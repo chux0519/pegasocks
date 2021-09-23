@@ -31,7 +31,7 @@ static void on_trojan_g204_event(struct bufferevent *bev, short events,
 				 void *ctx)
 {
 	pgs_metrics_task_ctx_t *mctx = ctx;
-	const pgs_trojanserver_config_t *tconfig = mctx->config->extra;
+	const pgs_config_extra_trojan_t *tconfig = mctx->config->extra;
 	if (tconfig->websocket.enabled) {
 		on_ws_g204_event(bev, events, ctx);
 	} else {
@@ -42,7 +42,7 @@ static void on_trojan_g204_event(struct bufferevent *bev, short events,
 static void on_trojan_g204_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_metrics_task_ctx_t *mctx = ctx;
-	const pgs_trojanserver_config_t *tconfig = mctx->config->extra;
+	const pgs_config_extra_trojan_t *tconfig = mctx->config->extra;
 	if (tconfig->websocket.enabled) {
 		on_trojan_ws_g204_read(bev, ctx);
 	} else {
@@ -54,7 +54,7 @@ static void on_v2ray_g204_event(struct bufferevent *bev, short events,
 				void *ctx)
 {
 	pgs_metrics_task_ctx_t *mctx = ctx;
-	const pgs_v2rayserver_config_t *vconfig = mctx->config->extra;
+	const pgs_config_extra_v2ray_t *vconfig = mctx->config->extra;
 	if (vconfig->websocket.enabled) {
 		on_ws_g204_event(bev, events, ctx);
 	} else {
@@ -65,7 +65,7 @@ static void on_v2ray_g204_event(struct bufferevent *bev, short events,
 static void on_v2ray_g204_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_metrics_task_ctx_t *mctx = ctx;
-	const pgs_v2rayserver_config_t *vconfig = mctx->config->extra;
+	const pgs_config_extra_v2ray_t *vconfig = mctx->config->extra;
 	if (vconfig->websocket.enabled) {
 		on_v2ray_ws_g204_read(bev, ctx);
 	} else {
@@ -300,13 +300,13 @@ static void do_ws_remote_request(struct bufferevent *bev, void *ctx)
 	pgs_metrics_task_ctx_t *mctx = (pgs_metrics_task_ctx_t *)ctx;
 	const pgs_server_config_t *config = mctx->outbound->config;
 
-	const pgs_server_ws_config_base_t *wsconfig = config->extra;
+	const pgs_config_ws_t *ws_config = config->extra;
 
 	pgs_logger_debug(mctx->logger, "do_ws_remote_request");
 
 	pgs_ws_req(bufferevent_get_output(mctx->outbound->bev),
-		   wsconfig->websocket.hostname, config->server_address,
-		   config->server_port, wsconfig->websocket.path);
+		   ws_config->hostname, config->server_address,
+		   config->server_port, ws_config->path);
 
 	pgs_logger_debug(mctx->logger, "do_ws_remote_request done");
 }

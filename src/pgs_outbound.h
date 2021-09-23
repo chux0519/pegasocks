@@ -262,8 +262,8 @@ static bool pgs_session_trojan_outbound_init(
 
 	// sni
 	const char *sni = config->server_address;
-	pgs_trojanserver_config_t *tconf =
-		(pgs_trojanserver_config_t *)config->extra;
+	pgs_config_extra_trojan_t *tconf =
+		(pgs_config_extra_trojan_t *)config->extra;
 	if (tconf->ssl.sni != NULL) {
 		sni = tconf->ssl.sni;
 	}
@@ -285,8 +285,8 @@ static bool pgs_session_v2ray_outbound_init(
 	const uint8_t *cmd, uint64_t cmd_len, struct event_base *base,
 	on_event_cb *event_cb, on_read_cb *read_cb, void *cb_ctx)
 {
-	pgs_v2rayserver_config_t *vconf =
-		(pgs_v2rayserver_config_t *)config->extra;
+	pgs_config_extra_v2ray_t *vconf =
+		(pgs_config_extra_v2ray_t *)config->extra;
 
 	ptr->ctx = pgs_vmess_ctx_new(cmd, cmd_len, vconf->secure);
 

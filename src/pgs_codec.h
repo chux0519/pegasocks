@@ -137,7 +137,7 @@ static void vmess_flush_remote(pgs_session_t *session, uint8_t *data,
 	struct bufferevent *outbev = session->outbound->bev;
 	struct evbuffer *outboundw = bufferevent_get_output(outbev);
 	const pgs_server_config_t *config = session->outbound->config;
-	const pgs_v2rayserver_config_t *vconfig = config->extra;
+	const pgs_config_extra_v2ray_t *vconfig = config->extra;
 	if (vconfig->websocket.enabled) {
 		pgs_ws_write_bin(outboundw, data, len);
 	} else {
