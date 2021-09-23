@@ -47,7 +47,7 @@
 // SHADOWSOCKS
 #define CONFIG_SS_METHOD "method"
 #define CONFIG_SS_PLUGIN "plugin"
-#define CONFIG_SS_PLUGIN_OPS "plugin_opts"
+#define CONFIG_SS_PLUGIN_OPTS "plugin_opts"
 
 typedef struct pgs_config_ssl_s pgs_trojanserver_ssl_t;
 typedef struct pgs_config_ssl_s pgs_v2rayserver_ssl_t;
@@ -119,6 +119,12 @@ typedef struct pgs_config_extra_v2ray_s {
 	pgs_ssl_ctx_t *ssl_ctx;
 } pgs_config_extra_v2ray_t;
 
+typedef struct pgs_config_extra_ss_s {
+	pgs_ss_method_t method;
+	const char *plugin;
+	const char *plugin_opts;
+} pgs_config_extra_ss_t;
+
 /* common */
 // load config from file
 pgs_config_t *pgs_config_load(const char *config);
@@ -146,5 +152,11 @@ pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_parse(pgs_config_t *config,
 						       JSON_Object *jobj);
 pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_new();
 void pgs_config_extra_v2ray_free(pgs_config_extra_v2ray_t *ptr);
+
+/* shadowsocks config */
+pgs_config_extra_ss_t *pgs_config_extra_ss_parse(pgs_config_t *config,
+						 JSON_Object *jobj);
+pgs_config_extra_ss_t *pgs_config_extra_ss_new();
+void pgs_config_extra_ss_free(pgs_config_extra_ss_t *ptr);
 
 #endif
