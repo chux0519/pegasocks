@@ -2,7 +2,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "pgs_config.h"
+#include "core/config.h"
 
 #define PGS_STREUQAL(a, b) assert(strcmp((a), (b)) == 0)
 #define PGS_STRNEUQAL(a, b) assert(strcmp((a), (b)) != 0)
