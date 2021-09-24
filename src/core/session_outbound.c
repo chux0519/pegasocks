@@ -122,40 +122,38 @@ void pgs_outbound_ctx_trojan_free(pgs_outbound_ctx_trojan_t *ctx)
 // vmess context
 pgs_outbound_ctx_v2ray_t *pgs_outbound_ctx_v2ray_new(const uint8_t *cmd,
 						     uint64_t cmdlen,
-						     pgs_v2ray_secure_t secure)
+						     pgs_cryptor_type_t cipher)
 {
-	pgs_outbound_ctx_v2ray_t *ptr = (pgs_outbound_ctx_v2ray_t *)malloc(
-		sizeof(pgs_outbound_ctx_v2ray_t));
+	pgs_outbound_ctx_v2ray_t *ptr = (pgs_outbound_ctx_v2ray_t *)calloc(
+		1, sizeof(pgs_outbound_ctx_v2ray_t));
 
-	memzero(ptr->local_rbuf, BUFSIZE_16K);
-	memzero(ptr->local_wbuf, BUFSIZE_16K);
-	memzero(ptr->remote_rbuf, BUFSIZE_16K);
-	memzero(ptr->remote_wbuf, BUFSIZE_16K);
 	ptr->cmd = cmd;
 	ptr->cmdlen = cmdlen;
-	ptr->header_sent = false;
-	ptr->header_recved = false;
-	ptr->resp_len = 0;
-	ptr->target_addr_len = 0;
-	ptr->remote_rbuf_pos = 0;
-	ptr->resp_hash = 0;
-	ptr->encryptor = NULL;
-	ptr->decryptor = NULL;
-	ptr->secure = secure;
+	ptr->cipher = cipher;
+	pgs_cryptor_type_info(cipher, &ptr->key_len, &ptr->iv_len,
+			      &ptr->tag_len);
+	ptr->data_key = malloc(ptr->key_len);
+	ptr->data_iv = malloc(ptr->iv_len);
 
 	return ptr;
 }
 
 void pgs_outbound_ctx_v2ray_free(pgs_outbound_ctx_v2ray_t *ptr)
 {
-	if (ptr->encryptor) {
-		pgs_cryptor_free(ptr->secure, ptr->encryptor);
-	}
-	if (ptr->decryptor) {
-		pgs_cryptor_free(ptr->secure, ptr->decryptor);
-	}
+	if (ptr->encryptor)
+		pgs_cryptor_free(ptr->encryptor);
+	if (ptr->decryptor)
+		pgs_cryptor_free(ptr->decryptor);
+	if (ptr->data_iv)
+		free(ptr->data_iv);
+	if (ptr->data_key)
+		free(ptr->data_key);
+
 	ptr->encryptor = NULL;
 	ptr->decryptor = NULL;
+	ptr->data_iv = NULL;
+	ptr->data_key = NULL;
+
 	if (ptr)
 		free(ptr);
 	ptr = NULL;

@@ -355,8 +355,14 @@ pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_parse(pgs_config_t *config,
 	pgs_config_extra_v2ray_t *ptr = pgs_config_extra_v2ray_new();
 
 	const char *secure = json_object_get_string(jobj, CONFIG_VMESS_SECURE);
-	if (secure != NULL && strcasecmp(secure, "aes-128-gcm") == 0) {
-		ptr->secure = V2RAY_SECURE_GCM;
+	if (secure != NULL) {
+		if (strcasecmp(secure, "aes-128-gcm") == 0) {
+			ptr->secure = AEAD_AES_128_GCM;
+		} else if (strcasecmp(secure, "aes-128-cfb") == 0) {
+			ptr->secure = AES_128_CFB;
+		} else if (strcasecmp(secure, "chacha20-ietf-poly1305") == 0) {
+			ptr->secure = AEAD_CHACHA20_POLY1305;
+		}
 	}
 
 	JSON_Value *ssl_value = json_object_get_value(jobj, "ssl");
@@ -402,7 +408,7 @@ pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_new()
 	ptr->websocket.hostname = NULL;
 	ptr->websocket.path = NULL;
 	ptr->ssl_ctx = NULL;
-	ptr->secure = V2RAY_SECURE_CFB;
+	ptr->secure = AES_128_CFB;
 
 	return ptr;
 }

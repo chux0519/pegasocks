@@ -2,7 +2,6 @@
 #define _PGS_CRYPTO_H
 
 #include "defs.h"
-#include "config.h"
 #include "sha3.h"
 #include "fnv.h"
 
@@ -10,60 +9,126 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #define SHA224_LEN 28
 #define MD5_LEN 16
+
 #define AES_128_CFB_KEY_LEN 16
 #define AES_128_CFB_IV_LEN 16
+#define AEAD_AES_128_GCM_KEY_LEN 16
+#define AEAD_AES_128_GCM_IV_LEN 12
+#define AEAD_AES_128_GCM_TAG_LEN 16
+#define AEAD_AES_256_GCM_KEY_LEN 32
+#define AEAD_AES_256_GCM_IV_LEN 12
+#define AEAD_AES_256_GCM_TAG_LEN 16
+#define AEAD_CHACHA20_POLY1305_KEY_LEN 32
+#define AEAD_CHACHA20_POLY1305_IV_LEN 12
+#define AEAD_CHACHA20_POLY1305_TAG_LEN 16
 
 typedef struct pgs_base_cryptor_s pgs_aes_cryptor_t;
 typedef enum { PGS_ENCRYPT, PGS_DECRYPT } pgs_cryptor_direction_t;
+typedef enum {
+	AES_128_CFB = 0x00, /* vmess */
+	AEAD_AES_128_GCM = 0x02, /* vmess */
+	AEAD_CHACHA20_POLY1305 = 0x03, /* shadowsocks | vmess */
+	AEAD_AES_256_GCM, /* shadowsocks */
+} pgs_cryptor_type_t;
 
-typedef struct pgs_base_cryptor_s {
-	// EVP_CIPHER_CTX for openssl
-	void *ctx;
+typedef struct pgs_cryptor_s {
+	pgs_cryptor_type_t cipher;
+	pgs_cryptor_direction_t dir;
 	const uint8_t *key;
 	const uint8_t *iv;
-} pgs_base_cryptor_t;
-
-typedef struct pgs_aead_cryptor_s {
+	size_t key_len;
+	size_t iv_len;
+	size_t tag_len;
 	void *ctx;
-	const uint8_t *key;
-	uint8_t *iv;
-	pgs_cryptor_direction_t dir;
-	uint16_t counter;
-} pgs_aead_cryptor_t;
+} pgs_cryptor_t;
 
-pgs_base_cryptor_t *pgs_cryptor_new(pgs_v2ray_secure_t secure,
-				    const uint8_t *key, const uint8_t *iv,
-				    pgs_cryptor_direction_t dir);
-void pgs_cryptor_free(pgs_v2ray_secure_t secure, pgs_base_cryptor_t *cryptor);
+pgs_cryptor_t *pgs_cryptor_new(pgs_cryptor_type_t cipher,
+			       pgs_cryptor_direction_t dir, const uint8_t *key,
+			       const uint8_t *iv);
+void pgs_cryptor_free(pgs_cryptor_t *cryptor);
+
+bool pgs_cryptor_encrypt(pgs_cryptor_t *ptr, const uint8_t *plaintext,
+			 size_t plaintext_len, uint8_t *tag,
+			 uint8_t *ciphertext, size_t *ciphertext_len);
+bool pgs_cryptor_decrypt(pgs_cryptor_t *ptr, const uint8_t *ciphertext,
+			 size_t ciphertext_len, const uint8_t *tag,
+			 uint8_t *plaintext, size_t *plaintext_len);
+
+// only needed by aead cipher
+void pgs_cryptor_reset_iv(pgs_cryptor_t *ptr, const uint8_t *iv);
+
+static inline bool is_aead_cryptor(pgs_cryptor_t *ptr)
+{
+	switch (ptr->cipher) {
+	case AES_128_CFB:
+		return false;
+	case AEAD_AES_128_GCM:
+	case AEAD_AES_256_GCM:
+	case AEAD_CHACHA20_POLY1305:
+	default:
+		return true;
+	}
+}
+
+static inline void pgs_cryptor_type_info(pgs_cryptor_type_t cipher,
+					 size_t *key_len, size_t *iv_len,
+					 size_t *tag_len)
+{
+	switch (cipher) {
+	case AES_128_CFB:
+		*key_len = AES_128_CFB_KEY_LEN;
+		*iv_len = AES_128_CFB_IV_LEN;
+		*tag_len = 0;
+		break;
+	case AEAD_AES_128_GCM:
+		*key_len = AEAD_AES_128_GCM_KEY_LEN;
+		*iv_len = AEAD_AES_128_GCM_IV_LEN;
+		*tag_len = AEAD_AES_128_GCM_TAG_LEN;
+		break;
+	case AEAD_AES_256_GCM:
+		*key_len = AEAD_AES_256_GCM_KEY_LEN;
+		*iv_len = AEAD_AES_256_GCM_IV_LEN;
+		*tag_len = AEAD_AES_256_GCM_TAG_LEN;
+		break;
+	case AEAD_CHACHA20_POLY1305:
+		*key_len = AEAD_CHACHA20_POLY1305_KEY_LEN;
+		*iv_len = AEAD_CHACHA20_POLY1305_IV_LEN;
+		*tag_len = AEAD_CHACHA20_POLY1305_TAG_LEN;
+		break;
+	default:
+		break;
+	}
+}
 
 /* AES cipher */
-pgs_aes_cryptor_t *pgs_aes_cryptor_new(const void *cipher, const uint8_t *key,
-				       const uint8_t *iv,
-				       pgs_cryptor_direction_t dir);
-void pgs_aes_cryptor_free(pgs_aes_cryptor_t *ptr);
-bool pgs_aes_cryptor_encrypt(pgs_aes_cryptor_t *ptr, const uint8_t *plaintext,
-			     int plaintext_len, uint8_t *ciphertext);
-bool pgs_aes_cryptor_encrypt_final(pgs_aes_cryptor_t *ptr, uint8_t *ciphertext);
-bool pgs_aes_cryptor_decrypt(pgs_aes_cryptor_t *ptr, const uint8_t *ciphertext,
-			     int ciphertext_len, uint8_t *plaintext);
-bool pgs_aes_cryptor_decrypt_final(pgs_aes_cryptor_t *ptr, uint8_t *plaintext);
+//pgs_aes_cryptor_t *pgs_aes_cryptor_new(const void *cipher, const uint8_t *key,
+//				       const uint8_t *iv,
+//				       pgs_cryptor_direction_t dir);
+//void pgs_aes_cryptor_free(pgs_aes_cryptor_t *ptr);
+//bool pgs_aes_cryptor_encrypt(pgs_aes_cryptor_t *ptr, const uint8_t *plaintext,
+//			     int plaintext_len, uint8_t *ciphertext);
+//bool pgs_aes_cryptor_encrypt_final(pgs_aes_cryptor_t *ptr, uint8_t *ciphertext);
+//bool pgs_aes_cryptor_decrypt(pgs_aes_cryptor_t *ptr, const uint8_t *ciphertext,
+//			     int ciphertext_len, uint8_t *plaintext);
+//bool pgs_aes_cryptor_decrypt_final(pgs_aes_cryptor_t *ptr, uint8_t *plaintext);
 
 /* AEAD cipher */
-pgs_aead_cryptor_t *pgs_aead_cryptor_new(const void *cipher, const uint8_t *key,
-					 const uint8_t *iv,
-					 pgs_cryptor_direction_t dir);
-void pgs_aead_cryptor_free(pgs_aead_cryptor_t *ptr);
-bool pgs_aead_cryptor_encrypt(pgs_aead_cryptor_t *ptr, const uint8_t *plaintext,
-			      int plaintext_len, uint8_t *tag,
-			      uint8_t *ciphertext, int *ciphertext_len);
-bool pgs_aead_cryptor_decrypt(pgs_aead_cryptor_t *ptr,
-			      const uint8_t *ciphertext, int ciphertext_len,
-			      const uint8_t *tag, uint8_t *plaintext,
-			      int *plaintext_len);
-void pgs_aead_cryptor_increase_iv(pgs_aead_cryptor_t *ptr);
+//pgs_aead_cryptor_t *pgs_aead_cryptor_new(const void *cipher, const uint8_t *key,
+//					 const uint8_t *iv,
+//					 pgs_cryptor_direction_t dir);
+//void pgs_aead_cryptor_free(pgs_aead_cryptor_t *ptr);
+//bool pgs_aead_cryptor_encrypt(pgs_aead_cryptor_t *ptr, const uint8_t *plaintext,
+//			      int plaintext_len, uint8_t *tag,
+//			      uint8_t *ciphertext, int *ciphertext_len);
+//bool pgs_aead_cryptor_decrypt(pgs_aead_cryptor_t *ptr,
+//			      const uint8_t *ciphertext, int ciphertext_len,
+//			      const uint8_t *tag, uint8_t *plaintext,
+//			      int *plaintext_len);
+//void pgs_aead_cryptor_increase_iv(pgs_aead_cryptor_t *ptr);
 
 /* helpers */
 

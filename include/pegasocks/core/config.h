@@ -3,6 +3,7 @@
 
 #include "log.h"
 #include "ssl.h"
+#include "crypto.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -115,7 +116,7 @@ typedef struct pgs_config_extra_trojan_s {
 typedef struct pgs_config_extra_v2ray_s {
 	pgs_config_ws_t websocket;
 	pgs_config_ssl_t ssl;
-	pgs_v2ray_secure_t secure;
+	pgs_cryptor_type_t secure;
 	pgs_ssl_ctx_t *ssl_ctx;
 } pgs_config_extra_v2ray_t;
 

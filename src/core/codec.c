@@ -164,10 +164,9 @@ uint64_t pgs_vmess_write_head(pgs_session_t *session,
 
 	// init data encryptor
 	if (!ctx->encryptor) {
-		// TODO: support chacha, only works with 128 gcm now
-		ctx->encryptor =
-			pgs_cryptor_new(ctx->secure, (const uint8_t *)ctx->key,
-					(const uint8_t *)ctx->iv, PGS_ENCRYPT);
+		ctx->encryptor = pgs_cryptor_new(ctx->cipher, PGS_ENCRYPT,
+						 (const uint8_t *)ctx->key,
+						 (const uint8_t *)ctx->iv);
 	}
 	assert(ctx->encryptor != NULL);
 
@@ -177,9 +176,10 @@ uint64_t pgs_vmess_write_head(pgs_session_t *session,
 		    (uint8_t *)ctx->riv);
 		md5((const uint8_t *)ctx->key, AES_128_CFB_KEY_LEN,
 		    (uint8_t *)ctx->rkey);
-		ctx->decryptor =
-			pgs_cryptor_new(ctx->secure, (const uint8_t *)ctx->rkey,
-					(const uint8_t *)ctx->riv, PGS_DECRYPT);
+		// TODO: transform iv
+		ctx->decryptor = pgs_cryptor_new(ctx->cipher, PGS_DECRYPT,
+						 (const uint8_t *)ctx->rkey,
+						 (const uint8_t *)ctx->riv);
 	}
 	assert(ctx->decryptor != NULL);
 
@@ -193,7 +193,7 @@ uint64_t pgs_vmess_write_head(pgs_session_t *session,
 	header_cmd_raw[offset] = 0x01;
 	offset += 1;
 	// secure
-	header_cmd_raw[offset] = ctx->secure;
+	header_cmd_raw[offset] = ctx->cipher;
 	offset += 1;
 	// X
 	header_cmd_raw[offset] = 0x00;
@@ -284,8 +284,8 @@ uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 
 	while (remains > 0) {
 		buf = ctx->remote_wbuf + head_len;
-		switch (ctx->secure) {
-		case V2RAY_SECURE_CFB: {
+		switch (ctx->cipher) {
+		case AES_128_CFB: {
 			if (remains + 6 > BUFSIZE_16K - head_len) {
 				frame_data_len = BUFSIZE_16K - head_len - 6;
 			} else {
@@ -304,14 +304,16 @@ uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 
 			memcpy(localr + 6, data + offset, frame_data_len);
 
-			pgs_aes_cryptor_encrypt(ctx->encryptor, localr,
-						frame_data_len + 6, buf);
+			size_t ciphertext_len = 0;
+			pgs_cryptor_encrypt(ctx->encryptor, localr,
+					    frame_data_len + 6, NULL, buf,
+					    &ciphertext_len);
 			sent += (frame_data_len + 6);
 			flush(session, ctx->remote_wbuf,
 			      head_len + frame_data_len + 6);
 			break;
 		}
-		case V2RAY_SECURE_GCM: {
+		case AEAD_AES_128_GCM: {
 			if (remains + 18 > BUFSIZE_16K - head_len) {
 				// more than one frame
 				frame_data_len = BUFSIZE_16K - head_len - 18;
@@ -322,12 +324,11 @@ uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 			buf[0] = (frame_data_len + 16) >> 8;
 			buf[1] = (frame_data_len + 16);
 
-			int ciphertext_len = 0;
-			pgs_aead_cryptor_encrypt(
-				(pgs_aead_cryptor_t *)ctx->encryptor,
-				data + offset, frame_data_len,
-				buf + 2 + frame_data_len, buf + 2,
-				&ciphertext_len);
+			size_t ciphertext_len = 0;
+			pgs_cryptor_encrypt(ctx->encryptor, data + offset,
+					    frame_data_len,
+					    buf + 2 + frame_data_len, buf + 2,
+					    &ciphertext_len);
 
 			assert(ciphertext_len == frame_data_len);
 			sent += (frame_data_len + 18);
@@ -369,10 +370,10 @@ bool pgs_vmess_parse(pgs_session_t *session, const uint8_t *data,
 		     uint64_t data_len, pgs_session_write_fn flush)
 {
 	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
-	switch (ctx->secure) {
-	case V2RAY_SECURE_CFB:
+	switch (ctx->cipher) {
+	case AES_128_CFB:
 		return pgs_vmess_parse_cfb(session, data, data_len, flush);
-	case V2RAY_SECURE_GCM:
+	case AEAD_AES_128_GCM:
 		return pgs_vmess_parse_gcm(session, data, data_len, flush);
 		// TODO: support chacha
 	default:
@@ -390,12 +391,14 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 	pgs_vmess_resp_t meta = { 0 };
 	uint8_t *rrbuf = ctx->remote_rbuf;
 	uint8_t *lwbuf = ctx->local_wbuf;
-	pgs_aes_cryptor_t *decryptor = ctx->decryptor;
+	pgs_cryptor_t *decryptor = ctx->decryptor;
 
+	size_t decrypt_len = 0;
 	if (!ctx->header_recved) {
 		if (data_len < 4)
 			return false;
-		if (!pgs_aes_cryptor_decrypt(decryptor, data, 4, rrbuf))
+		if (!pgs_cryptor_decrypt(decryptor, data, 4, NULL, rrbuf,
+					 &decrypt_len))
 			return false;
 		meta.v = rrbuf[0];
 		meta.opt = rrbuf[1];
@@ -407,7 +410,8 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 			return false;
 		ctx->header_recved = true;
 		ctx->resp_len = 0;
-		return pgs_vmess_parse(session, data + 4, data_len - 4, flush);
+		return pgs_vmess_parse_cfb(session, data + 4, data_len - 4,
+					   flush);
 	}
 
 	if (ctx->resp_len == 0) {
@@ -415,7 +419,8 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 			return true;
 		if (data_len < 2) // illegal data
 			return false;
-		if (!pgs_aes_cryptor_decrypt(decryptor, data, 2, rrbuf))
+		if (!pgs_cryptor_decrypt(decryptor, data, 2, NULL, rrbuf,
+					 &decrypt_len))
 			return false;
 		int l = rrbuf[0] << 8 | rrbuf[1];
 
@@ -426,17 +431,20 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 		ctx->resp_len = l - 4;
 		ctx->resp_hash = 0;
 		// skip fnv1a hash
-		return pgs_vmess_parse(session, data + 2, data_len - 2, flush);
+		return pgs_vmess_parse_cfb(session, data + 2, data_len - 2,
+					   flush);
 	}
 
 	if (ctx->resp_hash == 0) {
 		if (data_len < 4) // need more data
 			return false;
-		if (!pgs_aes_cryptor_decrypt(decryptor, data, 4, rrbuf))
+		if (!pgs_cryptor_decrypt(decryptor, data, 4, NULL, rrbuf,
+					 &decrypt_len))
 			return false;
 		ctx->resp_hash = (uint32_t)rrbuf[0] << 24 | rrbuf[1] << 16 |
 				 rrbuf[2] << 8 | rrbuf[3];
-		return pgs_vmess_parse(session, data + 4, data_len - 4, flush);
+		return pgs_vmess_parse_cfb(session, data + 4, data_len - 4,
+					   flush);
 	}
 
 	if (data_len <= 0) // need more data
@@ -444,14 +452,15 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 
 	uint64_t data_to_decrypt =
 		ctx->resp_len < data_len ? ctx->resp_len : data_len;
-	if (!pgs_aes_cryptor_decrypt(decryptor, data, data_to_decrypt, lwbuf))
+	if (!pgs_cryptor_decrypt(decryptor, data, data_to_decrypt, NULL, lwbuf,
+				 &decrypt_len))
 		return false;
 
 	flush(session, lwbuf, data_to_decrypt);
 	ctx->resp_len -= data_to_decrypt;
 
-	return pgs_vmess_parse(session, data + data_to_decrypt,
-			       data_len - data_to_decrypt, flush);
+	return pgs_vmess_parse_cfb(session, data + data_to_decrypt,
+				   data_len - data_to_decrypt, flush);
 }
 
 /* AEAD cipher */
@@ -462,7 +471,7 @@ bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 	pgs_vmess_resp_t meta = { 0 };
 	uint8_t *rrbuf = ctx->remote_rbuf;
 	uint8_t *lwbuf = ctx->local_wbuf;
-	pgs_aead_cryptor_t *decryptor = (pgs_aead_cryptor_t *)ctx->decryptor;
+	pgs_cryptor_t *decryptor = ctx->decryptor;
 
 	if (!ctx->header_recved) {
 		if (data_len < 4)
@@ -509,13 +518,13 @@ bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 		return true;
 	}
 
+	size_t decrypt_len = 0;
 	if (ctx->remote_rbuf_pos == 0) {
 		// enough data for decoding and no cache
 		uint64_t data_to_decrypt = ctx->resp_len;
-		int decrypt_len = 0;
-		if (!pgs_aead_cryptor_decrypt(decryptor, data, ctx->resp_len,
-					      data + ctx->resp_len, lwbuf,
-					      &decrypt_len))
+		if (!pgs_cryptor_decrypt(decryptor, data, ctx->resp_len,
+					 data + ctx->resp_len, lwbuf,
+					 &decrypt_len))
 			return false;
 
 		flush(session, lwbuf, data_to_decrypt);
@@ -531,10 +540,9 @@ bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 			ctx->resp_len + 16 - ctx->remote_rbuf_pos;
 		memcpy(rrbuf + ctx->remote_rbuf_pos, data, data_to_read);
 
-		int decrypt_len = 0;
-		if (!pgs_aead_cryptor_decrypt(decryptor, rrbuf, ctx->resp_len,
-					      rrbuf + ctx->resp_len, lwbuf,
-					      &decrypt_len))
+		if (!pgs_cryptor_decrypt(decryptor, rrbuf, ctx->resp_len,
+					 rrbuf + ctx->resp_len, lwbuf,
+					 &decrypt_len))
 			return false;
 
 		flush(session, lwbuf, ctx->resp_len);

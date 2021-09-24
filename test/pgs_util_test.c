@@ -118,10 +118,6 @@ void test_aes_128_cfb_decrypt()
 	assert(strcmp(result, (const char *)output) == 0);
 }
 
-void test_crypto_aes()
-{
-}
-
 void test_crypto_aead_encrypt()
 {
 	unsigned char key[16] = {
@@ -134,23 +130,23 @@ void test_crypto_aead_encrypt()
 	unsigned char tag1[16] = { 0xa5, 0x33, 0x26, 0xb6, 0x34, 0xa1,
 				   0x17, 0xf8, 0x78, 0xdc, 0x09, 0x0e,
 				   0x76, 0x93, 0x47, 0x5e };
-	pgs_aead_cryptor_t *encryptor;
+	pgs_cryptor_t *encryptor;
 
 #ifdef USE_MBEDTLS
 	mbedtls_cipher_type_t cipher_gcm = MBEDTLS_CIPHER_AES_128_GCM;
 	encryptor = pgs_aead_cryptor_new(&cipher_gcm, key, iv, PGS_ENCRYPT);
 #else
 	const EVP_CIPHER *cipher_gcm = EVP_aes_128_gcm();
-	encryptor = pgs_aead_cryptor_new(cipher_gcm, key, iv, PGS_ENCRYPT);
+	encryptor = pgs_cryptor_new(AEAD_AES_128_GCM, PGS_ENCRYPT, key, iv);
 #endif
 
 	{
 		// First round
 		unsigned char en_tag[16] = { 0 };
 		unsigned char out[8] = { 0 };
-		int output_len;
-		bool ret = pgs_aead_cryptor_encrypt(encryptor, plaintext, 8,
-						    en_tag, out, &output_len);
+		size_t output_len;
+		bool ret = pgs_cryptor_encrypt(encryptor, plaintext, 8, en_tag,
+					       out, &output_len);
 		assert(ret == true);
 
 		for (int i = 0; i < output_len; i++) {
@@ -163,6 +159,10 @@ void test_crypto_aead_encrypt()
 		assert(output_len == 8);
 	}
 
+	// mock iv increase
+	iv[1] = 1;
+	pgs_cryptor_reset_iv(encryptor, iv);
+
 	// Second round
 	unsigned char iv2[12] = { 0, 1, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
 	unsigned char result2[8] = { 0x61, 0x16, 0xae, 0x97,
@@ -173,13 +173,13 @@ void test_crypto_aead_encrypt()
 	{
 		unsigned char en_tag[16] = { 0 };
 		unsigned char out[8] = { 0 };
-		int output_len;
+		size_t output_len;
 		for (int i = 0; i < 12; i++) {
 			assert(iv2[i] == encryptor->iv[i]);
 		}
 
-		assert(pgs_aead_cryptor_encrypt(encryptor, plaintext, 8, en_tag,
-						out, &output_len) == true);
+		assert(pgs_cryptor_encrypt(encryptor, plaintext, 8, en_tag, out,
+					   &output_len) == true);
 
 		for (int i = 0; i < 16; i++) {
 			assert(en_tag[i] == tag2[i]);
@@ -191,7 +191,7 @@ void test_crypto_aead_encrypt()
 		}
 	}
 
-	pgs_aead_cryptor_free(encryptor);
+	pgs_cryptor_free(encryptor);
 }
 
 void test_crypto_aead_decrypt()
@@ -207,27 +207,31 @@ void test_crypto_aead_decrypt()
 				   0x17, 0xf8, 0x78, 0xdc, 0x09, 0x0e,
 				   0x76, 0x93, 0x47, 0x5e };
 
-	pgs_aead_cryptor_t *decryptor;
+	pgs_cryptor_t *decryptor;
 #ifdef USE_MBEDTLS
 	mbedtls_cipher_type_t cipher_gcm = MBEDTLS_CIPHER_AES_128_GCM;
 	decryptor = pgs_aead_cryptor_new(&cipher_gcm, key, iv, PGS_DECRYPT);
 #else
 	const EVP_CIPHER *cipher_gcm = EVP_aes_128_gcm();
-	decryptor = pgs_aead_cryptor_new(cipher_gcm, key, iv, PGS_DECRYPT);
+	decryptor = pgs_cryptor_new(AEAD_AES_128_GCM, PGS_DECRYPT, key, iv);
 #endif
 
 	{
 		// First round
 		unsigned char out[8] = { 0 };
-		int output_len;
-		pgs_aead_cryptor_decrypt(decryptor, ciphertext, 8, tag1, out,
-					 &output_len);
+		size_t output_len;
+		pgs_cryptor_decrypt(decryptor, ciphertext, 8, tag1, out,
+				    &output_len);
 
 		assert(output_len == 8);
 		for (int i = 0; i < output_len; i++) {
 			assert(out[i] == plaintext[i]);
 		}
 	}
+
+	// mock iv increase
+	iv[1] = 1;
+	pgs_cryptor_reset_iv(decryptor, iv);
 
 	// Second round
 	unsigned char iv2[12] = { 0, 1, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
@@ -238,13 +242,13 @@ void test_crypto_aead_decrypt()
 				   0x0f, 0xe2, 0xe7, 0x5a };
 	{
 		unsigned char out[8] = { 0 };
-		int output_len;
+		size_t output_len;
 		for (int i = 0; i < 12; i++) {
 			assert(iv2[i] == decryptor->iv[i]);
 		}
 
-		assert(pgs_aead_cryptor_decrypt(decryptor, ciphertext2, 8, tag2,
-						out, &output_len) == true);
+		assert(pgs_cryptor_decrypt(decryptor, ciphertext2, 8, tag2, out,
+					   &output_len) == true);
 
 		for (int i = 0; i < output_len; i++) {
 			assert(out[i] == plaintext[i]);
@@ -252,7 +256,7 @@ void test_crypto_aead_decrypt()
 		assert(output_len == 8);
 	}
 
-	pgs_aead_cryptor_free(decryptor);
+	pgs_cryptor_free(decryptor);
 }
 
 void test_evp_bytes_to_key()
@@ -314,8 +318,6 @@ int main()
 	printf("test_aes_128_cfb_encrypt passed\n");
 	test_aes_128_cfb_decrypt();
 	printf("test_aes_128_cfb_decrypt passed\n");
-	test_crypto_aes();
-	printf("test_crypto_aes passed\n");
 	test_crypto_aead_encrypt();
 	printf("test_crypto_aead_encrypt passed\n");
 	test_crypto_aead_decrypt();
