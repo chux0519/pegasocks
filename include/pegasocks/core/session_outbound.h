@@ -45,6 +45,7 @@ typedef struct pgs_outbound_ctx_v2ray_s {
 	const uint8_t *cmd;
 	uint64_t cmdlen;
 	bool header_sent;
+	uint8_t v;
 	// for resp header
 	bool header_recved;
 	uint64_t resp_len;

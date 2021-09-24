@@ -3,6 +3,7 @@
 
 #include <assert.h>
 
+const char *ws_upgrade = "HTTP/1.1 101";
 const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
 const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 const char vmess_key_suffix[36] = "c48619fe-8f02-49e0-b9e9-edf763e17e21";
@@ -25,7 +26,7 @@ void pgs_ws_req(struct evbuffer *out, const char *hostname,
 
 bool pgs_ws_upgrade_check(const char *data)
 {
-	return strncmp(data, "HTTP/1.1 101", strlen("HTTP/1.1 101")) != 0 ||
+	return strncmp(data, ws_upgrade, strlen(ws_upgrade)) != 0 ||
 	       !strstr(data, ws_accept);
 }
 
@@ -125,16 +126,18 @@ uint64_t pgs_vmess_write_head(pgs_session_t *session,
 	uint8_t *buf = ctx->remote_wbuf;
 	const uint8_t *socks5_cmd = ctx->cmd;
 	uint64_t socks5_cmd_len = ctx->cmdlen;
+
+	// auth part
 	time_t now = time(NULL);
 	unsigned long ts = htonll(now);
-	uint8_t header_auth[16];
+	uint8_t header_auth[MD5_LEN];
 	uint64_t header_auth_len = 0;
 	hmac_md5(uuid, 16, (const uint8_t *)&ts, 8, header_auth,
 		 &header_auth_len);
-	assert(header_auth_len == 16);
+	assert(header_auth_len == MD5_LEN);
 	memcpy(buf, header_auth, header_auth_len);
 
-	// vmess header
+	// command part
 	int n = socks5_cmd_len - 4 - 2;
 	if (is_udp) {
 		n = pgs_get_addr_len(udp_rbuf + 3);
@@ -158,7 +161,10 @@ uint64_t pgs_vmess_write_head(pgs_session_t *session,
 	// data key
 	rand_bytes(header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
 	memcpy(ctx->key, header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
+
+	// init data encryptor
 	if (!ctx->encryptor) {
+		// TODO: support chacha, only works with 128 gcm now
 		ctx->encryptor =
 			pgs_cryptor_new(ctx->secure, (const uint8_t *)ctx->key,
 					(const uint8_t *)ctx->iv, PGS_ENCRYPT);
@@ -166,6 +172,7 @@ uint64_t pgs_vmess_write_head(pgs_session_t *session,
 	assert(ctx->encryptor != NULL);
 
 	if (!ctx->decryptor) {
+		// riv rkey to decode header
 		md5((const uint8_t *)ctx->iv, AES_128_CFB_IV_LEN,
 		    (uint8_t *)ctx->riv);
 		md5((const uint8_t *)ctx->key, AES_128_CFB_KEY_LEN,
@@ -177,8 +184,11 @@ uint64_t pgs_vmess_write_head(pgs_session_t *session,
 	assert(ctx->decryptor != NULL);
 
 	offset += AES_128_CFB_IV_LEN;
+
 	// v
-	offset += rand_bytes(header_cmd_raw + offset, 1);
+	rand_bytes(header_cmd_raw + offset, 1);
+	ctx->v = header_cmd_raw[offset];
+	offset += 1;
 	// standard format data
 	header_cmd_raw[offset] = 0x01;
 	offset += 1;
@@ -364,6 +374,7 @@ bool pgs_vmess_parse(pgs_session_t *session, const uint8_t *data,
 		return pgs_vmess_parse_cfb(session, data, data_len, flush);
 	case V2RAY_SECURE_GCM:
 		return pgs_vmess_parse_gcm(session, data, data_len, flush);
+		// TODO: support chacha
 	default:
 		// not implement yet
 		break;
@@ -390,6 +401,8 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 		meta.opt = rrbuf[1];
 		meta.cmd = rrbuf[2];
 		meta.m = rrbuf[3];
+		if (meta.v != ctx->v)
+			return false;
 		if (meta.m != 0) // support no cmd
 			return false;
 		ctx->header_recved = true;
@@ -461,6 +474,8 @@ bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 		meta.opt = rrbuf[1];
 		meta.cmd = rrbuf[2];
 		meta.m = rrbuf[3];
+		if (meta.v != ctx->v)
+			return false;
 		if (meta.m != 0) // support no cmd
 			return false;
 		ctx->header_recved = true;
