@@ -583,7 +583,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 				data += (ws_meta.header_len +
 					 ws_meta.payload_len);
 			} else {
-				pgs_session_warn(
+				pgs_session_debug(
 					session,
 					"Failed to parse ws header, wait for more data");
 				return;
@@ -758,7 +758,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 				data += (ws_meta.header_len +
 					 ws_meta.payload_len);
 			} else {
-				pgs_session_warn(
+				pgs_session_debug(
 					session,
 					"Failed to parse ws header, wait for more data");
 
