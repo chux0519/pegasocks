@@ -36,9 +36,9 @@ void pgs_cryptor_free(pgs_v2ray_secure_t secure, pgs_base_cryptor_t *cryptor)
 {
 	switch (secure) {
 	case V2RAY_SECURE_CFB:
-		pgs_aes_cryptor_free((pgs_aes_cryptor_t *)cryptor);
+		return pgs_aes_cryptor_free((pgs_aes_cryptor_t *)cryptor);
 	case V2RAY_SECURE_GCM:
-		pgs_aead_cryptor_free((pgs_aead_cryptor_t *)cryptor);
+		return pgs_aead_cryptor_free((pgs_aead_cryptor_t *)cryptor);
 	default:
 		// NOTICE: may cause mem leak if hit this branch
 		break;

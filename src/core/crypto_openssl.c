@@ -32,9 +32,9 @@ void pgs_cryptor_free(pgs_v2ray_secure_t secure, pgs_base_cryptor_t *cryptor)
 {
 	switch (secure) {
 	case V2RAY_SECURE_CFB:
-		pgs_aes_cryptor_free((pgs_aes_cryptor_t *)cryptor);
+		return pgs_aes_cryptor_free((pgs_aes_cryptor_t *)cryptor);
 	case V2RAY_SECURE_GCM:
-		pgs_aead_cryptor_free((pgs_aead_cryptor_t *)cryptor);
+		return pgs_aead_cryptor_free((pgs_aead_cryptor_t *)cryptor);
 	default:
 		// NOTICE: may cause mem leak if hit this branch
 		break;
@@ -133,6 +133,7 @@ pgs_aead_cryptor_t *pgs_aead_cryptor_new(const void *cipher, const uint8_t *key,
 					 pgs_cryptor_direction_t dir)
 {
 	pgs_aead_cryptor_t *ptr = malloc(sizeof(pgs_aead_cryptor_t));
+	// TODO: vmess chacha key
 	ptr->key = key;
 	ptr->counter = 0;
 	// vmess using 12 bytes iv aead cipher
@@ -176,6 +177,7 @@ void pgs_aead_cryptor_free(pgs_aead_cryptor_t *ptr)
 {
 	if (ptr->ctx) {
 		EVP_CIPHER_CTX_free(ptr->ctx);
+		ptr->ctx = NULL;
 	}
 	if (ptr->iv)
 		free(ptr->iv);
