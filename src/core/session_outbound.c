@@ -586,7 +586,6 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 				pgs_session_warn(
 					session,
 					"Failed to parse ws header, wait for more data");
-
 				return;
 			}
 		}
@@ -719,9 +718,9 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 			if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
 				pgs_session_debug(
 					session,
-					"ws_meta.header_len: %d, ws_meta.payload_len: %d, opcode: %d",
+					"ws_meta.header_len: %d, ws_meta.payload_len: %d, opcode: %d, data_len: %d",
 					ws_meta.header_len, ws_meta.payload_len,
-					ws_meta.opcode);
+					ws_meta.opcode, data_len);
 				// ignore opcode here
 				if (ws_meta.opcode == 0x02) {
 					// decode vmess protocol
@@ -758,14 +757,11 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 					     ws_meta.payload_len);
 				data += (ws_meta.header_len +
 					 ws_meta.payload_len);
-
 			} else {
-				// error parsing websocket data
-				pgs_session_error(
+				pgs_session_warn(
 					session,
-					"failed to decode websocket payload");
-				on_v2ray_remote_event(bev, BEV_EVENT_ERROR,
-						      ctx);
+					"Failed to parse ws header, wait for more data");
+
 				return;
 			}
 		}
