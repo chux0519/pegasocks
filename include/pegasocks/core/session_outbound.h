@@ -56,6 +56,15 @@ typedef struct pgs_outbound_ctx_v2ray_s {
 	pgs_v2ray_secure_t secure;
 } pgs_outbound_ctx_v2ray_t;
 
+typedef struct pgs_outbound_ctx_ss_s {
+	pgs_ss_method_t method;
+	/* salt + ikm(pass) => encode key; len(salt) = len(key) */
+	uint8_t *enc_salt; /* random bytes, to send */
+	uint8_t *dec_salt; /* to receive */
+	pgs_base_cryptor_t *encryptor;
+	pgs_base_cryptor_t *decryptor;
+} pgs_outbound_ctx_ss_t;
+
 void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
 			    pgs_acl_t *acl, bool *proxy, char **dest_ptr,
 			    int *port);

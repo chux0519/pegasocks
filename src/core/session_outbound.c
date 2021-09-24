@@ -256,6 +256,28 @@ error:
 	return false;
 }
 
+bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
+				  const pgs_server_config_t *config,
+				  const uint8_t *cmd, uint64_t cmd_len,
+				  struct event_base *base,
+				  on_event_cb *event_cb, on_read_cb *read_cb,
+				  void *cb_ctx)
+{
+	//pgs_config_extra_ss_t *ssconf = (pgs_config_extra_ss_t *)config->extra;
+
+	//ptr->ctx = pgs_outbound_ctx_ss_new(cmd, cmd_len, ssconf->method);
+
+	//ptr->bev = bufferevent_socket_new(
+	//	base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+
+	//assert(event_cb && read_cb && ptr->bev);
+	//bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
+	return true;
+
+error:
+	return false;
+}
+
 bool pgs_session_bypass_outbound_init(pgs_session_outbound_t *ptr,
 				      struct event_base *base,
 				      on_event_cb *event_cb,
@@ -309,26 +331,26 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 	}
 
 	if (proxy || is_udp) {
+		bool ok = false;
 		if (IS_TROJAN_SERVER(config->server_type)) {
-			if (!pgs_session_trojan_outbound_init(
-				    ptr, config, cmd, cmd_len, local->base,
-				    on_trojan_remote_event,
-				    on_trojan_remote_read, cb_ctx)) {
-				pgs_logger_error(
-					local->logger,
-					"Failed to init trojan outbound");
-				goto error;
-			}
+			ok = pgs_session_trojan_outbound_init(
+				ptr, config, cmd, cmd_len, local->base,
+				on_trojan_remote_event, on_trojan_remote_read,
+				cb_ctx);
 		} else if (IS_V2RAY_SERVER(config->server_type)) {
-			if (!pgs_session_v2ray_outbound_init(
-				    ptr, config, cmd, cmd_len, local->base,
-				    on_v2ray_remote_event, on_v2ray_remote_read,
-				    cb_ctx)) {
-				pgs_logger_error(
-					local->logger,
-					"Failed to init v2ray outbound");
-				goto error;
-			}
+			ok = pgs_session_v2ray_outbound_init(
+				ptr, config, cmd, cmd_len, local->base,
+				on_v2ray_remote_event, on_v2ray_remote_read,
+				cb_ctx);
+		} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
+			//ret = pgs_session_ss_outbound_init(
+			//	ptr, config, cmd, cmd_len, local->base,
+			//	on_ss_remote_event, on_ss_remote_read, cb_ctx);
+		}
+		if (!ok) {
+			pgs_logger_error(local->logger,
+					 "Failed to init outbound");
+			goto error;
 		}
 
 		bufferevent_enable(ptr->bev, EV_READ);
@@ -343,7 +365,7 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 	}
 	if (!proxy || is_udp) {
 		if (is_udp) {
-			// do nothing
+			// do nothing, will create udp relay later
 		} else {
 			pgs_session_bypass_outbound_init(ptr, local->base,
 							 on_bypass_remote_event,
