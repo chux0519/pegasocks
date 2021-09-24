@@ -54,13 +54,6 @@ typedef struct pgs_config_ssl_s pgs_trojanserver_ssl_t;
 typedef struct pgs_config_ssl_s pgs_v2rayserver_ssl_t;
 
 typedef enum {
-	V2RAY_SECURE_CFB = 0,
-	V2RAY_SECURE_NONE = 1,
-	V2RAY_SECURE_GCM = 3,
-	V2RAY_SECURE_CHACHA = 4
-} pgs_v2ray_secure_t;
-
-typedef enum {
 	/* stream ciphers will be removed, not to implement it by now */
 	SS_AEAD_AES_128_GCM,
 	SS_AEAD_AES_256_GCM,

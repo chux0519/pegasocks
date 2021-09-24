@@ -316,6 +316,7 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 			&dummy, (const uint8_t *)g204_http_req,
 			strlen(g204_http_req),
 			(pgs_session_write_fn)&vmess_flush_remote);
+		pgs_logger_debug(mctx->logger, "g204 req sent: %d", total_len);
 	}
 	if (events & BEV_EVENT_ERROR)
 		pgs_logger_error(mctx->logger, "Error from bufferevent");

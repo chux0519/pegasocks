@@ -32,7 +32,7 @@ typedef enum {
 	AES_128_CFB = 0x00, /* vmess */
 	AEAD_AES_128_GCM = 0x02, /* vmess */
 	AEAD_CHACHA20_POLY1305 = 0x03, /* shadowsocks | vmess */
-	AEAD_AES_256_GCM, /* shadowsocks */
+	AEAD_AES_256_GCM = 0x04, /* shadowsocks */
 } pgs_cryptor_type_t;
 
 typedef struct pgs_cryptor_s {

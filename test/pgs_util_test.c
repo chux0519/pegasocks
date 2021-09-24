@@ -136,7 +136,6 @@ void test_crypto_aead_encrypt()
 	mbedtls_cipher_type_t cipher_gcm = MBEDTLS_CIPHER_AES_128_GCM;
 	encryptor = pgs_aead_cryptor_new(&cipher_gcm, key, iv, PGS_ENCRYPT);
 #else
-	const EVP_CIPHER *cipher_gcm = EVP_aes_128_gcm();
 	encryptor = pgs_cryptor_new(AEAD_AES_128_GCM, PGS_ENCRYPT, key, iv);
 #endif
 
@@ -212,7 +211,6 @@ void test_crypto_aead_decrypt()
 	mbedtls_cipher_type_t cipher_gcm = MBEDTLS_CIPHER_AES_128_GCM;
 	decryptor = pgs_aead_cryptor_new(&cipher_gcm, key, iv, PGS_DECRYPT);
 #else
-	const EVP_CIPHER *cipher_gcm = EVP_aes_128_gcm();
 	decryptor = pgs_cryptor_new(AEAD_AES_128_GCM, PGS_DECRYPT, key, iv);
 #endif
 

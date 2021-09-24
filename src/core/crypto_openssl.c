@@ -128,21 +128,21 @@ void pgs_cryptor_reset_iv(pgs_cryptor_t *ptr, const uint8_t *iv)
 {
 	const EVP_CIPHER *openssl_cipher = get_openssl_cipher(ptr->cipher);
 	EVP_CIPHER_CTX_reset(ptr->ctx);
+	ptr->iv = iv;
 	switch (ptr->dir) {
 	case PGS_ENCRYPT: {
 		EVP_EncryptInit_ex(ptr->ctx, openssl_cipher, NULL, ptr->key,
-				   iv);
+				   ptr->iv);
 		break;
 	}
 	case PGS_DECRYPT: {
 		EVP_DecryptInit_ex(ptr->ctx, openssl_cipher, NULL, ptr->key,
-				   iv);
+				   ptr->iv);
 		break;
 	}
 	default:
 		break;
 	}
-	ptr->iv = iv;
 }
 
 // helpers

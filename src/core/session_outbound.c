@@ -126,14 +126,17 @@ pgs_outbound_ctx_v2ray_t *pgs_outbound_ctx_v2ray_new(const uint8_t *cmd,
 {
 	pgs_outbound_ctx_v2ray_t *ptr = (pgs_outbound_ctx_v2ray_t *)calloc(
 		1, sizeof(pgs_outbound_ctx_v2ray_t));
-
+	pgs_cryptor_type_info(cipher, &ptr->key_len, &ptr->iv_len,
+			      &ptr->tag_len);
+	ptr->data_enc_key = calloc(1, ptr->key_len);
+	ptr->data_enc_iv = calloc(1, ptr->iv_len);
+	ptr->data_dec_key = calloc(1, ptr->key_len);
+	ptr->data_dec_iv = calloc(1, ptr->iv_len);
+	ptr->enc_counter = 0;
+	ptr->dec_counter = 0;
 	ptr->cmd = cmd;
 	ptr->cmdlen = cmdlen;
 	ptr->cipher = cipher;
-	pgs_cryptor_type_info(cipher, &ptr->key_len, &ptr->iv_len,
-			      &ptr->tag_len);
-	ptr->data_key = malloc(ptr->key_len);
-	ptr->data_iv = malloc(ptr->iv_len);
 
 	return ptr;
 }
@@ -144,15 +147,21 @@ void pgs_outbound_ctx_v2ray_free(pgs_outbound_ctx_v2ray_t *ptr)
 		pgs_cryptor_free(ptr->encryptor);
 	if (ptr->decryptor)
 		pgs_cryptor_free(ptr->decryptor);
-	if (ptr->data_iv)
-		free(ptr->data_iv);
-	if (ptr->data_key)
-		free(ptr->data_key);
+	if (ptr->data_enc_iv)
+		free(ptr->data_enc_iv);
+	if (ptr->data_enc_key)
+		free(ptr->data_enc_key);
+	if (ptr->data_dec_iv)
+		free(ptr->data_dec_iv);
+	if (ptr->data_dec_key)
+		free(ptr->data_dec_key);
 
 	ptr->encryptor = NULL;
 	ptr->decryptor = NULL;
-	ptr->data_iv = NULL;
-	ptr->data_key = NULL;
+	ptr->data_enc_iv = NULL;
+	ptr->data_enc_key = NULL;
+	ptr->data_dec_iv = NULL;
+	ptr->data_dec_key = NULL;
 
 	if (ptr)
 		free(ptr);

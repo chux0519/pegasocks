@@ -8,6 +8,119 @@ const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
 const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 const char vmess_key_suffix[36] = "c48619fe-8f02-49e0-b9e9-edf763e17e21";
 
+static void pgs_vmess_init_encryptor(pgs_outbound_ctx_v2ray_t *ctx)
+{
+	switch (ctx->cipher) {
+	case AES_128_CFB:
+		ctx->encryptor = pgs_cryptor_new(ctx->cipher, PGS_ENCRYPT,
+						 (const uint8_t *)ctx->key,
+						 (const uint8_t *)ctx->iv);
+		break;
+	case AEAD_AES_128_GCM:
+		assert(ctx->iv_len == AEAD_AES_128_GCM_IV_LEN);
+		assert(ctx->key_len == AEAD_AES_128_GCM_KEY_LEN);
+		memcpy(ctx->data_enc_key, ctx->key, AEAD_AES_128_GCM_KEY_LEN);
+		memcpy(ctx->data_enc_iv + 2, ctx->iv + 2, 10);
+		ctx->encryptor =
+			pgs_cryptor_new(ctx->cipher, PGS_ENCRYPT,
+					(const uint8_t *)ctx->data_enc_key,
+					(const uint8_t *)ctx->data_enc_iv);
+		break;
+	case AEAD_CHACHA20_POLY1305:
+		assert(ctx->iv_len == AEAD_CHACHA20_POLY1305_IV_LEN);
+		assert(ctx->key_len == AEAD_CHACHA20_POLY1305_KEY_LEN);
+		md5((const uint8_t *)ctx->key, AES_128_CFB_IV_LEN,
+		    ctx->data_enc_key);
+		md5(ctx->data_enc_key, MD5_LEN, ctx->data_enc_key + MD5_LEN);
+		memcpy(ctx->data_enc_iv + 2, ctx->iv + 2, 10);
+		ctx->encryptor =
+			pgs_cryptor_new(ctx->cipher, PGS_ENCRYPT,
+					(const uint8_t *)ctx->data_enc_key,
+					(const uint8_t *)ctx->data_enc_iv);
+		break;
+	case AEAD_AES_256_GCM:
+		// not supported
+	default:
+		break;
+	}
+}
+
+static void pgs_vmess_init_decryptor(pgs_outbound_ctx_v2ray_t *ctx)
+{
+	// riv rkey to decode header
+	md5((const uint8_t *)ctx->iv, AES_128_CFB_IV_LEN, (uint8_t *)ctx->riv);
+	md5((const uint8_t *)ctx->key, AES_128_CFB_KEY_LEN,
+	    (uint8_t *)ctx->rkey);
+	switch (ctx->cipher) {
+	case AES_128_CFB:
+		ctx->decryptor = pgs_cryptor_new(ctx->cipher, PGS_DECRYPT,
+						 (const uint8_t *)ctx->rkey,
+						 (const uint8_t *)ctx->riv);
+		break;
+	case AEAD_AES_128_GCM:
+		assert(ctx->iv_len == AEAD_AES_128_GCM_IV_LEN);
+		assert(ctx->key_len == AEAD_AES_128_GCM_KEY_LEN);
+		memcpy(ctx->data_dec_key, ctx->rkey, AEAD_AES_128_GCM_KEY_LEN);
+		ctx->dec_counter = 0;
+		memcpy(ctx->data_dec_iv + 2, ctx->riv + 2, 10);
+		ctx->decryptor =
+			pgs_cryptor_new(ctx->cipher, PGS_DECRYPT,
+					(const uint8_t *)ctx->data_dec_key,
+					(const uint8_t *)ctx->data_dec_iv);
+		break;
+	case AEAD_CHACHA20_POLY1305:
+		assert(ctx->iv_len == AEAD_CHACHA20_POLY1305_IV_LEN);
+		assert(ctx->key_len == AEAD_CHACHA20_POLY1305_KEY_LEN);
+		md5((const uint8_t *)ctx->rkey, AES_128_CFB_IV_LEN,
+		    ctx->data_dec_key);
+		md5(ctx->data_dec_key, MD5_LEN, ctx->data_dec_key + MD5_LEN);
+		ctx->dec_counter = 0;
+		memcpy(ctx->data_dec_iv + 2, ctx->riv + 2, 10);
+		ctx->decryptor =
+			pgs_cryptor_new(ctx->cipher, PGS_DECRYPT,
+					(const uint8_t *)ctx->data_dec_key,
+					(const uint8_t *)ctx->data_dec_iv);
+		break;
+	case AEAD_AES_256_GCM:
+		// not supported
+	default:
+		break;
+	}
+}
+
+static void pgs_vmess_increase_cryptor_iv(pgs_outbound_ctx_v2ray_t *ctx,
+					  pgs_cryptor_direction_t dir)
+{
+	if (ctx->cipher == AES_128_CFB)
+		return;
+
+	uint16_t *counter = NULL;
+	pgs_cryptor_t *cryptor = NULL;
+	uint8_t *iv = NULL;
+	switch (dir) {
+	case PGS_DECRYPT:
+		counter = &ctx->dec_counter;
+		cryptor = ctx->decryptor;
+		iv = ctx->data_dec_iv;
+		break;
+	case PGS_ENCRYPT:
+		counter = &ctx->enc_counter;
+		cryptor = ctx->encryptor;
+		iv = ctx->data_enc_iv;
+		break;
+	default:
+		break;
+	}
+
+	if (counter != NULL && cryptor != NULL) {
+		*counter += 1;
+		iv[0] = *counter >> 8;
+		iv[1] = *counter;
+
+		pgs_cryptor_reset_iv(cryptor, iv);
+	}
+}
+
 void pgs_ws_req(struct evbuffer *out, const char *hostname,
 		const char *server_address, int server_port, const char *path)
 {
@@ -157,33 +270,20 @@ uint64_t pgs_vmess_write_head(pgs_session_t *session,
 	// data iv
 	rand_bytes(header_cmd_raw + offset, AES_128_CFB_IV_LEN);
 	memcpy(ctx->iv, header_cmd_raw + offset, AES_128_CFB_IV_LEN);
-	offset += AES_128_CFB_KEY_LEN;
+	offset += AES_128_CFB_IV_LEN;
 	// data key
 	rand_bytes(header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
 	memcpy(ctx->key, header_cmd_raw + offset, AES_128_CFB_KEY_LEN);
+	offset += AES_128_CFB_KEY_LEN;
 
 	// init data encryptor
-	if (!ctx->encryptor) {
-		ctx->encryptor = pgs_cryptor_new(ctx->cipher, PGS_ENCRYPT,
-						 (const uint8_t *)ctx->key,
-						 (const uint8_t *)ctx->iv);
-	}
+	if (!ctx->encryptor)
+		pgs_vmess_init_encryptor(ctx);
 	assert(ctx->encryptor != NULL);
 
-	if (!ctx->decryptor) {
-		// riv rkey to decode header
-		md5((const uint8_t *)ctx->iv, AES_128_CFB_IV_LEN,
-		    (uint8_t *)ctx->riv);
-		md5((const uint8_t *)ctx->key, AES_128_CFB_KEY_LEN,
-		    (uint8_t *)ctx->rkey);
-		// TODO: transform iv
-		ctx->decryptor = pgs_cryptor_new(ctx->cipher, PGS_DECRYPT,
-						 (const uint8_t *)ctx->rkey,
-						 (const uint8_t *)ctx->riv);
-	}
+	if (!ctx->decryptor)
+		pgs_vmess_init_decryptor(ctx);
 	assert(ctx->decryptor != NULL);
-
-	offset += AES_128_CFB_IV_LEN;
 
 	// v
 	rand_bytes(header_cmd_raw + offset, 1);
@@ -325,10 +425,12 @@ uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 			buf[1] = (frame_data_len + 16);
 
 			size_t ciphertext_len = 0;
-			pgs_cryptor_encrypt(ctx->encryptor, data + offset,
-					    frame_data_len,
-					    buf + 2 + frame_data_len, buf + 2,
-					    &ciphertext_len);
+			bool ok = pgs_cryptor_encrypt(ctx->encryptor,
+						      data + offset,
+						      frame_data_len,
+						      buf + 2 + frame_data_len,
+						      buf + 2, &ciphertext_len);
+			pgs_vmess_increase_cryptor_iv(ctx, PGS_ENCRYPT);
 
 			assert(ciphertext_len == frame_data_len);
 			sent += (frame_data_len + 18);
@@ -375,7 +477,6 @@ bool pgs_vmess_parse(pgs_session_t *session, const uint8_t *data,
 		return pgs_vmess_parse_cfb(session, data, data_len, flush);
 	case AEAD_AES_128_GCM:
 		return pgs_vmess_parse_gcm(session, data, data_len, flush);
-		// TODO: support chacha
 	default:
 		// not implement yet
 		break;
@@ -422,6 +523,7 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 		if (!pgs_cryptor_decrypt(decryptor, data, 2, NULL, rrbuf,
 					 &decrypt_len))
 			return false;
+
 		int l = rrbuf[0] << 8 | rrbuf[1];
 
 		if (l == 0 || l == 4) // end
@@ -522,9 +624,11 @@ bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 	if (ctx->remote_rbuf_pos == 0) {
 		// enough data for decoding and no cache
 		uint64_t data_to_decrypt = ctx->resp_len;
-		if (!pgs_cryptor_decrypt(decryptor, data, ctx->resp_len,
-					 data + ctx->resp_len, lwbuf,
-					 &decrypt_len))
+		bool ok = pgs_cryptor_decrypt(decryptor, data, ctx->resp_len,
+					      data + ctx->resp_len, lwbuf,
+					      &decrypt_len);
+		pgs_vmess_increase_cryptor_iv(ctx, PGS_DECRYPT);
+		if (!ok)
 			return false;
 
 		flush(session, lwbuf, data_to_decrypt);
@@ -540,11 +644,12 @@ bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 			ctx->resp_len + 16 - ctx->remote_rbuf_pos;
 		memcpy(rrbuf + ctx->remote_rbuf_pos, data, data_to_read);
 
-		if (!pgs_cryptor_decrypt(decryptor, rrbuf, ctx->resp_len,
-					 rrbuf + ctx->resp_len, lwbuf,
-					 &decrypt_len))
+		bool ok = pgs_cryptor_decrypt(decryptor, rrbuf, ctx->resp_len,
+					      rrbuf + ctx->resp_len, lwbuf,
+					      &decrypt_len);
+		pgs_vmess_increase_cryptor_iv(ctx, PGS_DECRYPT);
+		if (!ok)
 			return false;
-
 		flush(session, lwbuf, ctx->resp_len);
 		ctx->resp_len = 0;
 		ctx->remote_rbuf_pos = 0;

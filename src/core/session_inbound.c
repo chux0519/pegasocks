@@ -166,6 +166,7 @@ void on_v2ray_local_read(struct bufferevent *bev, void *ctx)
 
 	evbuffer_drain(inboundr, data_len);
 	on_session_metrics_send(session, total_len);
+	pgs_session_debug(session, "v2ray write to remote: %d", total_len);
 }
 
 /* UDP */

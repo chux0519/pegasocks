@@ -57,11 +57,15 @@ typedef struct pgs_outbound_ctx_v2ray_s {
 	uint32_t resp_hash;
 
 	// key and iv for data part
-	uint8_t *data_iv;
-	uint8_t *data_key;
+	uint8_t *data_enc_iv;
+	uint8_t *data_enc_key;
+	uint8_t *data_dec_iv;
+	uint8_t *data_dec_key;
 	size_t key_len;
 	size_t iv_len;
 	size_t tag_len;
+	uint16_t enc_counter;
+	uint16_t dec_counter;
 
 	pgs_cryptor_t *encryptor;
 	pgs_cryptor_t *decryptor;
