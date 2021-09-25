@@ -37,7 +37,7 @@ linux_task:
 
     install_script:
         - apt update && apt upgrade -y
-        - DEBIAN_FRONTEND=noninteractive apt install -y git cmake build-essential libmbedtls-dev curl libssl-dev libpcre3-dev
+        - DEBIAN_FRONTEND=noninteractive apt install -y unzip git cmake build-essential libmbedtls-dev curl libssl-dev libpcre3-dev
     prepare_script:
         - git submodule update --init
         - curl -L https://github.com/libevent/libevent/archive/refs/tags/release-2.1.12-stable.zip -o libevent.zip
