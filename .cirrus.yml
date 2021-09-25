@@ -13,9 +13,12 @@ freebsd_task:
         - sed -i.bak -e 's,pkg+http://pkg.FreeBSD.org/\${ABI}/quarterly,pkg+http://pkg.FreeBSD.org/\${ABI}/latest,' /etc/pkg/FreeBSD.conf        
         - pkg update -f
         - pkg upgrade -y
-        - pkg install -y gmake cmake openssl mbedtls libevent git pcre
+        - pkg install -y gmake cmake openssl libevent git pcre curl unzip
     prepare_script:
         - git submodule update --init
+        - curl -L https://github.com/libevent/libevent/archive/refs/tags/release-2.1.12-stable.zip -o libevent.zip
+        - unzip libevent.zip
+        - cd libevent-release-2.1.12-stable && cmake -DCMAKE_BUILD_TYPE=Release . && gmake install && cd ..
     build_default_test_script:
         - mkdir -p build/default
         - cd build/default
@@ -37,12 +40,12 @@ linux_task:
 
     install_script:
         - apt update && apt upgrade -y
-        - DEBIAN_FRONTEND=noninteractive apt install -y unzip git cmake build-essential libmbedtls-dev curl libssl-dev libpcre3-dev
+        - DEBIAN_FRONTEND=noninteractive apt install -y unzip git cmake build-essential curl libssl-dev libpcre3-dev
     prepare_script:
         - git submodule update --init
         - curl -L https://github.com/libevent/libevent/archive/refs/tags/release-2.1.12-stable.zip -o libevent.zip
         - unzip libevent.zip
-        - cd libevent-release-2.1.12-stable && cmake -DCMAKE_BUILD_TYPE=Release -DEVENT__DISABLE_MBEDTLS=OFF . && make install && cd ..
+        - cd libevent-release-2.1.12-stable && cmake -DCMAKE_BUILD_TYPE=Release . && make install && cd ..
     build_default_test_script:
         - mkdir -p build/default
         - cd build/default
