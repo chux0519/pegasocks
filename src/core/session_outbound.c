@@ -1,8 +1,11 @@
+#include "core/crypto.h"
 #include "core/session.h"
 #include "core/codec.h"
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
+
+#define SS_INFO "ss-subkey"
 
 /*
  * bypass handlers
@@ -166,6 +169,96 @@ void pgs_outbound_ctx_v2ray_free(pgs_outbound_ctx_v2ray_t *ptr)
 	if (ptr)
 		free(ptr);
 	ptr = NULL;
+}
+
+// shadowsocks context
+pgs_outbound_ctx_ss_t *pgs_outbound_ctx_ss_new(const uint8_t *cmd,
+					       size_t cmd_len,
+					       const uint8_t *password,
+					       size_t password_len,
+					       pgs_cryptor_type_t cipher)
+{
+	pgs_outbound_ctx_ss_t *ptr = malloc(sizeof(pgs_outbound_ctx_ss_t));
+	ptr->rbuf = malloc(BUFSIZE_16K);
+	ptr->wbuf = malloc(BUFSIZE_16K);
+
+	pgs_cryptor_type_info(cipher, &ptr->key_len, &ptr->iv_len,
+			      &ptr->tag_len);
+	ptr->enc_key = malloc(ptr->key_len);
+	ptr->dec_key = malloc(ptr->key_len);
+	ptr->ikm = malloc(ptr->key_len);
+	ptr->enc_salt = malloc(ptr->key_len);
+	evp_bytes_to_key(password, password_len, ptr->ikm, ptr->key_len);
+
+	ptr->enc_iv = calloc(1, ptr->iv_len);
+	ptr->dec_iv = calloc(1, ptr->iv_len);
+	ptr->enc_counter = 0;
+	ptr->dec_counter = 0;
+	ptr->cmd = cmd;
+	ptr->cmd_len = cmd_len;
+	ptr->cipher = cipher;
+
+	if (is_aead_cipher(cipher)) {
+		// random bytes as salt
+		rand_bytes(ptr->enc_salt, ptr->key_len);
+		hkdf_sha1(ptr->enc_salt, ptr->key_len, ptr->ikm, ptr->key_len,
+			  (const uint8_t *)SS_INFO, 9, ptr->enc_key,
+			  ptr->key_len);
+	} else {
+		memcpy(ptr->enc_key, ptr->ikm, ptr->key_len);
+		rand_bytes(ptr->enc_iv, ptr->iv_len);
+	}
+
+	ptr->encryptor =
+		pgs_cryptor_new(cipher, PGS_ENCRYPT, ptr->enc_key, ptr->enc_iv);
+	ptr->decryptor = NULL;
+
+	return ptr;
+}
+
+void pgs_outbound_ctx_ss_init_decryptor(
+	pgs_outbound_ctx_ss_t *ptr,
+	const uint8_t *salt /* for aead it's salt, for aes it's iv */)
+{
+	if (ptr->decryptor != NULL)
+		return;
+
+	if (is_aead_cipher(ptr->cipher)) {
+		hkdf_sha1(salt, ptr->key_len, ptr->ikm, ptr->key_len,
+			  (const uint8_t *)SS_INFO, 9, ptr->dec_key,
+			  ptr->key_len);
+	} else {
+		memcpy(ptr->dec_key, ptr->ikm, ptr->key_len);
+		memcpy(ptr->dec_iv, salt, ptr->iv_len);
+	}
+	ptr->decryptor = pgs_cryptor_new(ptr->cipher, PGS_DECRYPT, ptr->dec_key,
+					 ptr->dec_iv);
+}
+
+void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
+{
+	if (ptr->wbuf)
+		free(ptr->wbuf);
+	if (ptr->rbuf)
+		free(ptr->rbuf);
+	if (ptr->encryptor)
+		pgs_cryptor_free(ptr->encryptor);
+	if (ptr->decryptor)
+		pgs_cryptor_free(ptr->decryptor);
+	if (ptr->enc_iv)
+		free(ptr->enc_iv);
+	if (ptr->enc_key)
+		free(ptr->enc_key);
+	if (ptr->dec_iv)
+		free(ptr->dec_iv);
+	if (ptr->dec_key)
+		free(ptr->dec_key);
+	if (ptr->ikm)
+		free(ptr->ikm);
+	if (ptr->enc_salt)
+		free(ptr->enc_salt);
+	if (ptr)
+		free(ptr);
 }
 
 // outbound

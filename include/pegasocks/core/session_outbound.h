@@ -73,12 +73,27 @@ typedef struct pgs_outbound_ctx_v2ray_s {
 } pgs_outbound_ctx_v2ray_t;
 
 typedef struct pgs_outbound_ctx_ss_s {
-	pgs_ss_method_t method;
+	/* 16K buf */
+	uint8_t *rbuf;
+	uint8_t *wbuf;
+	const uint8_t *cmd;
+	size_t cmd_len;
+
 	/* salt + ikm(pass) => encode key; len(salt) = len(key) */
-	uint8_t *enc_salt; /* random bytes, to send */
-	uint8_t *dec_salt; /* to receive */
+	uint8_t *enc_key; /* random bytes, to send */
+	uint8_t *enc_iv;
+	uint8_t *dec_key; /* to receive */
+	uint8_t *dec_iv;
+	uint8_t *ikm;
+	uint8_t *enc_salt;
+	size_t key_len;
+	size_t iv_len;
+	size_t tag_len;
+	uint16_t enc_counter; // max(len(iv)) == 12, so 16bit is enough
+	uint16_t dec_counter;
 	pgs_cryptor_t *encryptor;
 	pgs_cryptor_t *decryptor;
+	pgs_cryptor_type_t cipher;
 } pgs_outbound_ctx_ss_t;
 
 void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
@@ -97,6 +112,16 @@ pgs_outbound_ctx_v2ray_t *pgs_outbound_ctx_v2ray_new(const uint8_t *cmd,
 						     uint64_t cmdlen,
 						     pgs_cryptor_type_t cipher);
 void pgs_outbound_ctx_v2ray_free(pgs_outbound_ctx_v2ray_t *ptr);
+
+// shadowsocks context
+pgs_outbound_ctx_ss_t *pgs_outbound_ctx_ss_new(const uint8_t *cmd,
+					       size_t cmd_len,
+					       const uint8_t *password,
+					       size_t password_len,
+					       pgs_cryptor_type_t cipher);
+void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr);
+void pgs_outbound_ctx_ss_init_decryptor(pgs_outbound_ctx_ss_t *ptr,
+					const uint8_t *salt);
 
 // outbound
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr);

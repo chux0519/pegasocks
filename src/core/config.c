@@ -429,11 +429,11 @@ pgs_config_extra_ss_t *pgs_config_extra_ss_parse(pgs_config_t *config,
 	const char *method = json_object_get_string(jobj, CONFIG_SS_METHOD);
 	if (method != NULL) {
 		if (strcasecmp(method, "aes-128-gcm") == 0) {
-			ptr->method = SS_AEAD_AES_128_GCM;
+			ptr->method = AES_128_CFB;
 		} else if (strcasecmp(method, "aes-256-gcm") == 0) {
-			ptr->method = SS_AEAD_AES_256_GCM;
+			ptr->method = AEAD_AES_256_GCM;
 		} else if (strcasecmp(method, "chacha20-ietf-poly1305") == 0) {
-			ptr->method = SS_AEAD_CHACHA20_POLY1305;
+			ptr->method = AEAD_CHACHA20_POLY1305;
 		}
 	}
 
@@ -458,7 +458,7 @@ pgs_config_extra_ss_t *pgs_config_extra_ss_new()
 	pgs_config_extra_ss_t *ptr = malloc(sizeof(pgs_config_extra_ss_t));
 	ptr->plugin = NULL;
 	ptr->plugin_opts = NULL;
-	ptr->method = SS_AEAD_AES_128_GCM;
+	ptr->method = AEAD_CHACHA20_POLY1305;
 
 	return ptr;
 }

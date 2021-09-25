@@ -61,9 +61,9 @@ bool pgs_cryptor_decrypt(pgs_cryptor_t *ptr, const uint8_t *ciphertext,
 // only needed by aead cipher
 void pgs_cryptor_reset_iv(pgs_cryptor_t *ptr, const uint8_t *iv);
 
-static inline bool is_aead_cryptor(pgs_cryptor_t *ptr)
+static inline bool is_aead_cipher(pgs_cryptor_type_t cipher)
 {
-	switch (ptr->cipher) {
+	switch (cipher) {
 	case AES_128_CFB:
 		return false;
 	case AEAD_AES_128_GCM:
@@ -72,6 +72,11 @@ static inline bool is_aead_cryptor(pgs_cryptor_t *ptr)
 	default:
 		return true;
 	}
+}
+
+static inline bool is_aead_cryptor(pgs_cryptor_t *ptr)
+{
+	return is_aead_cipher(ptr->cipher);
 }
 
 static inline void pgs_cryptor_type_info(pgs_cryptor_type_t cipher,

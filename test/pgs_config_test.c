@@ -396,7 +396,7 @@ void test_shadowsocks_config()
 	assert(server->server_port == 10086);
 
 	pgs_config_extra_ss_t *ss_config = server->extra;
-	assert(ss_config->method == SS_AEAD_CHACHA20_POLY1305);
+	assert(ss_config->method == AEAD_CHACHA20_POLY1305);
 	PGS_STREUQAL(ss_config->plugin, "obfs-local");
 	PGS_STREUQAL(ss_config->plugin_opts,
 		     "obfs=http;obfs-host=www.baidu.com");

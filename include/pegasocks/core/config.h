@@ -53,13 +53,6 @@
 typedef struct pgs_config_ssl_s pgs_trojanserver_ssl_t;
 typedef struct pgs_config_ssl_s pgs_v2rayserver_ssl_t;
 
-typedef enum {
-	/* stream ciphers will be removed, not to implement it by now */
-	SS_AEAD_AES_128_GCM,
-	SS_AEAD_AES_256_GCM,
-	SS_AEAD_CHACHA20_POLY1305,
-} pgs_ss_method_t;
-
 #define pgs_config_info(config, ...)                                           \
 	pgs_logger_main_info(config->log_file, __VA_ARGS__)
 #define pgs_config_error(config, ...)                                          \
@@ -114,7 +107,7 @@ typedef struct pgs_config_extra_v2ray_s {
 } pgs_config_extra_v2ray_t;
 
 typedef struct pgs_config_extra_ss_s {
-	pgs_ss_method_t method;
+	pgs_cryptor_type_t method;
 	const char *plugin;
 	const char *plugin_opts;
 } pgs_config_extra_ss_t;
