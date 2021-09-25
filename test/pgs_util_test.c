@@ -13,6 +13,14 @@ static void debug_hex(const uint8_t *buf, size_t len)
 	free(hexstring);
 }
 
+static void assert_buf_with_hex(const uint8_t *buf, size_t len,
+				const uint8_t *hex)
+{
+	uint8_t *hexstring = to_hexstring(buf, len);
+	assert(strcmp((const char *)hex, (const char *)hexstring) == 0);
+	free(hexstring);
+}
+
 void test_sha224()
 {
 	// sha224("password") == "d63dc919e201d7bc4c825630d2cf25fdc93d4b2f0d46706d29038d01"
@@ -254,6 +262,61 @@ void test_crypto_aead_decrypt()
 	pgs_cryptor_free(decryptor);
 }
 
+void test_crypto_chachapoly()
+{
+	unsigned char key[32] = {
+		1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+		1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+	};
+	unsigned char iv[12] = { 0, 0, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
+	unsigned char plaintext[8] = "password";
+	unsigned char result1[] = "fd9746aee3fa483f";
+	unsigned char tag1[] = "b2a8670b1f13212546e07e09f61072dc";
+
+	pgs_cryptor_t *encryptor =
+		pgs_cryptor_new(AEAD_CHACHA20_POLY1305, PGS_ENCRYPT, key, iv);
+	assert(encryptor != NULL);
+
+	{
+		// First round
+		unsigned char en_tag[16] = { 0 };
+		unsigned char out[8] = { 0 };
+		size_t output_len;
+		bool ret = pgs_cryptor_encrypt(encryptor, plaintext, 8, en_tag,
+					       out, &output_len);
+		assert(ret == true);
+		assert(output_len == 8);
+
+		assert_buf_with_hex(out, 8, result1);
+		assert_buf_with_hex(en_tag, 16, tag1);
+	}
+
+	// mock iv increase
+	iv[1] = 1;
+	pgs_cryptor_reset_iv(encryptor, iv);
+
+	// Second round
+	unsigned char iv2[12] = { 0, 1, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
+	unsigned char result2[] = "ede0eeefdcbf59c0";
+	unsigned char tag2[] = "768ac949ab8b0ee584b2772ddcbc437b";
+	{
+		unsigned char en_tag[16] = { 0 };
+		unsigned char out[8] = { 0 };
+		size_t output_len;
+		for (int i = 0; i < 12; i++) {
+			assert(iv2[i] == encryptor->iv[i]);
+		}
+
+		assert(pgs_cryptor_encrypt(encryptor, plaintext, 8, en_tag, out,
+					   &output_len) == true);
+		assert(output_len == 8);
+		assert_buf_with_hex(out, 8, result2);
+		assert_buf_with_hex(en_tag, 16, tag2);
+	}
+
+	pgs_cryptor_free(encryptor);
+}
+
 void test_evp_bytes_to_key()
 {
 	const uint8_t input[] = "key";
@@ -317,6 +380,8 @@ int main()
 	printf("test_crypto_aead_encrypt passed\n");
 	test_crypto_aead_decrypt();
 	printf("test_crypto_aead_decrypt passed\n");
+	test_crypto_chachapoly();
+	printf("test_crypto_chachapoly passed\n");
 	test_evp_bytes_to_key();
 	printf("test_evp_bytes_to_key passed\n");
 	test_hkdf_sha1();
