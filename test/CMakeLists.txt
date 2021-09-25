@@ -44,10 +44,10 @@ add_executable (pgs_config_test ${CONFIG_TEST_SOURCES})
 
 if(USE_MBEDTLS)
   target_link_libraries (pgs_util_test ${MBEDTLS_LIBRARIES})
-  target_link_libraries (pgs_config_test ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES})
+  target_link_libraries (pgs_config_test ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES})
 else()
   target_link_libraries (pgs_util_test ${OPENSSL_LIBRARIES})
-  target_link_libraries (pgs_config_test ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES})
+  target_link_libraries (pgs_config_test ${LIBEVENT2_LIBRARIES} ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES})
 endif()
 
 add_test (PegaUtilTests pgs_util_test)
