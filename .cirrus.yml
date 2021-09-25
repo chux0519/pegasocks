@@ -13,7 +13,7 @@ freebsd_task:
         - sed -i.bak -e 's,pkg+http://pkg.FreeBSD.org/\${ABI}/quarterly,pkg+http://pkg.FreeBSD.org/\${ABI}/latest,' /etc/pkg/FreeBSD.conf        
         - pkg update -f
         - pkg upgrade -y
-        - pkg install -y gmake cmake json-c openssl libevent git pcre
+        - pkg install -y gmake cmake openssl mbedtls libevent git pcre
     prepare_script:
         - git submodule update --init
     build_default_test_script:
@@ -37,7 +37,7 @@ linux_task:
 
     install_script:
         - apt update && apt upgrade -y
-        - DEBIAN_FRONTEND=noninteractive apt install -y git cmake build-essential libjson-c-dev libevent-dev libssl-dev libpcre3-dev
+        - DEBIAN_FRONTEND=noninteractive apt install -y git cmake build-essential libmbedtls-dev libevent-dev libssl-dev libpcre3-dev
     prepare_script:
         - git submodule update --init
     build_default_test_script:
