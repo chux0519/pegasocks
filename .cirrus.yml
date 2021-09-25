@@ -42,7 +42,7 @@ linux_task:
         - git submodule update --init
         - curl -L https://github.com/libevent/libevent/archive/refs/tags/release-2.1.12-stable.zip -o libevent.zip
         - unzip libevent.zip
-        - cd libevent && cmake -DCMAKE_BUILD_TYPE=Release . && make install && cd ..
+        - cd libevent-release-2.1.12-stable && cmake -DCMAKE_BUILD_TYPE=Release . && make install && cd ..
     build_default_test_script:
         - mkdir -p build/default
         - cd build/default
