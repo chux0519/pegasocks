@@ -413,7 +413,8 @@ uint64_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 			      head_len + frame_data_len + 6);
 			break;
 		}
-		case AEAD_AES_128_GCM: {
+		case AEAD_AES_128_GCM:
+		case AEAD_CHACHA20_POLY1305: {
 			if (remains + 18 > BUFSIZE_16K - head_len) {
 				// more than one frame
 				frame_data_len = BUFSIZE_16K - head_len - 18;
@@ -476,7 +477,8 @@ bool pgs_vmess_parse(pgs_session_t *session, const uint8_t *data,
 	case AES_128_CFB:
 		return pgs_vmess_parse_cfb(session, data, data_len, flush);
 	case AEAD_AES_128_GCM:
-		return pgs_vmess_parse_gcm(session, data, data_len, flush);
+	case AEAD_CHACHA20_POLY1305:
+		return pgs_vmess_parse_aead(session, data, data_len, flush);
 	default:
 		// not implement yet
 		break;
@@ -566,7 +568,7 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 }
 
 /* AEAD cipher */
-bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
+bool pgs_vmess_parse_aead(pgs_session_t *session, const uint8_t *data,
 			 uint64_t data_len, pgs_session_write_fn flush)
 {
 	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
@@ -591,7 +593,7 @@ bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 			return false;
 		ctx->header_recved = true;
 		ctx->resp_len = 0;
-		return pgs_vmess_parse_gcm(session, data + 4, data_len - 4,
+		return pgs_vmess_parse_aead(session, data + 4, data_len - 4,
 					   flush);
 	}
 
@@ -609,7 +611,7 @@ bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 		ctx->resp_len = l - 16;
 		ctx->resp_hash = -1;
 		// skip fnv1a hash
-		return pgs_vmess_parse_gcm(session, data + 2, data_len - 2,
+		return pgs_vmess_parse_aead(session, data + 2, data_len - 2,
 					   flush);
 	}
 
@@ -634,7 +636,7 @@ bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 		flush(session, lwbuf, data_to_decrypt);
 		ctx->resp_len -= data_to_decrypt;
 
-		return pgs_vmess_parse_gcm(session, data + data_to_decrypt + 16,
+		return pgs_vmess_parse_aead(session, data + data_to_decrypt + 16,
 					   data_len - data_to_decrypt - 16,
 					   flush);
 	} else {
@@ -654,7 +656,7 @@ bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
 		ctx->resp_len = 0;
 		ctx->remote_rbuf_pos = 0;
 
-		return pgs_vmess_parse_gcm(session, data + data_to_read,
+		return pgs_vmess_parse_aead(session, data + data_to_read,
 					   data_len - data_to_read, flush);
 	}
 }

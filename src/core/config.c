@@ -360,7 +360,7 @@ pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_parse(pgs_config_t *config,
 			ptr->secure = AEAD_AES_128_GCM;
 		} else if (strcasecmp(secure, "aes-128-cfb") == 0) {
 			ptr->secure = AES_128_CFB;
-		} else if (strcasecmp(secure, "chacha20-ietf-poly1305") == 0) {
+		} else if (strcasecmp(secure, "chacha20-poly1305") == 0) {
 			ptr->secure = AEAD_CHACHA20_POLY1305;
 		}
 	}

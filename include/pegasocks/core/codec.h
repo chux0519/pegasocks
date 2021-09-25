@@ -66,7 +66,7 @@ bool pgs_vmess_parse(pgs_session_t *session, const uint8_t *data,
 		     uint64_t data_len, pgs_session_write_fn flush);
 bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 			 uint64_t data_len, pgs_session_write_fn flush);
-bool pgs_vmess_parse_gcm(pgs_session_t *session, const uint8_t *data,
+bool pgs_vmess_parse_aead(pgs_session_t *session, const uint8_t *data,
 			 uint64_t data_len, pgs_session_write_fn flush);
 
 static inline int pgs_get_addr_len(const uint8_t *data)
