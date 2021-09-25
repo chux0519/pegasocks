@@ -4,6 +4,7 @@
 #include "server_manager.h"
 #include "session.h"
 #include "codec.h"
+#include "ssl.h"
 
 #include <stdint.h>
 
@@ -19,7 +20,8 @@ typedef struct pgs_metrics_task_ctx_s {
 } pgs_metrics_task_ctx_t;
 
 void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
-			      int idx, pgs_logger_t *logger);
+			      int idx, pgs_logger_t *logger,
+			      pgs_ssl_ctx_t *ssl_ctx);
 
 pgs_metrics_task_ctx_t *pgs_metrics_task_ctx_new(
 	struct event_base *base, const pgs_server_config_t *config,

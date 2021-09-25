@@ -5,6 +5,7 @@
 #include "local_server.h"
 #include "config.h"
 #include "crypto.h"
+#include "ssl.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -130,6 +131,7 @@ bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
 				      const pgs_server_config_t *config,
 				      const uint8_t *cmd, uint64_t cmd_len,
 				      struct event_base *base,
+				      pgs_ssl_ctx_t *ssl_ctx,
 				      on_event_cb *event_cb,
 				      on_read_cb *read_cb, void *cb_ctx);
 
@@ -137,6 +139,7 @@ bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
 				     const pgs_server_config_t *config,
 				     const uint8_t *cmd, uint64_t cmd_len,
 				     struct event_base *base,
+				     pgs_ssl_ctx_t *ssl_ctx,
 				     on_event_cb *event_cb, on_read_cb *read_cb,
 				     void *cb_ctx);
 

@@ -11,6 +11,7 @@
 #include "log.h"
 #include "config.h"
 #include "server_manager.h"
+#include "ssl.h"
 
 typedef struct pgs_local_server_s {
 	uint32_t tid;
@@ -23,6 +24,7 @@ typedef struct pgs_local_server_s {
 	pgs_config_t *config;
 	pgs_server_manager_t *sm;
 	pgs_acl_t *acl;
+	pgs_ssl_ctx_t *ssl_ctx;
 } pgs_local_server_t;
 
 typedef struct pgs_local_server_ctx_s {
@@ -31,6 +33,7 @@ typedef struct pgs_local_server_ctx_s {
 	pgs_config_t *config;
 	pgs_server_manager_t *sm;
 	pgs_acl_t *acl;
+	pgs_ssl_ctx_t *ssl_ctx;
 } pgs_local_server_ctx_t;
 
 pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx);

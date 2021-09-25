@@ -88,7 +88,6 @@ void test_trojan_gfw_config()
 	pgs_config_extra_trojan_t *tconf =
 		(pgs_config_extra_trojan_t *)server->extra;
 	assert(tconf->ssl.enabled == true);
-	assert(tconf->ssl_ctx != NULL);
 	PGS_STREUQAL(tconf->ssl.sni, "trojan.example.com");
 
 	pgs_config_free(config);
@@ -143,7 +142,6 @@ void test_trojan_ws_config()
 	pgs_config_extra_trojan_t *tconf =
 		(pgs_config_extra_trojan_t *)server->extra;
 	assert(tconf->ssl.enabled == true);
-	assert(tconf->ssl_ctx != NULL);
 	PGS_STREUQAL(tconf->ssl.sni, "trojan.example.com");
 
 	PGS_STREUQAL(tconf->websocket.path, "/path");
@@ -238,7 +236,6 @@ void test_v2ray_tcp_ssl_config()
 	pgs_config_extra_v2ray_t *vconf =
 		(pgs_config_extra_v2ray_t *)server->extra;
 	assert(vconf->ssl.enabled == true);
-	assert(vconf->ssl_ctx != NULL);
 	PGS_STREUQAL(vconf->ssl.sni, "v2ray.example.com");
 
 	pgs_config_free(config);
@@ -348,7 +345,6 @@ void test_v2ray_wss_config()
 	PGS_STREUQAL(vconf->websocket.path, "/path");
 	PGS_STREUQAL(vconf->websocket.hostname, "v2ray.example.com");
 	assert(vconf->ssl.enabled == true);
-	assert(vconf->ssl_ctx != NULL);
 	PGS_STREUQAL(vconf->ssl.sni, "v2ray.example.com");
 
 	pgs_config_free(config);

@@ -32,7 +32,7 @@ freebsd_task:
         - gmake
         - gmake test
 
-linux_task:
+linux_mbedtls_task: # use master branch of libevent to support mbedtls
     container:
       matrix:
           - image: ubuntu:18.04
@@ -40,12 +40,36 @@ linux_task:
 
     install_script:
         - apt update && apt upgrade -y
-        - DEBIAN_FRONTEND=noninteractive apt install -y unzip git cmake build-essential curl libssl-dev libpcre3-dev
+        - DEBIAN_FRONTEND=noninteractive apt install -y unzip git cmake build-essential curl libssl-dev libmbedtls-dev libpcre3-dev
     prepare_script:
         - git submodule update --init
-        - curl -L https://github.com/libevent/libevent/archive/refs/tags/release-2.1.12-stable.zip -o libevent.zip
+        - curl -L https://github.com/libevent/libevent/archive/refs/heads/master.zip -o libevent.zip
         - unzip libevent.zip
-        - cd libevent-release-2.1.12-stable && cmake -DCMAKE_BUILD_TYPE=Release . && make install && cd ..
+        - cd libevent-master && cmake -DCMAKE_BUILD_TYPE=Release . && make install && cd ..
+    build_default_test_script:
+        - mkdir -p build/default
+        - cd build/default
+        - cmake -DUSE_MBEDTLS=ON ../..
+        - make
+        - make test
+    build_acl_test_script:
+        - mkdir -p build/acl
+        - cd build/acl
+        - cmake -DUSE_MBEDTLS=ON -DWITH_ACL=ON ../..
+        - make
+        - make test
+
+linux_openssl_task:
+    container:
+      matrix:
+          - image: ubuntu:18.04
+          - image: ubuntu:20.04
+
+    install_script:
+        - apt update && apt upgrade -y
+        - DEBIAN_FRONTEND=noninteractive apt install -y git cmake build-essential libevent-dev libssl-dev libpcre3-dev
+    prepare_script:
+        - git submodule update --init
     build_default_test_script:
         - mkdir -p build/default
         - cd build/default

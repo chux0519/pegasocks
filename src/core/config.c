@@ -296,11 +296,6 @@ pgs_config_extra_trojan_t *pgs_config_extra_trojan_parse(pgs_config_t *config,
 {
 	pgs_config_extra_trojan_t *ptr = pgs_config_extra_trojan_new();
 	ptr->ssl.enabled = true;
-	ptr->ssl_ctx = pgs_ssl_ctx_new();
-	if (ptr->ssl_ctx == NULL) {
-		pgs_config_error(config, "Error: pgs_ssl_ctx_new");
-		goto error;
-	}
 
 	const char *sni = json_object_dotget_string(jobj, CONFIG_SSL_SNI);
 	if (sni != NULL)
@@ -335,15 +330,12 @@ pgs_config_extra_trojan_t *pgs_config_extra_trojan_new()
 	ptr->websocket.enabled = false;
 	ptr->websocket.hostname = NULL;
 	ptr->websocket.path = NULL;
-	ptr->ssl_ctx = NULL;
 
 	return ptr;
 }
 
 void pgs_config_extra_trojan_free(pgs_config_extra_trojan_t *ptr)
 {
-	if (ptr->ssl_ctx != NULL)
-		pgs_ssl_ctx_free(ptr->ssl_ctx);
 	free(ptr);
 	ptr = NULL;
 }
@@ -368,10 +360,8 @@ pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_parse(pgs_config_t *config,
 	JSON_Value *ssl_value = json_object_get_value(jobj, "ssl");
 	if (ssl_value != NULL) {
 		ptr->ssl.enabled = true;
-		ptr->ssl_ctx = pgs_ssl_ctx_new();
 	} else {
 		ptr->ssl.enabled = false;
-		ptr->ssl_ctx = NULL;
 	}
 
 	const char *sni = json_object_dotget_string(jobj, CONFIG_SSL_SNI);
@@ -407,15 +397,12 @@ pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_new()
 	ptr->websocket.enabled = false;
 	ptr->websocket.hostname = NULL;
 	ptr->websocket.path = NULL;
-	ptr->ssl_ctx = NULL;
 	ptr->secure = AES_128_CFB;
 
 	return ptr;
 }
 void pgs_config_extra_v2ray_free(pgs_config_extra_v2ray_t *ptr)
 {
-	if (ptr->ssl_ctx != NULL)
-		pgs_ssl_ctx_free(ptr->ssl_ctx);
 	free(ptr);
 	ptr = NULL;
 }

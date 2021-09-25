@@ -74,7 +74,8 @@ static void on_v2ray_g204_read(struct bufferevent *bev, void *ctx)
 }
 
 void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
-			      int idx, pgs_logger_t *logger)
+			      int idx, pgs_logger_t *logger,
+			      pgs_ssl_ctx_t *ssl_ctx)
 {
 	const pgs_server_config_t *config = &sm->server_configs[idx];
 	const uint8_t *cmd = g204_cmd;
@@ -96,7 +97,7 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 
 	if (IS_TROJAN_SERVER(config->server_type)) {
 		if (!pgs_session_trojan_outbound_init(
-			    ptr, config, cmd, cmd_len, base,
+			    ptr, config, cmd, cmd_len, base, ssl_ctx,
 			    on_trojan_g204_event, on_trojan_g204_read, mctx)) {
 			pgs_logger_error(logger,
 					 "Failed to init trojan outbound");
@@ -104,7 +105,7 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 		}
 	} else if (IS_V2RAY_SERVER(config->server_type)) {
 		if (!pgs_session_v2ray_outbound_init(
-			    ptr, config, cmd, cmd_len, base,
+			    ptr, config, cmd, cmd_len, base, ssl_ctx,
 			    on_v2ray_g204_event, on_v2ray_g204_read, mctx)) {
 			pgs_logger_error(logger,
 					 "Failed to init v2ray outbound");

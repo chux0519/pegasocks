@@ -292,6 +292,7 @@ bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
 				      const pgs_server_config_t *config,
 				      const uint8_t *cmd, uint64_t cmd_len,
 				      struct event_base *base,
+				      pgs_ssl_ctx_t *ssl_ctx,
 				      on_event_cb *event_cb,
 				      on_read_cb *read_cb, void *cb_ctx)
 {
@@ -307,8 +308,7 @@ bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
 	if (tconf->ssl.sni != NULL) {
 		sni = tconf->ssl.sni;
 	}
-	if (pgs_session_outbound_ssl_bev_init(&ptr->bev, base, tconf->ssl_ctx,
-					      sni))
+	if (pgs_session_outbound_ssl_bev_init(&ptr->bev, base, ssl_ctx, sni))
 		goto error;
 
 	assert(event_cb && read_cb && ptr->bev);
@@ -324,6 +324,7 @@ bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
 				     const pgs_server_config_t *config,
 				     const uint8_t *cmd, uint64_t cmd_len,
 				     struct event_base *base,
+				     pgs_ssl_ctx_t *ssl_ctx,
 				     on_event_cb *event_cb, on_read_cb *read_cb,
 				     void *cb_ctx)
 {
@@ -332,14 +333,14 @@ bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
 
 	ptr->ctx = pgs_outbound_ctx_v2ray_new(cmd, cmd_len, vconf->secure);
 
-	if (vconf->ssl.enabled && vconf->ssl_ctx) {
+	if (vconf->ssl.enabled) {
 		// ssl + vmess
 		const char *sni = config->server_address;
 		if (vconf->ssl.sni != NULL) {
 			sni = vconf->ssl.sni;
 		}
-		if (pgs_session_outbound_ssl_bev_init(&ptr->bev, base,
-						      vconf->ssl_ctx, sni))
+		if (pgs_session_outbound_ssl_bev_init(&ptr->bev, base, ssl_ctx,
+						      sni))
 			goto error;
 	} else {
 		// raw vmess
@@ -435,13 +436,13 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 		if (IS_TROJAN_SERVER(config->server_type)) {
 			ok = pgs_session_trojan_outbound_init(
 				ptr, config, cmd, cmd_len, local->base,
-				on_trojan_remote_event, on_trojan_remote_read,
-				cb_ctx);
+				local->ssl_ctx, on_trojan_remote_event,
+				on_trojan_remote_read, cb_ctx);
 		} else if (IS_V2RAY_SERVER(config->server_type)) {
 			ok = pgs_session_v2ray_outbound_init(
 				ptr, config, cmd, cmd_len, local->base,
-				on_v2ray_remote_event, on_v2ray_remote_read,
-				cb_ctx);
+				local->ssl_ctx, on_v2ray_remote_event,
+				on_v2ray_remote_read, cb_ctx);
 		} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
 			//ret = pgs_session_ss_outbound_init(
 			//	ptr, config, cmd, cmd_len, local->base,

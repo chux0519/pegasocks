@@ -20,7 +20,7 @@ static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 	pgs_timer_cb_arg_t *arg = data;
 	for (int i = 0; i < arg->ctx->sm->server_len; i++) {
 		get_metrics_g204_connect(arg->ctx->base, arg->ctx->sm, i,
-					 arg->ctx->logger);
+					 arg->ctx->logger, arg->ctx->ssl_ctx);
 	}
 	arg->tv.tv_sec = arg->ctx->config->ping_interval;
 	arg->tv.tv_usec = 0;
@@ -48,6 +48,7 @@ pgs_helper_thread_ctx_t *pgs_helper_thread_ctx_new(pgs_helper_thread_arg_t *arg)
 	ptr->config = arg->config;
 	ptr->logger = arg->logger;
 	ptr->sm = arg->sm;
+	ptr->ssl_ctx = arg->ssl_ctx;
 	return ptr;
 }
 

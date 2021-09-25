@@ -2,7 +2,6 @@
 #define _PGS_CONFIG_H
 
 #include "log.h"
-#include "ssl.h"
 #include "crypto.h"
 
 #include <stdbool.h>
@@ -96,14 +95,12 @@ typedef struct pgs_config_ws_s {
 typedef struct pgs_config_extra_trojan_s {
 	pgs_config_ws_t websocket;
 	pgs_config_ssl_t ssl;
-	pgs_ssl_ctx_t *ssl_ctx;
 } pgs_config_extra_trojan_t;
 
 typedef struct pgs_config_extra_v2ray_s {
 	pgs_config_ws_t websocket;
 	pgs_config_ssl_t ssl;
 	pgs_cryptor_type_t secure;
-	pgs_ssl_ctx_t *ssl_ctx;
 } pgs_config_extra_v2ray_t;
 
 typedef struct pgs_config_extra_ss_s {

@@ -24,7 +24,6 @@ if(USE_MBEDTLS)
   )
   set(CONFIG_TEST_SOURCES
     ${CONFIG_TEST_SOURCES}
-    ${CMAKE_SOURCE_DIR}/src/core/ssl_mbedtls.c
     ${CMAKE_SOURCE_DIR}/src/core/crypto_mbedtls.c
   )
 else()
@@ -34,7 +33,6 @@ else()
   )
   set(CONFIG_TEST_SOURCES
     ${CONFIG_TEST_SOURCES}
-    ${CMAKE_SOURCE_DIR}/src/core/ssl_openssl.c
     ${CMAKE_SOURCE_DIR}/src/core/crypto_openssl.c
   )
 endif()
@@ -44,10 +42,10 @@ add_executable (pgs_config_test ${CONFIG_TEST_SOURCES})
 
 if(USE_MBEDTLS)
   target_link_libraries (pgs_util_test ${MBEDTLS_LIBRARIES})
-  target_link_libraries (pgs_config_test ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES})
+  target_link_libraries (pgs_config_test ${MBEDTLS_LIBRARIES})
 else()
   target_link_libraries (pgs_util_test ${OPENSSL_LIBRARIES})
-  target_link_libraries (pgs_config_test ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES})
+  target_link_libraries (pgs_config_test ${OPENSSL_LIBRARIES})
 endif()
 
 add_test (PegaUtilTests pgs_util_test)
