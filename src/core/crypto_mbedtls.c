@@ -4,236 +4,168 @@
 #include <time.h>
 #include <mbedtls/cipher.h>
 #include <mbedtls/gcm.h>
+#include <mbedtls/chachapoly.h>
 #include <mbedtls/sha256.h>
 #include <mbedtls/md5.h>
 #include <mbedtls/sha1.h>
 #include <mbedtls/md.h>
 #include <mbedtls/hkdf.h>
 
-pgs_base_cryptor_t *pgs_cryptor_new(pgs_v2ray_secure_t secure,
-				    const uint8_t *key, const uint8_t *iv,
-				    pgs_cryptor_direction_t dir)
-{
-	switch (secure) {
-	case V2RAY_SECURE_CFB: {
-		mbedtls_cipher_type_t cipher_cfb =
-			MBEDTLS_CIPHER_AES_128_CFB128;
-		return pgs_aes_cryptor_new(&cipher_cfb, key, iv, dir);
-	}
-	case V2RAY_SECURE_GCM: {
-		mbedtls_cipher_type_t cipher_gcm = MBEDTLS_CIPHER_AES_128_GCM;
-		return (pgs_base_cryptor_t *)pgs_aead_cryptor_new(&cipher_gcm,
-								  key, iv, dir);
-	}
-	default:
-		// not support yet
-		break;
-	}
-	return NULL;
-}
+static const mbedtls_cipher_type_t
+get_mbedtls_cipher(pgs_cryptor_type_t cipher);
 
-void pgs_cryptor_free(pgs_v2ray_secure_t secure, pgs_base_cryptor_t *cryptor)
-{
-	switch (secure) {
-	case V2RAY_SECURE_CFB:
-		return pgs_aes_cryptor_free((pgs_aes_cryptor_t *)cryptor);
-	case V2RAY_SECURE_GCM:
-		return pgs_aead_cryptor_free((pgs_aead_cryptor_t *)cryptor);
-	default:
-		// NOTICE: may cause mem leak if hit this branch
-		break;
-	}
-}
+static bool pgs_cryptor_init_aes(pgs_cryptor_t *ptr);
+static bool pgs_cryptor_encrypt_aes(pgs_cryptor_t *ptr,
+				    const uint8_t *plaintext,
+				    size_t plaintext_len, uint8_t *tag,
+				    uint8_t *ciphertext,
+				    size_t *ciphertext_len);
+static bool pgs_cryptor_decrypt_aes(pgs_cryptor_t *ptr,
+				    const uint8_t *ciphertext,
+				    size_t ciphertext_len, const uint8_t *tag,
+				    uint8_t *plaintext, size_t *plaintext_len);
 
-// openssl / mbedtls is supported
-/* AES */
-pgs_aes_cryptor_t *pgs_aes_cryptor_new(const void *cipher, const uint8_t *key,
-				       const uint8_t *iv,
-				       pgs_cryptor_direction_t dir)
+static bool pgs_cryptor_init_gcm(pgs_cryptor_t *ptr);
+static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
+				    const uint8_t *plaintext,
+				    size_t plaintext_len, uint8_t *tag,
+				    uint8_t *ciphertext,
+				    size_t *ciphertext_len);
+static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
+				    const uint8_t *ciphertext,
+				    size_t ciphertext_len, const uint8_t *tag,
+				    uint8_t *plaintext, size_t *plaintext_len);
+
+static bool pgs_cryptor_init_chachapoly(pgs_cryptor_t *ptr);
+static bool pgs_cryptor_encrypt_chachapoly(pgs_cryptor_t *ptr,
+					   const uint8_t *plaintext,
+					   size_t plaintext_len, uint8_t *tag,
+					   uint8_t *ciphertext,
+					   size_t *ciphertext_len);
+static bool
+pgs_cryptor_decrypt_chachapoly(pgs_cryptor_t *ptr, const uint8_t *ciphertext,
+			       size_t ciphertext_len, const uint8_t *tag,
+			       uint8_t *plaintext, size_t *plaintext_len);
+
+pgs_cryptor_t *pgs_cryptor_new(pgs_cryptor_type_t cipher,
+			       pgs_cryptor_direction_t dir, const uint8_t *key,
+			       const uint8_t *iv)
 {
-	pgs_aes_cryptor_t *ptr = malloc(sizeof(pgs_aes_cryptor_t));
+	pgs_cryptor_t *ptr = malloc(sizeof(pgs_cryptor_t));
+	ptr->cipher = cipher;
+	ptr->dir = dir;
 	ptr->key = key;
 	ptr->iv = iv;
+	pgs_cryptor_type_info(cipher, &ptr->key_len, &ptr->iv_len,
+			      &ptr->tag_len);
 
-	ptr->ctx = malloc(sizeof(mbedtls_cipher_context_t));
-	mbedtls_cipher_init(ptr->ctx);
-	const mbedtls_cipher_info_t *info = mbedtls_cipher_info_from_type(
-		*(const mbedtls_cipher_type_t *)cipher);
-	// mbedtls_cipher_setup
-	if (mbedtls_cipher_setup(ptr->ctx, info)) {
-		goto error;
-	}
-	if (mbedtls_cipher_set_iv(ptr->ctx, iv,
-				  mbedtls_cipher_get_iv_size(ptr->ctx))) {
-		goto error;
-	}
-
-	if (dir == PGS_ENCRYPT) {
-		if (mbedtls_cipher_setkey(
-			    ptr->ctx, key,
-			    mbedtls_cipher_get_key_bitlen(ptr->ctx),
-			    MBEDTLS_ENCRYPT)) {
+	switch (ptr->cipher) {
+	case AES_128_CFB:
+		if (!pgs_cryptor_init_aes(ptr)) {
 			goto error;
 		}
-	} else if (dir == PGS_DECRYPT) {
-		if (mbedtls_cipher_setkey(
-			    ptr->ctx, key,
-			    mbedtls_cipher_get_key_bitlen(ptr->ctx),
-			    MBEDTLS_DECRYPT)) {
+		break;
+	case AEAD_AES_128_GCM:
+	case AEAD_AES_256_GCM:
+		if (!pgs_cryptor_init_gcm(ptr)) {
 			goto error;
 		}
-	} else {
-		goto error;
+		break;
+	case AEAD_CHACHA20_POLY1305:
+		if (!pgs_cryptor_init_chachapoly(ptr)) {
+			goto error;
+		}
+		break;
+	default:
+		break;
 	}
 
 	return ptr;
 
 error:
-
-	pgs_aes_cryptor_free(ptr);
+	perror("pgs_cryptor_new");
+	pgs_cryptor_free(ptr);
 	return NULL;
 }
 
-void pgs_aes_cryptor_free(pgs_aes_cryptor_t *ptr)
+void pgs_cryptor_free(pgs_cryptor_t *ptr)
 {
-	if (ptr->ctx) {
-		mbedtls_cipher_free(ptr->ctx);
-		free(ptr->ctx);
+	switch (ptr->cipher) {
+	case AES_128_CFB:
+		if (ptr->ctx) {
+			mbedtls_cipher_free(ptr->ctx);
+			free(ptr->ctx);
+		}
+		break;
+	case AEAD_AES_128_GCM:
+	case AEAD_AES_256_GCM:
+		if (ptr->ctx) {
+			mbedtls_gcm_free(ptr->ctx);
+			free(ptr->ctx);
+		}
+		break;
+	case AEAD_CHACHA20_POLY1305:
+		if (ptr->ctx) {
+			mbedtls_chachapoly_free(ptr->ctx);
+			free(ptr->ctx);
+		}
+		break;
+	default:
+		break;
 	}
+
 	free(ptr);
 	ptr = NULL;
 }
 
-bool pgs_aes_cryptor_encrypt(pgs_aes_cryptor_t *ptr, const uint8_t *plaintext,
-			     int plaintext_len, uint8_t *ciphertext)
+bool pgs_cryptor_encrypt(pgs_cryptor_t *ptr, const uint8_t *plaintext,
+			 size_t plaintext_len, uint8_t *tag,
+			 uint8_t *ciphertext, size_t *ciphertext_len)
 {
-	size_t len;
-	if (mbedtls_cipher_update(ptr->ctx, plaintext, plaintext_len,
-				  ciphertext, &len)) {
-		return false;
+	switch (ptr->cipher) {
+	case AES_128_CFB:
+		return pgs_cryptor_encrypt_aes(ptr, plaintext, plaintext_len,
+					       tag, ciphertext, ciphertext_len);
+	case AEAD_AES_128_GCM:
+	case AEAD_AES_256_GCM:
+		return pgs_cryptor_encrypt_gcm(ptr, plaintext, plaintext_len,
+					       tag, ciphertext, ciphertext_len);
+	case AEAD_CHACHA20_POLY1305:
+		return pgs_cryptor_encrypt_chachapoly(ptr, plaintext,
+						      plaintext_len, tag,
+						      ciphertext,
+						      ciphertext_len);
+	default:
+		break;
 	}
-	assert(len == plaintext_len);
-	return true;
+	return false;
 }
 
-bool pgs_aes_cryptor_encrypt_final(pgs_aes_cryptor_t *ptr, uint8_t *ciphertext)
+bool pgs_cryptor_decrypt(pgs_cryptor_t *ptr, const uint8_t *ciphertext,
+			 size_t ciphertext_len, const uint8_t *tag,
+			 uint8_t *plaintext, size_t *plaintext_len)
 {
-	size_t len;
-	if (mbedtls_cipher_finish(ptr->ctx, ciphertext, &len)) {
-		return false;
+	switch (ptr->cipher) {
+	case AES_128_CFB:
+		return pgs_cryptor_decrypt_aes(ptr, ciphertext, ciphertext_len,
+					       tag, plaintext, plaintext_len);
+	case AEAD_AES_128_GCM:
+	case AEAD_AES_256_GCM:
+		return pgs_cryptor_decrypt_gcm(ptr, ciphertext, ciphertext_len,
+					       tag, plaintext, plaintext_len);
+	case AEAD_CHACHA20_POLY1305:
+		return pgs_cryptor_decrypt_chachapoly(ptr, ciphertext,
+						      ciphertext_len, tag,
+						      plaintext, plaintext_len);
+	default:
+		break;
 	}
-	return true;
+	return false;
 }
 
-bool pgs_aes_cryptor_decrypt(pgs_aes_cryptor_t *ptr, const uint8_t *ciphertext,
-			     int ciphertext_len, uint8_t *plaintext)
-
+void pgs_cryptor_reset_iv(pgs_cryptor_t *ptr, const uint8_t *iv)
 {
-	size_t len;
-	if (mbedtls_cipher_update(ptr->ctx, ciphertext, ciphertext_len,
-				  plaintext, &len)) {
-		return false;
-	}
-	return true;
-}
-
-bool pgs_aes_cryptor_decrypt_final(pgs_aes_cryptor_t *ptr, uint8_t *plaintext)
-{
-	size_t len;
-	if (mbedtls_cipher_finish(ptr->ctx, plaintext, &len)) {
-		return false;
-	}
-	return true;
-}
-
-/* AEAD */
-pgs_aead_cryptor_t *pgs_aead_cryptor_new(const void *cipher, const uint8_t *key,
-					 const uint8_t *iv,
-					 pgs_cryptor_direction_t dir)
-{
-	pgs_aead_cryptor_t *ptr = malloc(sizeof(pgs_aead_cryptor_t));
-	ptr->key = key;
-	ptr->counter = 0;
-	// vmess using 12 bytes iv aead cipher
-	ptr->iv = malloc(sizeof(uint8_t) * 12);
-	ptr->dir = dir;
-	memzero(ptr->iv, 12);
-	memcpy(ptr->iv + 2, iv + 2, 10);
-
-	ptr->ctx = malloc(sizeof(mbedtls_gcm_context));
-	mbedtls_gcm_init(ptr->ctx);
-	if (mbedtls_gcm_setkey(ptr->ctx, MBEDTLS_CIPHER_ID_AES, key, 128)) {
-		goto error;
-	}
-
-	return ptr;
-
-error:
-	perror("pgs_aead_cryptor_new");
-	pgs_aead_cryptor_free(ptr);
-	return NULL;
-}
-
-void pgs_aead_cryptor_free(pgs_aead_cryptor_t *ptr)
-{
-	if (ptr->ctx) {
-		mbedtls_gcm_free(ptr->ctx);
-		free(ptr->ctx);
-	}
-	if (ptr->iv)
-		free(ptr->iv);
-	free(ptr);
-	ptr = NULL;
-}
-
-bool pgs_aead_cryptor_encrypt(pgs_aead_cryptor_t *ptr, const uint8_t *plaintext,
-			      int plaintext_len, uint8_t *tag,
-			      uint8_t *ciphertext, int *ciphertext_len)
-{
-	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_ENCRYPT, ptr->iv, 12, NULL,
-			       0)) {
-		return false;
-	}
-	if (mbedtls_gcm_update(ptr->ctx, plaintext_len, plaintext,
-			       ciphertext)) {
-		return false;
-	}
-	if (mbedtls_gcm_finish(ptr->ctx, tag, 16)) {
-		return false;
-	}
-	*ciphertext_len = plaintext_len;
-
-	// increase iv
-	pgs_aead_cryptor_increase_iv(ptr);
-
-	return true;
-}
-
-bool pgs_aead_cryptor_decrypt(pgs_aead_cryptor_t *ptr,
-			      const uint8_t *ciphertext, int ciphertext_len,
-			      const uint8_t *tag, uint8_t *plaintext,
-			      int *plaintext_len)
-{
-	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv, 12, tag,
-			       16)) {
-		return false;
-	}
-	if (mbedtls_gcm_update(ptr->ctx, ciphertext_len, ciphertext,
-			       plaintext)) {
-		return false;
-	}
-	*plaintext_len = ciphertext_len;
-
-	pgs_aead_cryptor_increase_iv(ptr);
-
-	return true;
-}
-
-void pgs_aead_cryptor_increase_iv(pgs_aead_cryptor_t *ptr)
-{
-	ptr->counter += 1;
-	ptr->iv[0] = ptr->counter >> 8;
-	ptr->iv[1] = ptr->counter;
+	// nothing to do
 }
 
 // helpers
@@ -374,5 +306,186 @@ bool hkdf_sha1(const uint8_t *salt, size_t salt_len, const uint8_t *ikm,
 
 	int ret = mbedtls_hkdf(md, salt, salt_len, ikm, ikm_len, info, info_len,
 			       okm, okm_len);
+	return ret == 0;
+}
+
+// ===================== static
+static const mbedtls_cipher_type_t get_mbedtls_cipher(pgs_cryptor_type_t cipher)
+{
+	switch (cipher) {
+	case AES_128_CFB:
+		return MBEDTLS_CIPHER_AES_128_CFB128;
+	case AEAD_AES_128_GCM:
+		return MBEDTLS_CIPHER_AES_128_GCM;
+	case AEAD_AES_256_GCM:
+		return MBEDTLS_CIPHER_AES_256_GCM;
+	case AEAD_CHACHA20_POLY1305:
+		return MBEDTLS_CIPHER_CHACHA20_POLY1305;
+	default:
+		break;
+	}
+}
+
+static bool pgs_cryptor_init_aes(pgs_cryptor_t *ptr)
+{
+	ptr->ctx = malloc(sizeof(mbedtls_cipher_context_t));
+	mbedtls_cipher_init(ptr->ctx);
+
+	pgs_cryptor_type_info(ptr->cipher, &ptr->key_len, &ptr->iv_len,
+			      &ptr->tag_len);
+
+	const mbedtls_cipher_type_t mbedtls_cipher =
+		get_mbedtls_cipher(ptr->cipher);
+	const mbedtls_cipher_info_t *info =
+		mbedtls_cipher_info_from_type(mbedtls_cipher);
+
+	if (mbedtls_cipher_setup(ptr->ctx, info)) {
+		return false;
+	}
+
+	assert(mbedtls_cipher_get_iv_size(ptr->ctx) == ptr->iv_len);
+	if (mbedtls_cipher_set_iv(ptr->ctx, ptr->iv,
+				  mbedtls_cipher_get_iv_size(ptr->ctx))) {
+		return false;
+	}
+
+	assert(mbedtls_cipher_get_key_bitlen(ptr->ctx) == ptr->key_len * 8);
+	if (ptr->dir == PGS_ENCRYPT) {
+		if (mbedtls_cipher_setkey(
+			    ptr->ctx, ptr->key,
+			    mbedtls_cipher_get_key_bitlen(ptr->ctx),
+			    MBEDTLS_ENCRYPT)) {
+			return false;
+		}
+	} else if (ptr->dir == PGS_DECRYPT) {
+		if (mbedtls_cipher_setkey(
+			    ptr->ctx, ptr->key,
+			    mbedtls_cipher_get_key_bitlen(ptr->ctx),
+			    MBEDTLS_DECRYPT)) {
+			return false;
+		}
+	} else {
+		return false;
+	}
+	return true;
+}
+
+static bool pgs_cryptor_init_gcm(pgs_cryptor_t *ptr)
+{
+	ptr->ctx = malloc(sizeof(mbedtls_gcm_context));
+	mbedtls_gcm_init(ptr->ctx);
+	if (mbedtls_gcm_setkey(ptr->ctx, MBEDTLS_CIPHER_ID_AES, ptr->key,
+			       8 * ptr->key_len)) {
+		return false;
+	}
+	return true;
+}
+
+static bool pgs_cryptor_init_chachapoly(pgs_cryptor_t *ptr)
+{
+	ptr->ctx = malloc(sizeof(mbedtls_chachapoly_context));
+	mbedtls_chachapoly_init(ptr->ctx);
+	if (mbedtls_chachapoly_setkey(ptr->ctx, ptr->key)) {
+		return false;
+	}
+	return true;
+}
+
+static bool pgs_cryptor_encrypt_aes(pgs_cryptor_t *ptr,
+				    const uint8_t *plaintext,
+				    size_t plaintext_len, uint8_t *tag,
+				    uint8_t *ciphertext, size_t *ciphertext_len)
+{
+	size_t len;
+	if (mbedtls_cipher_update(ptr->ctx, plaintext, plaintext_len,
+				  ciphertext, &len)) {
+		return false;
+	}
+	*ciphertext_len = len;
+	return true;
+}
+static bool pgs_cryptor_decrypt_aes(pgs_cryptor_t *ptr,
+				    const uint8_t *ciphertext,
+				    size_t ciphertext_len, const uint8_t *tag,
+				    uint8_t *plaintext, size_t *plaintext_len)
+{
+	size_t len;
+	if (mbedtls_cipher_update(ptr->ctx, ciphertext, ciphertext_len,
+				  plaintext, &len)) {
+		return false;
+	}
+	*plaintext_len = len;
+
+	return true;
+}
+
+static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
+				    const uint8_t *plaintext,
+				    size_t plaintext_len, uint8_t *tag,
+				    uint8_t *ciphertext, size_t *ciphertext_len)
+{
+	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_ENCRYPT, ptr->iv,
+			       ptr->iv_len, NULL, 0)) {
+		return false;
+	}
+	if (mbedtls_gcm_update(ptr->ctx, plaintext_len, plaintext,
+			       ciphertext)) {
+		return false;
+	}
+	if (mbedtls_gcm_finish(ptr->ctx, tag, ptr->tag_len)) {
+		return false;
+	}
+	*ciphertext_len = plaintext_len;
+	return true;
+}
+
+static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
+				    const uint8_t *ciphertext,
+				    size_t ciphertext_len, const uint8_t *tag,
+				    uint8_t *plaintext, size_t *plaintext_len)
+{
+	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv,
+			       ptr->iv_len, tag, ptr->tag_len)) {
+		return false;
+	}
+	if (mbedtls_gcm_update(ptr->ctx, ciphertext_len, ciphertext,
+			       plaintext)) {
+		return false;
+	}
+	*plaintext_len = ciphertext_len;
+
+	return true;
+}
+
+static bool pgs_cryptor_encrypt_chachapoly(pgs_cryptor_t *ptr,
+					   const uint8_t *plaintext,
+					   size_t plaintext_len, uint8_t *tag,
+					   uint8_t *ciphertext,
+					   size_t *ciphertext_len)
+{
+	if (mbedtls_chachapoly_starts(ptr->ctx, ptr->iv,
+				      MBEDTLS_CHACHAPOLY_ENCRYPT)) {
+		return false;
+	}
+	if (mbedtls_chachapoly_update(ptr->ctx, plaintext_len, plaintext,
+				      ciphertext)) {
+		return false;
+	}
+	if (mbedtls_chachapoly_finish(ptr->ctx, tag)) {
+		return false;
+	}
+	*ciphertext_len = plaintext_len;
+	return true;
+}
+
+static bool
+pgs_cryptor_decrypt_chachapoly(pgs_cryptor_t *ptr, const uint8_t *ciphertext,
+			       size_t ciphertext_len, const uint8_t *tag,
+			       uint8_t *plaintext, size_t *plaintext_len)
+{
+	int ret = mbedtls_chachapoly_auth_decrypt(ptr->ctx, ciphertext_len,
+						  ptr->iv, NULL, 0, tag,
+						  ciphertext, plaintext);
+	*plaintext_len = ciphertext_len;
 	return ret == 0;
 }

@@ -6,6 +6,13 @@
 #endif
 #include "assert.h"
 
+static void debug_hex(const uint8_t *buf, size_t len)
+{
+	uint8_t *hexstring = to_hexstring(buf, len);
+	printf("%s\n", hexstring);
+	free(hexstring);
+}
+
 void test_sha224()
 {
 	// sha224("password") == "d63dc919e201d7bc4c825630d2cf25fdc93d4b2f0d46706d29038d01"
@@ -130,14 +137,10 @@ void test_crypto_aead_encrypt()
 	unsigned char tag1[16] = { 0xa5, 0x33, 0x26, 0xb6, 0x34, 0xa1,
 				   0x17, 0xf8, 0x78, 0xdc, 0x09, 0x0e,
 				   0x76, 0x93, 0x47, 0x5e };
-	pgs_cryptor_t *encryptor;
 
-#ifdef USE_MBEDTLS
-	mbedtls_cipher_type_t cipher_gcm = MBEDTLS_CIPHER_AES_128_GCM;
-	encryptor = pgs_aead_cryptor_new(&cipher_gcm, key, iv, PGS_ENCRYPT);
-#else
-	encryptor = pgs_cryptor_new(AEAD_AES_128_GCM, PGS_ENCRYPT, key, iv);
-#endif
+	pgs_cryptor_t *encryptor =
+		pgs_cryptor_new(AEAD_AES_128_GCM, PGS_ENCRYPT, key, iv);
+	assert(encryptor != NULL);
 
 	{
 		// First round
@@ -147,7 +150,7 @@ void test_crypto_aead_encrypt()
 		bool ret = pgs_cryptor_encrypt(encryptor, plaintext, 8, en_tag,
 					       out, &output_len);
 		assert(ret == true);
-
+		assert(output_len == 8);
 		for (int i = 0; i < output_len; i++) {
 			assert(out[i] == result1[i]);
 		}
@@ -155,7 +158,6 @@ void test_crypto_aead_encrypt()
 		for (int i = 0; i < 16; i++) {
 			assert(en_tag[i] == tag1[i]);
 		}
-		assert(output_len == 8);
 	}
 
 	// mock iv increase
@@ -206,13 +208,8 @@ void test_crypto_aead_decrypt()
 				   0x17, 0xf8, 0x78, 0xdc, 0x09, 0x0e,
 				   0x76, 0x93, 0x47, 0x5e };
 
-	pgs_cryptor_t *decryptor;
-#ifdef USE_MBEDTLS
-	mbedtls_cipher_type_t cipher_gcm = MBEDTLS_CIPHER_AES_128_GCM;
-	decryptor = pgs_aead_cryptor_new(&cipher_gcm, key, iv, PGS_DECRYPT);
-#else
-	decryptor = pgs_cryptor_new(AEAD_AES_128_GCM, PGS_DECRYPT, key, iv);
-#endif
+	pgs_cryptor_t *decryptor =
+		pgs_cryptor_new(AEAD_AES_128_GCM, PGS_DECRYPT, key, iv);
 
 	{
 		// First round
