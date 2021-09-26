@@ -10,6 +10,8 @@
 #define BUFSIZE_4K 4 * 1024
 #define memzero(buf, n) (void)memset(buf, 0, n)
 
+#define SS_INFO "ss-subkey"
+
 #define SOCKS5_CMD_IPV4 0x01
 #define SOCKS5_CMD_IPV6 0x04
 #define SOCKS5_CMD_HOSTNAME 0x03

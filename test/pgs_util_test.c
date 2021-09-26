@@ -341,7 +341,6 @@ void test_hkdf_sha1()
 
 	uint8_t okm_str[] =
 		"bae0e694e5f042b126f55d88be19804ad9b1b90beac5b9494a60b7768856b4c2";
-	uint8_t SS_INFO[] = "ss-subkey";
 	uint8_t password[] = "password";
 	uint8_t ikm_str[] =
 		"5f4dcc3b5aa765d61d8327deb882cf992b95990a9151374abd8ff8c5a7a0fe08";
@@ -353,7 +352,8 @@ void test_hkdf_sha1()
 	free(hexstring);
 
 	uint8_t okm[32];
-	bool ok = hkdf_sha1(salt, 32, ikm, 32, SS_INFO, 9, okm, 32);
+	bool ok = hkdf_sha1(salt, 32, ikm, 32, (const uint8_t *)SS_INFO, 9, okm,
+			    32);
 	assert(ok);
 	hexstring = to_hexstring(okm, 32);
 	assert(strcmp((const char *)okm_str, (const char *)hexstring) == 0);

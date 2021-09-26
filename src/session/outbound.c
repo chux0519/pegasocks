@@ -5,8 +5,6 @@
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 
-#define SS_INFO "ss-subkey"
-
 /*
  * bypass handlers
  */
@@ -913,12 +911,20 @@ static void on_ss_remote_read(struct bufferevent *bev, void *ctx)
 	size_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
+	if (data_len <= 0)
+		return;
+
 	// parse
-	size_t olen;
+	size_t olen = 0;
 	bool ok = shadowsocks_write_local(session, data, data_len, &olen);
-	if (!ok)
+	evbuffer_drain(input, olen);
+	on_session_metrics_recv(session, olen);
+
+	if (!ok) {
+		pgs_session_error(session, "failed to decode shadowsocks");
 		goto error;
-	evbuffer_drain(input, data_len);
+	}
+
 	return;
 
 error:

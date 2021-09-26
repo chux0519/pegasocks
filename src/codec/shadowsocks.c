@@ -3,31 +3,15 @@
 
 #include <event2/buffer.h>
 
-static void pgs_ss_increase_cryptor_iv(pgs_outbound_ctx_ss_t *ctx,
-				       pgs_cryptor_direction_t dir)
-{
-	if (is_aead_cipher(ctx->cipher)) {
-		pgs_cryptor_t *cryptor = NULL;
-		uint8_t *iv = NULL;
-		switch (dir) {
-		case PGS_DECRYPT:
-			cryptor = ctx->decryptor;
-			iv = ctx->dec_iv;
-			break;
-		case PGS_ENCRYPT:
-			cryptor = ctx->encryptor;
-			iv = ctx->enc_iv;
-			break;
-		default:
-			break;
-		}
+static bool shadowsocks_write_local_aes(pgs_session_t *session,
+					const uint8_t *msg, size_t len,
+					size_t *olen);
+static bool shadowsocks_write_local_aead(pgs_session_t *session,
+					 const uint8_t *msg, size_t len,
+					 size_t *olen);
 
-		if (iv != NULL && cryptor != NULL) {
-			pgs_increase_nonce(iv, ctx->iv_len);
-			pgs_cryptor_reset_iv(cryptor, iv);
-		}
-	}
-}
+static void pgs_ss_increase_cryptor_iv(pgs_outbound_ctx_ss_t *ctx,
+				       pgs_cryptor_direction_t dir);
 
 bool shadowsocks_write_remote(pgs_session_t *session, const uint8_t *msg,
 			      size_t len, size_t *olen)
@@ -58,8 +42,8 @@ bool shadowsocks_write_remote(pgs_session_t *session, const uint8_t *msg,
 		uint8_t prefix[2] = { 0 };
 		prefix[0] = (payload_len & 0x3FFF) >> 8;
 		prefix[1] = (payload_len & 0x3FFF);
-		printf("len: %ld, [0]: %d, [1]: %d\n", payload_len, prefix[0],
-		       prefix[1]);
+		//printf("len: %ld, [0]: %d, [1]: %d\n", payload_len, prefix[0],
+		//       prefix[1]);
 		pgs_cryptor_encrypt(ssctx->encryptor, prefix, 2,
 				    ssctx->wbuf + offset + 2 /* tag */,
 				    ssctx->wbuf + offset, &ciphertext_len);
@@ -110,15 +94,115 @@ bool shadowsocks_write_remote(pgs_session_t *session, const uint8_t *msg,
 bool shadowsocks_write_local(pgs_session_t *session, const uint8_t *msg,
 			     size_t len, size_t *olen)
 {
-	uint8_t *udp_packet = NULL;
-	if (session->inbound->state == INBOUND_PROXY) {
-		struct bufferevent *inbev = session->inbound->bev;
-		struct evbuffer *inboundw = bufferevent_get_output(inbev);
-		// TODO: decode and write
-		pgs_session_debug(session, "remote -> local: %d", len);
-	} else if (session->inbound->state == INBOUND_UDP_RELAY &&
-		   session->inbound->udp_fd != -1) {
-		// TODO:
+	if (session->inbound->state != INBOUND_PROXY)
+		return false;
+
+	pgs_outbound_ctx_ss_t *ssctx = session->outbound->ctx;
+	if (is_aead_cipher(ssctx->cipher)) {
+		return shadowsocks_write_local_aead(session, msg, len, olen);
+	} else {
+		return shadowsocks_write_local_aes(session, msg, len, olen);
 	}
+}
+
+// static
+static void pgs_ss_increase_cryptor_iv(pgs_outbound_ctx_ss_t *ctx,
+				       pgs_cryptor_direction_t dir)
+{
+	if (is_aead_cipher(ctx->cipher)) {
+		pgs_cryptor_t *cryptor = NULL;
+		uint8_t *iv = NULL;
+		switch (dir) {
+		case PGS_DECRYPT:
+			cryptor = ctx->decryptor;
+			iv = ctx->dec_iv;
+			break;
+		case PGS_ENCRYPT:
+			cryptor = ctx->encryptor;
+			iv = ctx->enc_iv;
+			break;
+		default:
+			break;
+		}
+
+		if (iv != NULL && cryptor != NULL) {
+			pgs_increase_nonce(iv, ctx->iv_len);
+			pgs_cryptor_reset_iv(cryptor, iv);
+		}
+	}
+}
+
+static bool shadowsocks_write_local_aes(pgs_session_t *session,
+					const uint8_t *msg, size_t len,
+					size_t *olen)
+{
+	pgs_outbound_ctx_ss_t *ssctx = session->outbound->ctx;
+	return true;
+}
+
+static bool shadowsocks_write_local_aead(pgs_session_t *session,
+					 const uint8_t *msg, size_t len,
+					 size_t *olen)
+{
+	struct bufferevent *inbev = session->inbound->bev;
+	struct evbuffer *inboundw = bufferevent_get_output(inbev);
+
+	pgs_outbound_ctx_ss_t *ssctx = session->outbound->ctx;
+	size_t offset = 0;
+	size_t decode_len, plen;
+	while (len > 0) {
+		if (!ssctx->decryptor) {
+			if (len < ssctx->key_len) {
+				// need more data
+				return true;
+			}
+			hkdf_sha1(msg /*salt*/, ssctx->key_len, ssctx->ikm,
+				  ssctx->key_len, (const uint8_t *)SS_INFO, 9,
+				  ssctx->dec_key, ssctx->key_len);
+			ssctx->decryptor =
+				pgs_cryptor_new(ssctx->cipher, PGS_DECRYPT,
+						ssctx->dec_key, ssctx->dec_iv);
+			*olen += ssctx->key_len;
+			len -= ssctx->key_len;
+			offset += ssctx->key_len;
+		}
+		assert(ssctx->decryptor);
+		if (len < 2 + ssctx->tag_len) {
+			// need more data
+			return true;
+		}
+		// chunk
+		uint8_t chunk_len[2];
+		pgs_cryptor_decrypt(ssctx->decryptor, msg + offset, 2,
+				    msg + offset + 2, chunk_len, &decode_len);
+		if (decode_len != 2) {
+			return false;
+		}
+		offset += (2 + ssctx->tag_len);
+		*olen += (2 + ssctx->tag_len);
+		len -= (2 + ssctx->tag_len);
+		plen = (chunk_len[0] << 8) | chunk_len[1];
+		if (len < plen + ssctx->tag_len) {
+			*olen -=
+				(2 +
+				 ssctx->tag_len); /* will decode the length again */
+			return true;
+		}
+		pgs_ss_increase_cryptor_iv(ssctx, PGS_DECRYPT);
+
+		pgs_cryptor_decrypt(ssctx->decryptor, msg + offset, plen,
+				    msg + offset + plen, ssctx->rbuf,
+				    &decode_len);
+		if (decode_len != plen) {
+			return false;
+		}
+		pgs_ss_increase_cryptor_iv(ssctx, PGS_DECRYPT);
+		evbuffer_add(inboundw, ssctx->rbuf, plen);
+		offset += (plen + ssctx->tag_len);
+		*olen += (plen + ssctx->tag_len);
+		len -= (plen + ssctx->tag_len);
+		printf("decoded chunk\n");
+	}
+
 	return true;
 }
