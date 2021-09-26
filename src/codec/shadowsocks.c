@@ -45,19 +45,28 @@ bool shadowsocks_write_remote(pgs_session_t *session, const uint8_t *msg,
 	size_t chunk_len, offset, ciphertext_len;
 	chunk_len = payload_len;
 
-	const uint8_t *iv = pgs_outbound_ctx_ss_get_iv(ssctx);
-	memcpy(ssctx->wbuf, iv, ssctx->iv_len);
-	offset = ssctx->iv_len;
+	const uint8_t *iv = ssctx->enc_iv;
+	size_t iv_len = ssctx->iv_len;
+	offset = iv_len;
 
 	if (is_aead_cryptor(ssctx->encryptor)) {
 		chunk_len = 2 + ssctx->tag_len + payload_len + ssctx->tag_len;
+		iv = ssctx->enc_salt;
+		iv_len = ssctx->key_len;
+		offset = iv_len;
+
 		uint8_t prefix[2] = { 0 };
-		prefix[0] = (payload_len & 0x3FFF) << 8;
-		prefix[1] = (payload_len & 0x3FFF) & 0xFF;
+		prefix[0] = (payload_len & 0x3FFF) >> 8;
+		prefix[1] = (payload_len & 0x3FFF);
+		printf("len: %ld, [0]: %d, [1]: %d\n", payload_len, prefix[0],
+		       prefix[1]);
 		pgs_cryptor_encrypt(ssctx->encryptor, prefix, 2,
 				    ssctx->wbuf + offset + 2 /* tag */,
 				    ssctx->wbuf + offset, &ciphertext_len);
 		pgs_ss_increase_cryptor_iv(ssctx, PGS_ENCRYPT);
+		//debug_hexstring("tag", ssctx->wbuf + offset + 2,
+		//		ssctx->tag_len);
+
 		if (ciphertext_len != 2) {
 			pgs_session_error(session,
 					  "shadowsocks encrypt failed");
@@ -70,6 +79,10 @@ bool shadowsocks_write_remote(pgs_session_t *session, const uint8_t *msg,
 		pgs_session_error(session, "payload too large");
 		return false;
 	}
+
+	//debug_hexstring("salt", iv, iv_len);
+	//debug_hexstring("key", ssctx->enc_key, ssctx->key_len);
+	memcpy(ssctx->wbuf, iv, iv_len);
 
 	uint8_t *payload = malloc(payload_len);
 	memcpy(payload, ssctx->cmd + 3, addr_len);
@@ -86,11 +99,11 @@ bool shadowsocks_write_remote(pgs_session_t *session, const uint8_t *msg,
 		return false;
 	}
 
-	evbuffer_add(outboundw, ssctx->wbuf, ssctx->iv_len + chunk_len);
+	evbuffer_add(outboundw, ssctx->wbuf, iv_len + chunk_len);
 
 	pgs_session_debug(session, "local -> remote: %d", len);
 
-	*olen = ssctx->iv_len + chunk_len;
+	*olen = iv_len + chunk_len;
 	return true;
 }
 

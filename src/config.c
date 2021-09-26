@@ -419,7 +419,7 @@ pgs_config_extra_ss_t *pgs_config_extra_ss_parse(pgs_config_t *config,
 			ptr->method = AES_128_CFB;
 		} else if (strcasecmp(method, "aes-256-gcm") == 0) {
 			ptr->method = AEAD_AES_256_GCM;
-		} else if (strcasecmp(method, "chacha20-ietf-poly1305") == 0) {
+		} else if (strcasecmp(method, "chacha20-poly1305") == 0) {
 			ptr->method = AEAD_CHACHA20_POLY1305;
 		}
 	}

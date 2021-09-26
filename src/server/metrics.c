@@ -113,6 +113,10 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 					 "Failed to init v2ray outbound");
 			goto error;
 		}
+	} else {
+		pgs_logger_error(logger, "Not supported server type: %s",
+				 config->server_type);
+		return;
 	}
 
 	bufferevent_enable(ptr->bev, EV_READ);

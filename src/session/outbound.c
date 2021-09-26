@@ -239,15 +239,6 @@ void pgs_outbound_ctx_ss_init_decryptor(
 					 ptr->dec_iv);
 }
 
-const uint8_t *pgs_outbound_ctx_ss_get_iv(pgs_outbound_ctx_ss_t *ptr)
-{
-	if (is_aead_cryptor(ptr->encryptor)) {
-		return ptr->enc_salt;
-	} else {
-		return ptr->enc_iv;
-	}
-}
-
 void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
 {
 	if (ptr->wbuf)
@@ -389,6 +380,7 @@ bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
 
 	assert(event_cb && read_cb && ptr->bev);
 	bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
+
 	return true;
 
 error:
@@ -898,6 +890,10 @@ static void on_ss_remote_event(struct bufferevent *bev, short events, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 
+	if (events & BEV_EVENT_CONNECTED) {
+		session->outbound->ready = true;
+		on_ss_local_read(bev, ctx);
+	}
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(session,
 				  "Error from bufferevent: on_ss_remote_event");

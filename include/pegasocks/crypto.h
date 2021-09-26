@@ -217,6 +217,17 @@ static uint8_t *to_hexstring(const uint8_t *buf, uint64_t size)
 	return hexbuf;
 }
 
+static void debug_hexstring(const char *name, const uint8_t *buf, uint64_t size)
+{
+	uint8_t *hexbuf = (uint8_t *)malloc(sizeof(uint8_t) * (2 * size + 1));
+	for (int i = 0; i < size; i++) {
+		sprintf((char *)hexbuf + i * 2, "%02x", (int)buf[i]);
+	}
+	hexbuf[2 * size] = '\0';
+	printf("%s:\n%s\n", name, hexbuf);
+	free(hexbuf);
+}
+
 static void hextobin(const char *str, uint8_t *bytes, size_t blen)
 {
 	uint8_t pos;

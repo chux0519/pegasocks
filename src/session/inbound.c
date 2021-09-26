@@ -178,6 +178,8 @@ void on_ss_local_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *inboundr = bufferevent_get_input(bev);
 	size_t len = evbuffer_get_length(inboundr);
 	uint8_t *msg = evbuffer_pullup(inboundr, len);
+	if (len <= 0)
+		return;
 	pgs_session_debug(session, "local -> encode -> remote");
 	struct bufferevent *outbev = session->outbound->bev;
 	struct evbuffer *outboundw = bufferevent_get_output(outbev);

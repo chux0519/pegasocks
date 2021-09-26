@@ -120,7 +120,6 @@ pgs_outbound_ctx_ss_t *pgs_outbound_ctx_ss_new(const uint8_t *cmd,
 void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr);
 void pgs_outbound_ctx_ss_init_decryptor(pgs_outbound_ctx_ss_t *ptr,
 					const uint8_t *salt);
-const uint8_t *pgs_outbound_ctx_ss_get_iv(pgs_outbound_ctx_ss_t *ptr);
 
 // outbound
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr);
