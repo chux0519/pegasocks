@@ -28,9 +28,15 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 				  void *ctx);
 static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx);
 
-void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
-			    pgs_acl_t *acl, bool *proxy, char **dest_ptr,
-			    int *port)
+/*
+ * shadowsocks session handlers
+ */
+static void on_ss_remote_event(struct bufferevent *bev, short events,
+			       void *ctx);
+static void on_ss_remote_read(struct bufferevent *bev, void *ctx);
+
+void socks5_dest_addr_parse(const uint8_t *cmd, size_t cmd_len, pgs_acl_t *acl,
+			    bool *proxy, char **dest_ptr, int *port)
 {
 	int atype = cmd[3];
 	int offset = 4;
@@ -92,8 +98,8 @@ void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
 
 // trojan session context
 pgs_outbound_ctx_trojan_t *
-pgs_outbound_ctx_trojan_new(const uint8_t *encodepass, uint64_t passlen,
-			    const uint8_t *cmd, uint64_t cmdlen)
+pgs_outbound_ctx_trojan_new(const uint8_t *encodepass, size_t passlen,
+			    const uint8_t *cmd, size_t cmdlen)
 {
 	if (passlen != SHA224_LEN * 2 || cmdlen < 3)
 		return NULL;
@@ -124,7 +130,7 @@ void pgs_outbound_ctx_trojan_free(pgs_outbound_ctx_trojan_t *ctx)
 
 // vmess context
 pgs_outbound_ctx_v2ray_t *pgs_outbound_ctx_v2ray_new(const uint8_t *cmd,
-						     uint64_t cmdlen,
+						     size_t cmdlen,
 						     pgs_cryptor_type_t cipher)
 {
 	pgs_outbound_ctx_v2ray_t *ptr = (pgs_outbound_ctx_v2ray_t *)calloc(
@@ -290,7 +296,7 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 
 bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
 				      const pgs_server_config_t *config,
-				      const uint8_t *cmd, uint64_t cmd_len,
+				      const uint8_t *cmd, size_t cmd_len,
 				      struct event_base *base,
 				      pgs_ssl_ctx_t *ssl_ctx,
 				      on_event_cb *event_cb,
@@ -322,7 +328,7 @@ error:
 
 bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
 				     const pgs_server_config_t *config,
-				     const uint8_t *cmd, uint64_t cmd_len,
+				     const uint8_t *cmd, size_t cmd_len,
 				     struct event_base *base,
 				     pgs_ssl_ctx_t *ssl_ctx,
 				     on_event_cb *event_cb, on_read_cb *read_cb,
@@ -359,7 +365,7 @@ error:
 
 bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
 				  const pgs_server_config_t *config,
-				  const uint8_t *cmd, uint64_t cmd_len,
+				  const uint8_t *cmd, size_t cmd_len,
 				  struct event_base *base,
 				  on_event_cb *event_cb, on_read_cb *read_cb,
 				  void *cb_ctx)
@@ -416,7 +422,7 @@ pgs_session_outbound_t *pgs_session_outbound_new()
 bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 			       const pgs_config_t *gconfig,
 			       const pgs_server_config_t *config,
-			       const uint8_t *cmd, uint64_t cmd_len,
+			       const uint8_t *cmd, size_t cmd_len,
 			       pgs_local_server_t *local, void *cb_ctx)
 {
 	ptr->config = config;
@@ -444,9 +450,9 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 				local->ssl_ctx, on_v2ray_remote_event,
 				on_v2ray_remote_read, cb_ctx);
 		} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
-			//ret = pgs_session_ss_outbound_init(
-			//	ptr, config, cmd, cmd_len, local->base,
-			//	on_ss_remote_event, on_ss_remote_read, cb_ctx);
+			ok = pgs_session_ss_outbound_init(
+				ptr, config, cmd, cmd_len, local->base,
+				on_ss_remote_event, on_ss_remote_read, cb_ctx);
 		}
 		if (!ok) {
 			pgs_logger_error(local->logger,
@@ -514,7 +520,7 @@ static void on_bypass_remote_read(struct bufferevent *bev, void *ctx)
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "remote read triggered");
 	struct evbuffer *input = bufferevent_get_input(bev);
-	uint64_t data_len = evbuffer_get_length(input);
+	size_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	if (data_len > 0) {
@@ -601,7 +607,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	uint64_t data_len = evbuffer_get_length(input);
+	size_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	const pgs_server_config_t *config = session->outbound->config;
@@ -761,7 +767,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	uint64_t data_len = evbuffer_get_length(input);
+	size_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	pgs_outbound_ctx_v2ray_t *v2ray_s_ctx = session->outbound->ctx;
@@ -770,8 +776,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 		struct bufferevent *inbev = session->inbound->bev;
 		struct evbuffer *inboundw = bufferevent_get_output(inbev);
 
-		if (!pgs_vmess_parse(session, data, data_len,
-				     (pgs_session_write_fn)vmess_flush_local)) {
+		if (!pgs_vmess_parse(session, data, data_len)) {
 			pgs_session_error(session,
 					  "failed to decode vmess payload");
 			on_v2ray_remote_event(bev, BEV_EVENT_ERROR, ctx);
@@ -828,9 +833,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 					if (!pgs_vmess_parse(
 						    session,
 						    data + ws_meta.header_len,
-						    ws_meta.payload_len,
-						    (pgs_session_write_fn)
-							    vmess_flush_local)) {
+						    ws_meta.payload_len)) {
 						pgs_session_error(
 							session,
 							"failed to decode vmess payload");
@@ -867,4 +870,39 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 			}
 		}
 	}
+}
+
+/*
+ * shadowsocks
+ */
+static void on_ss_remote_event(struct bufferevent *bev, short events, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+
+	if (events & BEV_EVENT_ERROR)
+		pgs_session_error(session,
+				  "Error from bufferevent: on_ss_remote_event");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		bufferevent_free(bev);
+		pgs_session_free(session);
+	}
+}
+
+static void on_ss_remote_read(struct bufferevent *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	pgs_session_debug(session, "ss remote read triggered");
+	struct evbuffer *output = bufferevent_get_output(bev);
+	struct evbuffer *input = bufferevent_get_input(bev);
+
+	size_t data_len = evbuffer_get_length(input);
+	unsigned char *data = evbuffer_pullup(input, data_len);
+
+	// trojan-gfw
+	trojan_write_local(session, data, data_len);
+	evbuffer_drain(input, data_len);
+	return;
+
+error:
+	pgs_session_free(session);
 }

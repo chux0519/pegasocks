@@ -28,7 +28,7 @@ typedef struct pgs_session_outbound_s {
 typedef struct pgs_outbound_ctx_trojan_s {
 	// sha224(password) + "\r\n" + cmd[1] + cmd.substr(3) + "\r\n"
 	char *head;
-	uint64_t head_len;
+	size_t head_len;
 } pgs_outbound_ctx_trojan_t;
 
 typedef struct pgs_outbound_ctx_v2ray_s {
@@ -46,15 +46,15 @@ typedef struct pgs_outbound_ctx_v2ray_s {
 
 	// for request header
 	const uint8_t *cmd;
-	uint64_t cmdlen;
+	size_t cmdlen;
 	bool header_sent;
 	uint8_t v;
 
 	// for resp header
 	bool header_recved;
-	uint64_t resp_len;
-	uint64_t target_addr_len;
-	uint64_t remote_rbuf_pos;
+	size_t resp_len;
+	size_t target_addr_len;
+	size_t remote_rbuf_pos;
 	uint32_t resp_hash;
 
 	// key and iv for data part
@@ -97,20 +97,19 @@ typedef struct pgs_outbound_ctx_ss_s {
 	pgs_cryptor_type_t cipher;
 } pgs_outbound_ctx_ss_t;
 
-void socks5_dest_addr_parse(const uint8_t *cmd, uint64_t cmd_len,
-			    pgs_acl_t *acl, bool *proxy, char **dest_ptr,
-			    int *port);
+void socks5_dest_addr_parse(const uint8_t *cmd, size_t cmd_len, pgs_acl_t *acl,
+			    bool *proxy, char **dest_ptr, int *port);
 
 // trojan session context
 pgs_outbound_ctx_trojan_t *
-pgs_outbound_ctx_trojan_new(const uint8_t *encodepass, uint64_t passlen,
-			    const uint8_t *cmd, uint64_t cmdlen);
+pgs_outbound_ctx_trojan_new(const uint8_t *encodepass, size_t passlen,
+			    const uint8_t *cmd, size_t cmdlen);
 
 void pgs_outbound_ctx_trojan_free(pgs_outbound_ctx_trojan_t *ctx);
 
 // vmess context
 pgs_outbound_ctx_v2ray_t *pgs_outbound_ctx_v2ray_new(const uint8_t *cmd,
-						     uint64_t cmdlen,
+						     size_t cmdlen,
 						     pgs_cryptor_type_t cipher);
 void pgs_outbound_ctx_v2ray_free(pgs_outbound_ctx_v2ray_t *ptr);
 
@@ -129,7 +128,7 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr);
 
 bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
 				      const pgs_server_config_t *config,
-				      const uint8_t *cmd, uint64_t cmd_len,
+				      const uint8_t *cmd, size_t cmd_len,
 				      struct event_base *base,
 				      pgs_ssl_ctx_t *ssl_ctx,
 				      on_event_cb *event_cb,
@@ -137,7 +136,7 @@ bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
 
 bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
 				     const pgs_server_config_t *config,
-				     const uint8_t *cmd, uint64_t cmd_len,
+				     const uint8_t *cmd, size_t cmd_len,
 				     struct event_base *base,
 				     pgs_ssl_ctx_t *ssl_ctx,
 				     on_event_cb *event_cb, on_read_cb *read_cb,
@@ -153,7 +152,7 @@ pgs_session_outbound_t *pgs_session_outbound_new();
 bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 			       const pgs_config_t *gconfig,
 			       const pgs_server_config_t *config,
-			       const uint8_t *cmd, uint64_t cmd_len,
+			       const uint8_t *cmd, size_t cmd_len,
 			       pgs_local_server_t *local, void *cb_ctx);
 
 #endif

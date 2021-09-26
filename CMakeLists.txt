@@ -41,7 +41,9 @@ set(CMAKE_C_FLAGS_UBSAN
 # SAN end =======================================
 
 set(PEGAS_SOURCES src/core/pegas.c
-                  src/core/codec.c
+                  src/core/codec_ws.c
+                  src/core/codec_trojan.c
+                  src/core/codec_vmess.c
                   src/core/config.c
                   src/core/control.c
                   src/core/helper_thread.c

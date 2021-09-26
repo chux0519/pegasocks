@@ -81,7 +81,7 @@ void on_bypass_local_read(struct bufferevent *bev, void *ctx)
 	pgs_session_t *session = (pgs_session_t *)ctx;
 
 	struct evbuffer *inboundr = bufferevent_get_input(bev);
-	uint64_t len = evbuffer_get_length(inboundr);
+	size_t len = evbuffer_get_length(inboundr);
 	uint8_t *msg = evbuffer_pullup(inboundr, len);
 
 	struct bufferevent *outbev = session->outbound->bev;
@@ -109,7 +109,7 @@ void on_trojan_local_read(struct bufferevent *bev, void *ctx)
 	pgs_outbound_ctx_trojan_t *tctx = session->outbound->ctx;
 
 	struct evbuffer *inboundr = bufferevent_get_input(bev);
-	uint64_t len = evbuffer_get_length(inboundr);
+	size_t len = evbuffer_get_length(inboundr);
 	uint8_t *msg = evbuffer_pullup(inboundr, len);
 	pgs_session_debug(session, "local -> encode -> remote");
 	struct bufferevent *outbev = session->outbound->bev;
@@ -156,13 +156,11 @@ void on_v2ray_local_read(struct bufferevent *bev, void *ctx)
 
 	struct evbuffer *outboundw = bufferevent_get_output(outbev);
 	struct evbuffer *inboundr = bufferevent_get_input(inbev);
-	uint64_t data_len = evbuffer_get_length(inboundr);
+	size_t data_len = evbuffer_get_length(inboundr);
 	if (data_len <= 0)
 		return;
 	const uint8_t *data = evbuffer_pullup(inboundr, data_len);
-	uint64_t total_len = pgs_vmess_write_remote(
-		session, data, data_len,
-		(pgs_session_write_fn)&vmess_flush_remote /*this will handle ws encode*/);
+	size_t total_len = pgs_vmess_write_remote(session, data, data_len);
 
 	evbuffer_drain(inboundr, data_len);
 	on_session_metrics_send(session, total_len);
@@ -232,9 +230,8 @@ void on_udp_read_v2ray(const uint8_t *buf, ssize_t len, void *ctx)
 	vctx->target_addr_len = addr_len;
 	memcpy(vctx->target_addr, buf + 3, addr_len);
 
-	uint64_t total_len = pgs_vmess_write_remote(
-		session, buf + 3 + addr_len, data_len,
-		(pgs_session_write_fn)&vmess_flush_remote);
+	size_t total_len =
+		pgs_vmess_write_remote(session, buf + 3 + addr_len, data_len);
 
 	return;
 
@@ -332,7 +329,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
-	uint64_t len;
+	size_t len;
 	uint8_t *rdata;
 
 	switch (state) {
@@ -361,7 +358,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			goto error;
 		}
 		// cache cmd
-		uint64_t cmdlen = 4 + addr_len + 2;
+		size_t cmdlen = 4 + addr_len + 2;
 		session->inbound->cmd = malloc(sizeof(uint8_t) * cmdlen);
 		memcpy(session->inbound->cmd, rdata, cmdlen);
 
