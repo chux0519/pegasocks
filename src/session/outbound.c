@@ -198,8 +198,6 @@ pgs_outbound_ctx_ss_t *pgs_outbound_ctx_ss_new(const uint8_t *cmd,
 
 	ptr->enc_iv = calloc(1, ptr->iv_len);
 	ptr->dec_iv = calloc(1, ptr->iv_len);
-	ptr->enc_counter = 0;
-	ptr->dec_counter = 0;
 	ptr->cmd = cmd;
 	ptr->cmd_len = cmd_len;
 	ptr->cipher = cipher;
@@ -239,6 +237,15 @@ void pgs_outbound_ctx_ss_init_decryptor(
 	}
 	ptr->decryptor = pgs_cryptor_new(ptr->cipher, PGS_DECRYPT, ptr->dec_key,
 					 ptr->dec_iv);
+}
+
+const uint8_t *pgs_outbound_ctx_ss_get_iv(pgs_outbound_ctx_ss_t *ptr)
+{
+	if (is_aead_cryptor(ptr->encryptor)) {
+		return ptr->enc_salt;
+	} else {
+		return ptr->enc_iv;
+	}
 }
 
 void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
@@ -370,15 +377,18 @@ bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
 				  on_event_cb *event_cb, on_read_cb *read_cb,
 				  void *cb_ctx)
 {
-	//pgs_config_extra_ss_t *ssconf = (pgs_config_extra_ss_t *)config->extra;
+	pgs_config_extra_ss_t *ssconf = (pgs_config_extra_ss_t *)config->extra;
 
-	//ptr->ctx = pgs_outbound_ctx_ss_new(cmd, cmd_len, ssconf->method);
+	ptr->ctx =
+		pgs_outbound_ctx_ss_new(cmd, cmd_len, config->password,
+					strlen((const char *)config->password),
+					ssconf->method);
 
-	//ptr->bev = bufferevent_socket_new(
-	//	base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	ptr->bev = bufferevent_socket_new(
+		base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 
-	//assert(event_cb && read_cb && ptr->bev);
-	//bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
+	assert(event_cb && read_cb && ptr->bev);
+	bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
 	return true;
 
 error:
@@ -619,8 +629,11 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 		(pgs_config_extra_trojan_t *)config->extra;
 	if (!trojanconf->websocket.enabled) {
 		// trojan-gfw
-		trojan_write_local(session, data, data_len);
+		size_t olen;
+		bool ok = trojan_write_local(session, data, data_len, &olen);
 		evbuffer_drain(input, data_len);
+		if (!ok)
+			goto error;
 		return;
 	}
 	// trojan ws
@@ -666,10 +679,13 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 				// ignore opcode here
 				if (ws_meta.opcode == 0x01) {
 					// write to local
-					trojan_write_local(
+					size_t olen;
+					bool ok = trojan_write_local(
 						session,
 						data + ws_meta.header_len,
-						ws_meta.payload_len);
+						ws_meta.payload_len, &olen);
+					if (!ok)
+						goto error;
 				}
 
 				if (!ws_meta.fin)
@@ -776,7 +792,8 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 		struct bufferevent *inbev = session->inbound->bev;
 		struct evbuffer *inboundw = bufferevent_get_output(inbev);
 
-		if (!pgs_vmess_parse(session, data, data_len)) {
+		size_t olen = 0;
+		if (!vmess_write_local(session, data, data_len, &olen)) {
 			pgs_session_error(session,
 					  "failed to decode vmess payload");
 			on_v2ray_remote_event(bev, BEV_EVENT_ERROR, ctx);
@@ -830,10 +847,12 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 				// ignore opcode here
 				if (ws_meta.opcode == 0x02) {
 					// decode vmess protocol
-					if (!pgs_vmess_parse(
+					size_t olen = 0;
+					if (!vmess_write_local(
 						    session,
 						    data + ws_meta.header_len,
-						    ws_meta.payload_len)) {
+						    ws_meta.payload_len,
+						    &olen)) {
 						pgs_session_error(
 							session,
 							"failed to decode vmess payload");
@@ -898,7 +917,11 @@ static void on_ss_remote_read(struct bufferevent *bev, void *ctx)
 	size_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
-	// shadowsocks_write_local(session, data, data_len);
+	// parse
+	size_t olen;
+	bool ok = shadowsocks_write_local(session, data, data_len, &olen);
+	if (!ok)
+		goto error;
 	evbuffer_drain(input, data_len);
 	return;
 

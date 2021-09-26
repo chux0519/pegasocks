@@ -360,6 +360,16 @@ void test_hkdf_sha1()
 	free(hexstring);
 }
 
+void test_increase_nonce()
+{
+	uint8_t nonce[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	uint8_t output[12] = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	pgs_increase_nonce(nonce, 12);
+	for (size_t i = 0; i < 12; i++) {
+		assert(nonce[i] == output[i]);
+	}
+}
+
 int main()
 {
 	test_sha224();
@@ -386,5 +396,7 @@ int main()
 	printf("test_evp_bytes_to_key passed\n");
 	test_hkdf_sha1();
 	printf("test_hkdf_sha1 passed\n");
+	test_increase_nonce();
+	printf("test_increase_nonce passed\n");
 	return 0;
 }

@@ -3,7 +3,68 @@
 
 #include <assert.h>
 
+#include <event2/buffer.h>
+
 const char vmess_key_suffix[36] = "c48619fe-8f02-49e0-b9e9-edf763e17e21";
+
+static size_t pgs_vmess_write_head(pgs_session_t *session,
+				   pgs_outbound_ctx_v2ray_t *ctx);
+static size_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
+				   size_t data_len, size_t head_len,
+				   pgs_session_write_fn flush);
+static bool vmess_write_local_cfb(pgs_session_t *session, const uint8_t *data,
+				  size_t data_len, size_t *olen,
+				  pgs_session_write_fn flush);
+static bool vmess_write_local_aead(pgs_session_t *session, const uint8_t *data,
+				   size_t data_len, size_t *olen,
+				   pgs_session_write_fn flush);
+
+static void pgs_vmess_init_encryptor(pgs_outbound_ctx_v2ray_t *ctx);
+static void pgs_vmess_init_decryptor(pgs_outbound_ctx_v2ray_t *ctx);
+static void pgs_vmess_increase_cryptor_iv(pgs_outbound_ctx_v2ray_t *ctx,
+					  pgs_cryptor_direction_t dir);
+static void vmess_flush_remote(pgs_session_t *session, uint8_t *data,
+			       size_t len);
+static void vmess_flush_local(pgs_session_t *session, uint8_t *data,
+			      size_t len);
+
+bool vmess_write_remote(pgs_session_t *session, const uint8_t *data,
+			size_t data_len, size_t *olen)
+{
+	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
+	size_t head_len = 0;
+	if (!ctx->header_sent) {
+		// will setup crytors and remote_wbuf
+		head_len = pgs_vmess_write_head(session, ctx);
+		ctx->header_sent = true;
+	}
+
+	size_t body_len = pgs_vmess_write_body(session, data, data_len,
+					       head_len, vmess_flush_remote);
+	*olen = body_len + head_len;
+	return true;
+}
+
+bool vmess_write_local(pgs_session_t *session, const uint8_t *data,
+		       size_t data_len, size_t *olen)
+{
+	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
+	switch (ctx->cipher) {
+	case AES_128_CFB:
+		return vmess_write_local_cfb(session, data, data_len, olen,
+					     vmess_flush_local);
+	case AEAD_AES_128_GCM:
+	case AEAD_CHACHA20_POLY1305:
+		return vmess_write_local_aead(session, data, data_len, olen,
+					      vmess_flush_local);
+	default:
+		// not implement yet
+		break;
+	}
+	return false;
+}
+
+// static functions
 
 static void pgs_vmess_init_encryptor(pgs_outbound_ctx_v2ray_t *ctx)
 {
@@ -165,8 +226,189 @@ static void vmess_flush_local(pgs_session_t *session, uint8_t *data, size_t len)
 	}
 }
 
-size_t pgs_vmess_write_head(pgs_session_t *session,
-			    pgs_outbound_ctx_v2ray_t *ctx)
+/* symmetric cipher will eat all the data put in */
+static bool vmess_write_local_cfb(pgs_session_t *session, const uint8_t *data,
+				  size_t data_len, size_t *olen,
+				  pgs_session_write_fn flush)
+{
+	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
+	pgs_vmess_resp_t meta = { 0 };
+	uint8_t *rrbuf = ctx->remote_rbuf;
+	uint8_t *lwbuf = ctx->local_wbuf;
+	pgs_cryptor_t *decryptor = ctx->decryptor;
+
+	size_t decrypt_len = 0;
+	if (!ctx->header_recved) {
+		if (data_len < 4)
+			return false;
+		if (!pgs_cryptor_decrypt(decryptor, data, 4, NULL, rrbuf,
+					 &decrypt_len))
+			return false;
+		meta.v = rrbuf[0];
+		meta.opt = rrbuf[1];
+		meta.cmd = rrbuf[2];
+		meta.m = rrbuf[3];
+		if (meta.v != ctx->v)
+			return false;
+		if (meta.m != 0) // support no cmd
+			return false;
+		ctx->header_recved = true;
+		ctx->resp_len = 0;
+		return vmess_write_local_cfb(session, data + 4, data_len - 4,
+					     olen, flush);
+	}
+
+	if (ctx->resp_len == 0) {
+		if (data_len == 0) // may called by itself, wait for more data
+			return true;
+		if (data_len < 2) // illegal data
+			return false;
+		if (!pgs_cryptor_decrypt(decryptor, data, 2, NULL, rrbuf,
+					 &decrypt_len))
+			return false;
+
+		int l = rrbuf[0] << 8 | rrbuf[1];
+
+		if (l == 0 || l == 4) // end
+			return true;
+		if (l < 4)
+			return false;
+		ctx->resp_len = l - 4;
+		ctx->resp_hash = 0;
+		// skip fnv1a hash
+		return vmess_write_local_cfb(session, data + 2, data_len - 2,
+					     olen, flush);
+	}
+
+	if (ctx->resp_hash == 0) {
+		if (data_len < 4) // need more data
+			return false;
+		if (!pgs_cryptor_decrypt(decryptor, data, 4, NULL, rrbuf,
+					 &decrypt_len))
+			return false;
+		ctx->resp_hash = (uint32_t)rrbuf[0] << 24 | rrbuf[1] << 16 |
+				 rrbuf[2] << 8 | rrbuf[3];
+		return vmess_write_local_cfb(session, data + 4, data_len - 4,
+					     olen, flush);
+	}
+
+	if (data_len <= 0) // need more data
+		return true;
+
+	size_t data_to_decrypt =
+		ctx->resp_len < data_len ? ctx->resp_len : data_len;
+	if (!pgs_cryptor_decrypt(decryptor, data, data_to_decrypt, NULL, lwbuf,
+				 &decrypt_len))
+		return false;
+
+	flush(session, lwbuf, data_to_decrypt);
+	*olen += data_len;
+	ctx->resp_len -= data_to_decrypt;
+
+	return vmess_write_local_cfb(session, data + data_to_decrypt,
+				     data_len - data_to_decrypt, olen, flush);
+}
+
+/* AEAD cipher */
+static bool vmess_write_local_aead(pgs_session_t *session, const uint8_t *data,
+				   size_t data_len, size_t *olen,
+				   pgs_session_write_fn flush)
+{
+	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
+	pgs_vmess_resp_t meta = { 0 };
+	uint8_t *rrbuf = ctx->remote_rbuf;
+	uint8_t *lwbuf = ctx->local_wbuf;
+	pgs_cryptor_t *decryptor = ctx->decryptor;
+
+	if (!ctx->header_recved) {
+		if (data_len < 4)
+			return false;
+		if (!aes_128_cfb_decrypt(data, 4, (const uint8_t *)ctx->rkey,
+					 (const uint8_t *)ctx->riv, rrbuf))
+			return false;
+		meta.v = rrbuf[0];
+		meta.opt = rrbuf[1];
+		meta.cmd = rrbuf[2];
+		meta.m = rrbuf[3];
+		if (meta.v != ctx->v)
+			return false;
+		if (meta.m != 0) // support no cmd
+			return false;
+		ctx->header_recved = true;
+		ctx->resp_len = 0;
+		return vmess_write_local_aead(session, data + 4, data_len - 4,
+					      olen, flush);
+	}
+
+	if (ctx->resp_len == 0) {
+		if (data_len == 0) // may called by itself, wait for more data
+			return true;
+		if (data_len < 2) // illegal data
+			return false;
+		int l = data[0] << 8 | data[1];
+
+		if (l == 0 || l == 16) // end
+			return true;
+		if (l < 16)
+			return false;
+		ctx->resp_len = l - 16;
+		ctx->resp_hash = -1;
+		// skip fnv1a hash
+		return vmess_write_local_aead(session, data + 2, data_len - 2,
+					      olen, flush);
+	}
+
+	if (ctx->remote_rbuf_pos + data_len < ctx->resp_len + 16) {
+		// need more data, have to cache this
+		memcpy(rrbuf + ctx->remote_rbuf_pos, data, data_len);
+		ctx->remote_rbuf_pos += data_len;
+		return true;
+	}
+
+	size_t decrypt_len = 0;
+	if (ctx->remote_rbuf_pos == 0) {
+		// enough data for decoding and no cache
+		size_t data_to_decrypt = ctx->resp_len;
+		bool ok = pgs_cryptor_decrypt(decryptor, data, ctx->resp_len,
+					      data + ctx->resp_len, lwbuf,
+					      &decrypt_len);
+		pgs_vmess_increase_cryptor_iv(ctx, PGS_DECRYPT);
+		if (!ok)
+			return false;
+
+		flush(session, lwbuf, data_to_decrypt);
+		*olen += data_to_decrypt;
+		ctx->resp_len -= data_to_decrypt;
+
+		return vmess_write_local_aead(session,
+					      data + data_to_decrypt + 16,
+					      data_len - data_to_decrypt - 16,
+					      olen, flush);
+	} else {
+		// have some cache in last chunk
+		// read more and do the rest
+		size_t data_to_read = ctx->resp_len + 16 - ctx->remote_rbuf_pos;
+		memcpy(rrbuf + ctx->remote_rbuf_pos, data, data_to_read);
+
+		bool ok = pgs_cryptor_decrypt(decryptor, rrbuf, ctx->resp_len,
+					      rrbuf + ctx->resp_len, lwbuf,
+					      &decrypt_len);
+		pgs_vmess_increase_cryptor_iv(ctx, PGS_DECRYPT);
+		if (!ok)
+			return false;
+		flush(session, lwbuf, ctx->resp_len);
+		*olen += ctx->resp_len;
+		ctx->resp_len = 0;
+		ctx->remote_rbuf_pos = 0;
+
+		return vmess_write_local_aead(session, data + data_to_read,
+					      data_len - data_to_read, olen,
+					      flush);
+	}
+}
+
+static size_t pgs_vmess_write_head(pgs_session_t *session,
+				   pgs_outbound_ctx_v2ray_t *ctx)
 {
 	const uint8_t *uuid = session->outbound->config->password;
 	int is_udp = (session->inbound != NULL &&
@@ -310,9 +552,9 @@ size_t pgs_vmess_write_head(pgs_session_t *session,
 	return header_auth_len + header_cmd_len;
 }
 
-size_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
-			    size_t data_len, size_t head_len,
-			    pgs_session_write_fn flush)
+static size_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
+				   size_t data_len, size_t head_len,
+				   pgs_session_write_fn flush)
 {
 	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
 	uint8_t *localr = ctx->local_rbuf;
@@ -391,214 +633,4 @@ size_t pgs_vmess_write_body(pgs_session_t *session, const uint8_t *data,
 	}
 
 	return sent;
-}
-
-size_t pgs_vmess_write_remote(pgs_session_t *session, const uint8_t *data,
-			      size_t data_len)
-{
-	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
-	size_t head_len = 0;
-	if (!ctx->header_sent) {
-		// will setup crytors and remote_wbuf
-		head_len = pgs_vmess_write_head(session, ctx);
-		ctx->header_sent = true;
-	}
-
-	size_t body_len = pgs_vmess_write_body(session, data, data_len,
-					       head_len, vmess_flush_remote);
-	return body_len + head_len;
-}
-
-bool pgs_vmess_parse(pgs_session_t *session, const uint8_t *data,
-		     size_t data_len)
-{
-	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
-	switch (ctx->cipher) {
-	case AES_128_CFB:
-		return pgs_vmess_parse_cfb(session, data, data_len,
-					   vmess_flush_local);
-	case AEAD_AES_128_GCM:
-	case AEAD_CHACHA20_POLY1305:
-		return pgs_vmess_parse_aead(session, data, data_len,
-					    vmess_flush_local);
-	default:
-		// not implement yet
-		break;
-	}
-	return false;
-}
-
-/* symmetric cipher will eat all the data put in */
-bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
-			 size_t data_len, pgs_session_write_fn flush)
-{
-	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
-	pgs_vmess_resp_t meta = { 0 };
-	uint8_t *rrbuf = ctx->remote_rbuf;
-	uint8_t *lwbuf = ctx->local_wbuf;
-	pgs_cryptor_t *decryptor = ctx->decryptor;
-
-	size_t decrypt_len = 0;
-	if (!ctx->header_recved) {
-		if (data_len < 4)
-			return false;
-		if (!pgs_cryptor_decrypt(decryptor, data, 4, NULL, rrbuf,
-					 &decrypt_len))
-			return false;
-		meta.v = rrbuf[0];
-		meta.opt = rrbuf[1];
-		meta.cmd = rrbuf[2];
-		meta.m = rrbuf[3];
-		if (meta.v != ctx->v)
-			return false;
-		if (meta.m != 0) // support no cmd
-			return false;
-		ctx->header_recved = true;
-		ctx->resp_len = 0;
-		return pgs_vmess_parse_cfb(session, data + 4, data_len - 4,
-					   flush);
-	}
-
-	if (ctx->resp_len == 0) {
-		if (data_len == 0) // may called by itself, wait for more data
-			return true;
-		if (data_len < 2) // illegal data
-			return false;
-		if (!pgs_cryptor_decrypt(decryptor, data, 2, NULL, rrbuf,
-					 &decrypt_len))
-			return false;
-
-		int l = rrbuf[0] << 8 | rrbuf[1];
-
-		if (l == 0 || l == 4) // end
-			return true;
-		if (l < 4)
-			return false;
-		ctx->resp_len = l - 4;
-		ctx->resp_hash = 0;
-		// skip fnv1a hash
-		return pgs_vmess_parse_cfb(session, data + 2, data_len - 2,
-					   flush);
-	}
-
-	if (ctx->resp_hash == 0) {
-		if (data_len < 4) // need more data
-			return false;
-		if (!pgs_cryptor_decrypt(decryptor, data, 4, NULL, rrbuf,
-					 &decrypt_len))
-			return false;
-		ctx->resp_hash = (uint32_t)rrbuf[0] << 24 | rrbuf[1] << 16 |
-				 rrbuf[2] << 8 | rrbuf[3];
-		return pgs_vmess_parse_cfb(session, data + 4, data_len - 4,
-					   flush);
-	}
-
-	if (data_len <= 0) // need more data
-		return true;
-
-	size_t data_to_decrypt =
-		ctx->resp_len < data_len ? ctx->resp_len : data_len;
-	if (!pgs_cryptor_decrypt(decryptor, data, data_to_decrypt, NULL, lwbuf,
-				 &decrypt_len))
-		return false;
-
-	flush(session, lwbuf, data_to_decrypt);
-	ctx->resp_len -= data_to_decrypt;
-
-	return pgs_vmess_parse_cfb(session, data + data_to_decrypt,
-				   data_len - data_to_decrypt, flush);
-}
-
-/* AEAD cipher */
-bool pgs_vmess_parse_aead(pgs_session_t *session, const uint8_t *data,
-			  size_t data_len, pgs_session_write_fn flush)
-{
-	pgs_outbound_ctx_v2ray_t *ctx = session->outbound->ctx;
-	pgs_vmess_resp_t meta = { 0 };
-	uint8_t *rrbuf = ctx->remote_rbuf;
-	uint8_t *lwbuf = ctx->local_wbuf;
-	pgs_cryptor_t *decryptor = ctx->decryptor;
-
-	if (!ctx->header_recved) {
-		if (data_len < 4)
-			return false;
-		if (!aes_128_cfb_decrypt(data, 4, (const uint8_t *)ctx->rkey,
-					 (const uint8_t *)ctx->riv, rrbuf))
-			return false;
-		meta.v = rrbuf[0];
-		meta.opt = rrbuf[1];
-		meta.cmd = rrbuf[2];
-		meta.m = rrbuf[3];
-		if (meta.v != ctx->v)
-			return false;
-		if (meta.m != 0) // support no cmd
-			return false;
-		ctx->header_recved = true;
-		ctx->resp_len = 0;
-		return pgs_vmess_parse_aead(session, data + 4, data_len - 4,
-					    flush);
-	}
-
-	if (ctx->resp_len == 0) {
-		if (data_len == 0) // may called by itself, wait for more data
-			return true;
-		if (data_len < 2) // illegal data
-			return false;
-		int l = data[0] << 8 | data[1];
-
-		if (l == 0 || l == 16) // end
-			return true;
-		if (l < 16)
-			return false;
-		ctx->resp_len = l - 16;
-		ctx->resp_hash = -1;
-		// skip fnv1a hash
-		return pgs_vmess_parse_aead(session, data + 2, data_len - 2,
-					    flush);
-	}
-
-	if (ctx->remote_rbuf_pos + data_len < ctx->resp_len + 16) {
-		// need more data, have to cache this
-		memcpy(rrbuf + ctx->remote_rbuf_pos, data, data_len);
-		ctx->remote_rbuf_pos += data_len;
-		return true;
-	}
-
-	size_t decrypt_len = 0;
-	if (ctx->remote_rbuf_pos == 0) {
-		// enough data for decoding and no cache
-		size_t data_to_decrypt = ctx->resp_len;
-		bool ok = pgs_cryptor_decrypt(decryptor, data, ctx->resp_len,
-					      data + ctx->resp_len, lwbuf,
-					      &decrypt_len);
-		pgs_vmess_increase_cryptor_iv(ctx, PGS_DECRYPT);
-		if (!ok)
-			return false;
-
-		flush(session, lwbuf, data_to_decrypt);
-		ctx->resp_len -= data_to_decrypt;
-
-		return pgs_vmess_parse_aead(session,
-					    data + data_to_decrypt + 16,
-					    data_len - data_to_decrypt - 16,
-					    flush);
-	} else {
-		// have some cache in last chunk
-		// read more and do the rest
-		size_t data_to_read = ctx->resp_len + 16 - ctx->remote_rbuf_pos;
-		memcpy(rrbuf + ctx->remote_rbuf_pos, data, data_to_read);
-
-		bool ok = pgs_cryptor_decrypt(decryptor, rrbuf, ctx->resp_len,
-					      rrbuf + ctx->resp_len, lwbuf,
-					      &decrypt_len);
-		pgs_vmess_increase_cryptor_iv(ctx, PGS_DECRYPT);
-		if (!ok)
-			return false;
-		flush(session, lwbuf, ctx->resp_len);
-		ctx->resp_len = 0;
-		ctx->remote_rbuf_pos = 0;
-
-		return pgs_vmess_parse_aead(session, data + data_to_read,
-					    data_len - data_to_read, flush);
-	}
 }

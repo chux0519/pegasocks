@@ -136,9 +136,12 @@ void on_trojan_local_read(struct bufferevent *bev, void *ctx)
 		pgs_ws_write_head_text(wbuf, ws_len);
 	}
 
-	trojan_write_remote(session, msg, len);
-
+	size_t olen;
+	bool ok = trojan_write_remote(session, msg, len, &olen);
 	evbuffer_drain(inboundr, len);
+
+	if (!ok)
+		goto error;
 
 	return;
 
@@ -160,11 +163,12 @@ void on_v2ray_local_read(struct bufferevent *bev, void *ctx)
 	if (data_len <= 0)
 		return;
 	const uint8_t *data = evbuffer_pullup(inboundr, data_len);
-	size_t total_len = pgs_vmess_write_remote(session, data, data_len);
+	size_t olen = 0;
+	bool ok = vmess_write_remote(session, data, data_len, &olen);
 
 	evbuffer_drain(inboundr, data_len);
-	on_session_metrics_send(session, total_len);
-	pgs_session_debug(session, "v2ray write to remote: %d", total_len);
+	on_session_metrics_send(session, olen);
+	pgs_session_debug(session, "v2ray write to remote: %d", olen);
 }
 
 void on_ss_local_read(struct bufferevent *bev, void *ctx)
@@ -179,9 +183,12 @@ void on_ss_local_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *outboundw = bufferevent_get_output(outbev);
 	struct evbuffer *wbuf = outboundw;
 
-	// TODO: shadowsocks_write_remote(session, msg, len);
-
+	size_t olen;
+	bool ok = shadowsocks_write_remote(session, msg, len, &olen);
 	evbuffer_drain(inboundr, len);
+	if (!ok) {
+		goto error;
+	}
 
 	return;
 
@@ -219,7 +226,10 @@ void on_udp_read_trojan(const uint8_t *buf, ssize_t len, void *ctx)
 	memcpy(packet + addr_len + 4, buf + 3 + addr_len, data_len);
 
 	// build packet then cache or send it
-	trojan_write_remote(session, packet, packet_len);
+	size_t olen;
+	bool ok = trojan_write_remote(session, packet, packet_len, &olen);
+	if (!ok)
+		goto error;
 
 	if (packet != NULL) {
 		free(packet);
@@ -252,8 +262,11 @@ void on_udp_read_v2ray(const uint8_t *buf, ssize_t len, void *ctx)
 	vctx->target_addr_len = addr_len;
 	memcpy(vctx->target_addr, buf + 3, addr_len);
 
-	size_t total_len =
-		pgs_vmess_write_remote(session, buf + 3 + addr_len, data_len);
+	size_t olen = 0;
+	bool ok = vmess_write_remote(session, buf + 3 + addr_len, data_len,
+				     &olen);
+	if (!ok)
+		goto error;
 
 	return;
 

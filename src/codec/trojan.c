@@ -1,7 +1,10 @@
 #include "codec/codec.h"
 #include "crypto.h"
 
-void trojan_write_remote(pgs_session_t *session, uint8_t *msg, size_t len)
+#include <event2/buffer.h>
+
+bool trojan_write_remote(pgs_session_t *session, const uint8_t *msg, size_t len,
+			 size_t *olen)
 {
 	struct bufferevent *outbev = session->outbound->bev;
 	struct evbuffer *outboundw = bufferevent_get_output(outbev);
@@ -14,9 +17,13 @@ void trojan_write_remote(pgs_session_t *session, uint8_t *msg, size_t len)
 	evbuffer_add(outboundw, msg, len);
 
 	pgs_session_debug(session, "local -> remote: %d", len + head_len);
+
+	*olen = len + head_len;
+	return true;
 }
 
-void trojan_write_local(pgs_session_t *session, uint8_t *msg, size_t len)
+bool trojan_write_local(pgs_session_t *session, const uint8_t *msg, size_t len,
+			size_t *olen)
 {
 	uint8_t *udp_packet = NULL;
 	if (session->inbound->state == INBOUND_PROXY) {
@@ -24,6 +31,7 @@ void trojan_write_local(pgs_session_t *session, uint8_t *msg, size_t len)
 		struct evbuffer *inboundw = bufferevent_get_output(inbev);
 		evbuffer_add(inboundw, msg, len);
 		pgs_session_debug(session, "remote -> local: %d", len);
+		*olen = len;
 	} else if (session->inbound->state == INBOUND_UDP_RELAY &&
 		   session->inbound->udp_fd != -1) {
 		// decode trojan udp packet
@@ -57,9 +65,10 @@ void trojan_write_local(pgs_session_t *session, uint8_t *msg, size_t len)
 			session->inbound->udp_client_addr_size);
 		pgs_session_debug(session, "write %d bytes to local udp sock",
 				  n);
+		*olen = n;
 		free(udp_packet);
 	}
-	return;
+	return true;
 
 error:
 	if (udp_packet != NULL) {
@@ -67,4 +76,5 @@ error:
 		udp_packet = NULL;
 	}
 	pgs_session_free(session);
+	return false;
 }

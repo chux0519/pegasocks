@@ -3,6 +3,8 @@
 
 #include <assert.h>
 
+#include <event2/buffer.h>
+
 const char *ws_upgrade = "HTTP/1.1 101";
 const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
 const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";

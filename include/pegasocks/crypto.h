@@ -266,4 +266,15 @@ static void hextobin(const char *str, uint8_t *bytes, size_t blen)
 		bytes[pos / 2] = (uint8_t)(hashmap[idx0] << 4) | hashmap[idx1];
 	};
 }
+
+static void pgs_increase_nonce(uint8_t *nonce, size_t bytes)
+{
+	uint16_t c = 1;
+	// increment 1 in little endian
+	for (size_t i = 0; i < bytes; ++i) {
+		c += nonce[i];
+		nonce[i] = c & 0xff;
+		c >>= 8;
+	}
+}
 #endif

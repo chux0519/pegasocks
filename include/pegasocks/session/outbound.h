@@ -90,8 +90,6 @@ typedef struct pgs_outbound_ctx_ss_s {
 	size_t key_len;
 	size_t iv_len;
 	size_t tag_len;
-	uint16_t enc_counter; // max(len(iv)) == 12, so 16bit is enough
-	uint16_t dec_counter;
 	pgs_cryptor_t *encryptor;
 	pgs_cryptor_t *decryptor;
 	pgs_cryptor_type_t cipher;
@@ -122,6 +120,7 @@ pgs_outbound_ctx_ss_t *pgs_outbound_ctx_ss_new(const uint8_t *cmd,
 void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr);
 void pgs_outbound_ctx_ss_init_decryptor(pgs_outbound_ctx_ss_t *ptr,
 					const uint8_t *salt);
+const uint8_t *pgs_outbound_ctx_ss_get_iv(pgs_outbound_ctx_ss_t *ptr);
 
 // outbound
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr);
@@ -141,6 +140,13 @@ bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
 				     pgs_ssl_ctx_t *ssl_ctx,
 				     on_event_cb *event_cb, on_read_cb *read_cb,
 				     void *cb_ctx);
+
+bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
+				  const pgs_server_config_t *config,
+				  const uint8_t *cmd, size_t cmd_len,
+				  struct event_base *base,
+				  on_event_cb *event_cb, on_read_cb *read_cb,
+				  void *cb_ctx);
 
 bool pgs_session_bypass_outbound_init(pgs_session_outbound_t *ptr,
 				      struct event_base *base,

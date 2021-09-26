@@ -1,5 +1,7 @@
 #include "server/metrics.h"
 
+#include <event2/buffer.h>
+
 const unsigned char g204_cmd[] = { 0x05, 0x01, 0x00, 0x03, 0x0d, 0x77, 0x77,
 				   0x77, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
 				   0x65, 0x2e, 0x63, 0x6e, 0x00, 0x50 };
@@ -230,9 +232,10 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 				connect_time;
 			pgs_session_t dummy = { 0 };
 			dummy.outbound = mctx->outbound;
-			size_t total_len = pgs_vmess_write_remote(
+			size_t olen = 0;
+			bool ok = vmess_write_remote(
 				&dummy, (const uint8_t *)g204_http_req,
-				strlen(g204_http_req));
+				strlen(g204_http_req), &olen);
 		}
 	} else {
 		double g204_time = elapse(mctx->start_at);
@@ -312,11 +315,11 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 		pgs_session_t dummy = { 0 };
 		dummy.outbound = mctx->outbound;
 		struct evbuffer *output = bufferevent_get_output(bev);
-		size_t total_len =
-			pgs_vmess_write_remote(&dummy,
-					       (const uint8_t *)g204_http_req,
-					       strlen(g204_http_req));
-		pgs_logger_debug(mctx->logger, "g204 req sent: %d", total_len);
+		size_t olen = 0;
+		bool ok = vmess_write_remote(&dummy,
+					     (const uint8_t *)g204_http_req,
+					     strlen(g204_http_req), &olen);
+		pgs_logger_debug(mctx->logger, "g204 req sent: %d", olen);
 	}
 	if (events & BEV_EVENT_ERROR)
 		pgs_logger_error(mctx->logger, "Error from bufferevent");
