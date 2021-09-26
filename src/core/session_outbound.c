@@ -898,8 +898,7 @@ static void on_ss_remote_read(struct bufferevent *bev, void *ctx)
 	size_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
 
-	// trojan-gfw
-	trojan_write_local(session, data, data_len);
+	// shadowsocks_write_local(session, data, data_len);
 	evbuffer_drain(input, data_len);
 	return;
 

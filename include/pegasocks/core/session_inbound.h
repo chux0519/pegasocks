@@ -36,10 +36,12 @@ void pgs_session_inbound_free(pgs_session_inbound_t *sb);
 void on_bypass_local_read(struct bufferevent *bev, void *ctx);
 void on_trojan_local_read(struct bufferevent *bev, void *ctx);
 void on_v2ray_local_read(struct bufferevent *bev, void *ctx);
+void on_ss_local_read(struct bufferevent *bev, void *ctx);
 
 // UDP
 void on_udp_read_trojan(const uint8_t *buf, ssize_t len, void *ctx);
 void on_udp_read_v2ray(const uint8_t *buf, ssize_t len, void *ctx);
 void on_remote_udp_read(int fd, short event, void *ctx);
+// TODO: shadowsocks
 
 #endif

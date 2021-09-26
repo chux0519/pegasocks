@@ -167,6 +167,28 @@ void on_v2ray_local_read(struct bufferevent *bev, void *ctx)
 	pgs_session_debug(session, "v2ray write to remote: %d", total_len);
 }
 
+void on_ss_local_read(struct bufferevent *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+
+	struct evbuffer *inboundr = bufferevent_get_input(bev);
+	size_t len = evbuffer_get_length(inboundr);
+	uint8_t *msg = evbuffer_pullup(inboundr, len);
+	pgs_session_debug(session, "local -> encode -> remote");
+	struct bufferevent *outbev = session->outbound->bev;
+	struct evbuffer *outboundw = bufferevent_get_output(outbev);
+	struct evbuffer *wbuf = outboundw;
+
+	// TODO: shadowsocks_write_remote(session, msg, len);
+
+	evbuffer_drain(inboundr, len);
+
+	return;
+
+error:
+	pgs_session_free(session);
+}
+
 /* UDP */
 void on_udp_read_trojan(const uint8_t *buf, ssize_t len, void *ctx)
 {
@@ -444,6 +466,8 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 				return on_v2ray_local_read(bev, ctx);
 			} else if (IS_TROJAN_SERVER(config->server_type)) {
 				return on_trojan_local_read(bev, ctx);
+			} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
+				return on_ss_local_read(bev, ctx);
 			}
 		}
 	case INBOUND_UDP_RELAY:
@@ -563,6 +587,8 @@ static void on_udp_read(int fd, short event, void *ctx)
 				on_udp_read_trojan(buf, len, session);
 			} else if (IS_V2RAY_SERVER(config->server_type)) {
 				on_udp_read_v2ray(buf, len, session);
+			} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
+				// TODO: udp relay to ss remote
 			} else {
 				pgs_session_error(
 					session,

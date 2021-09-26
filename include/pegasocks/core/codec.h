@@ -67,6 +67,10 @@ bool pgs_vmess_parse_cfb(pgs_session_t *session, const uint8_t *data,
 bool pgs_vmess_parse_aead(pgs_session_t *session, const uint8_t *data,
 			  size_t data_len, pgs_session_write_fn flush);
 
+void trojan_write_remote(pgs_session_t *session, uint8_t *msg, size_t len);
+
+void trojan_write_local(pgs_session_t *session, uint8_t *msg, size_t len);
+
 // static helper functions
 static inline int pgs_get_addr_len(const uint8_t *data)
 {
@@ -84,9 +88,5 @@ static inline int pgs_get_addr_len(const uint8_t *data)
 	}
 	return 0;
 }
-
-void trojan_write_remote(pgs_session_t *session, uint8_t *msg, size_t len);
-
-void trojan_write_local(pgs_session_t *session, uint8_t *msg, size_t len);
 
 #endif
