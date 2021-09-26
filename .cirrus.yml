@@ -48,7 +48,7 @@ linux_mbedtls_task: # use master branch of libevent to support mbedtls
         - cd libevent-master && cmake -DCMAKE_BUILD_TYPE=Release . && make install && cd ..
         - curl -L https://github.com/ARMmbed/mbedtls/archive/refs/tags/v2.27.0.zip -o mbedtls.zip
         - unzip mbedtls.zip
-        - cd mbedtls-2.27.0 && cmake -DCMAKE_BUILD_TYPE=Release . && make install && cd ..
+        - cd mbedtls-2.27.0 && cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF . && make install && cd ..
     build_default_test_script:
         - mkdir -p build/default
         - cd build/default
