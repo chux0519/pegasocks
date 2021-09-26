@@ -40,21 +40,22 @@ set(CMAKE_C_FLAGS_UBSAN
     FORCE)
 # SAN end =======================================
 
-set(PEGAS_SOURCES src/core/pegas.c
-                  src/core/codec_ws.c
-                  src/core/codec_trojan.c
-                  src/core/codec_vmess.c
-                  src/core/config.c
-                  src/core/control.c
-                  src/core/helper_thread.c
-                  src/core/local_server.c
-                  src/core/log.c
-                  src/core/metrics.c
-                  src/core/mpsc.c
-                  src/core/server_manager.c
-                  src/core/session.c
-                  src/core/session_inbound.c
-                  src/core/session_outbound.c
+set(PEGAS_SOURCES src/pegas.c
+                  src/config.c
+                  src/mpsc.c
+                  src/log.c
+                  src/codec/websocket.c
+                  src/codec/trojan.c
+                  src/codec/vmess.c
+                  src/codec/shadowsocks.c
+                  src/session/session.c
+                  src/session/inbound.c
+                  src/session/outbound.c
+                  src/server/helper.c
+                  src/server/local.c
+                  src/server/manager.c
+                  src/server/metrics.c
+                  src/server/control.c
 )
 set(THIRDPARTY_SOURCES 3rd-party/parson/parson.c
                        3rd-party/hash_32a.c
@@ -119,8 +120,8 @@ if(USE_MBEDTLS)
   include_directories(${MBEDTLS_INCLUDE_DIR})
 
   set(PEGAS_SOURCES ${PEGAS_SOURCES}
-                    src/core/ssl_mbedtls.c
-                    src/core/crypto_mbedtls.c
+                    src/ssl/mbedtls.c
+                    src/crypto/mbedtls.c
   )
   list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES})
 else()
@@ -128,8 +129,8 @@ else()
   include_directories(${OPENSSL_INCLUDE_DIR})
 
   set(PEGAS_SOURCES ${PEGAS_SOURCES}
-                    src/core/ssl_openssl.c
-                    src/core/crypto_openssl.c
+                    src/ssl/openssl.c
+                    src/crypto/openssl.c
   )
   list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_SSL_LIBRARIES} ${OPENSSL_LIBRARIES})
 endif()
@@ -140,7 +141,7 @@ if(WITH_ACL)
   list(APPEND THIRDPARTY_LIBS ${PCRE_LIBRARIES})
 
   set(PEGAS_SOURCES ${PEGAS_SOURCES}
-                    src/optional/acl.c
+                    src/acl.c
   )
 
   include_directories(3rd-party/libcork/include)
@@ -185,7 +186,7 @@ endif(WITH_ACL)
 
 if(WITH_APPLET)
   set(PEGAS_SOURCES ${PEGAS_SOURCES}
-                    src/optional/applet.c
+                    src/applet.c
   )
   add_definitions(-DWITH_APPLET=1)
   if(UNIX AND NOT APPLE)
