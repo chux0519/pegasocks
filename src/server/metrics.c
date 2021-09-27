@@ -20,6 +20,9 @@ static void on_v2ray_tcp_g204_read(struct bufferevent *bev, void *ctx);
 static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 				    void *ctx);
 
+static void on_ss_g204_read(struct bufferevent *bev, void *ctx);
+static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx);
+
 static double elapse(struct timeval start_at)
 {
 	struct timeval now;
@@ -111,6 +114,14 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 			    on_v2ray_g204_event, on_v2ray_g204_read, mctx)) {
 			pgs_logger_error(logger,
 					 "Failed to init v2ray outbound");
+			goto error;
+		}
+	} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
+		if (!pgs_session_ss_outbound_init(ptr, config, cmd, cmd_len,
+						  base, on_ss_g204_event,
+						  on_ss_g204_read, mctx)) {
+			pgs_logger_error(logger,
+					 "Failed to init shadowsocks outbound");
 			goto error;
 		}
 	} else {
@@ -299,6 +310,47 @@ static void on_v2ray_tcp_g204_read(struct bufferevent *bev, void *ctx)
 	mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
 	// drop it, clean up
 	on_v2ray_tcp_g204_event(bev, BEV_EVENT_EOF, ctx);
+}
+
+static void on_ss_g204_read(struct bufferevent *bev, void *ctx)
+{
+	pgs_metrics_task_ctx_t *mctx = ctx;
+	double g204_time = elapse(mctx->start_at);
+	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
+	mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
+	// drop it, clean up
+	on_ss_g204_event(bev, BEV_EVENT_EOF, ctx);
+}
+
+static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx)
+{
+	pgs_metrics_task_ctx_t *mctx = ctx;
+	if (events & BEV_EVENT_CONNECTED) {
+		// set connected
+		mctx->outbound->ready = true;
+		double connect_time = elapse(mctx->start_at);
+		pgs_logger_debug(mctx->logger, "connect: %f", connect_time);
+		mctx->sm->server_stats[mctx->server_idx].connect_delay =
+			connect_time;
+
+		// write request
+		pgs_session_t dummy = { 0 };
+		dummy.outbound = mctx->outbound;
+		struct evbuffer *output = bufferevent_get_output(bev);
+		size_t olen = 0;
+		bool ok =
+			shadowsocks_write_remote(&dummy,
+						 (const uint8_t *)g204_http_req,
+						 strlen(g204_http_req), &olen);
+		pgs_logger_debug(mctx->logger, "g204 req sent: %d", olen);
+	}
+	if (events & BEV_EVENT_ERROR)
+		pgs_logger_error(mctx->logger, "Error from bufferevent");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		bufferevent_free(bev);
+		if (mctx)
+			pgs_metrics_task_ctx_free(mctx);
+	}
 }
 
 // used for tcp/ssl

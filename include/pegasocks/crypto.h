@@ -109,32 +109,6 @@ static inline void pgs_cryptor_type_info(pgs_cryptor_type_t cipher,
 	}
 }
 
-/* AES cipher */
-//pgs_aes_cryptor_t *pgs_aes_cryptor_new(const void *cipher, const uint8_t *key,
-//				       const uint8_t *iv,
-//				       pgs_cryptor_direction_t dir);
-//void pgs_aes_cryptor_free(pgs_aes_cryptor_t *ptr);
-//bool pgs_aes_cryptor_encrypt(pgs_aes_cryptor_t *ptr, const uint8_t *plaintext,
-//			     int plaintext_len, uint8_t *ciphertext);
-//bool pgs_aes_cryptor_encrypt_final(pgs_aes_cryptor_t *ptr, uint8_t *ciphertext);
-//bool pgs_aes_cryptor_decrypt(pgs_aes_cryptor_t *ptr, const uint8_t *ciphertext,
-//			     int ciphertext_len, uint8_t *plaintext);
-//bool pgs_aes_cryptor_decrypt_final(pgs_aes_cryptor_t *ptr, uint8_t *plaintext);
-
-/* AEAD cipher */
-//pgs_aead_cryptor_t *pgs_aead_cryptor_new(const void *cipher, const uint8_t *key,
-//					 const uint8_t *iv,
-//					 pgs_cryptor_direction_t dir);
-//void pgs_aead_cryptor_free(pgs_aead_cryptor_t *ptr);
-//bool pgs_aead_cryptor_encrypt(pgs_aead_cryptor_t *ptr, const uint8_t *plaintext,
-//			      int plaintext_len, uint8_t *tag,
-//			      uint8_t *ciphertext, int *ciphertext_len);
-//bool pgs_aead_cryptor_decrypt(pgs_aead_cryptor_t *ptr,
-//			      const uint8_t *ciphertext, int ciphertext_len,
-//			      const uint8_t *tag, uint8_t *plaintext,
-//			      int *plaintext_len);
-//void pgs_aead_cryptor_increase_iv(pgs_aead_cryptor_t *ptr);
-
 /* helpers */
 
 int rand_bytes(unsigned char *buf, int num);

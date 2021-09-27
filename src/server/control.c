@@ -7,8 +7,6 @@
 #include <event2/listener.h>
 #include <event2/buffer.h>
 
-#define zero_to_minus_one(n) (((n) == 0) ? (-1) : (n))
-
 const char controller_help_msg[] =
 	"Support commands: PING | GET SERVERS | SET SERVER $idx\n";
 
@@ -123,8 +121,7 @@ static void on_control_read(struct bufferevent *bev, void *ctx)
 				output,
 				"\t%-8s| connect:%*.0f ms | g204:%*.0f ms\n",
 				servers[i].server_type, 6,
-				zero_to_minus_one(stats[i].connect_delay), 6,
-				zero_to_minus_one(stats[i].g204_delay));
+				stats[i].connect_delay, 6, stats[i].g204_delay);
 		}
 		evbuffer_add_printf(output, "\n");
 	} else if (starts_with("SET SERVER", (const char *)rdata)) {

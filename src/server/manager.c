@@ -5,7 +5,11 @@ pgs_server_manager_t *
 pgs_server_manager_new(pgs_server_config_t *server_configs, int server_len)
 {
 	pgs_server_manager_t *ptr = malloc(sizeof(pgs_server_manager_t));
-	ptr->server_stats = calloc(server_len, sizeof(pgs_server_stats_t));
+	ptr->server_stats = malloc(server_len * sizeof(pgs_server_stats_t));
+	for (size_t i = 0; i < server_len; ++i) {
+		ptr->server_stats[i].connect_delay = -1;
+		ptr->server_stats[i].g204_delay = -1;
+	}
 	ptr->server_configs = server_configs;
 	ptr->server_len = server_len;
 	ptr->cur_server_index = 0;

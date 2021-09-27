@@ -291,7 +291,6 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 	size_t offset = 0;
 
 	if (!ssctx->iv_sent) {
-		pgs_session_debug(session, "send salt");
 		const uint8_t *salt = ssctx->enc_salt;
 		size_t salt_len = ssctx->key_len;
 		memcpy(ssctx->wbuf, salt, salt_len);
@@ -301,7 +300,6 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 	}
 
 	if (payload_len > 0x3FFF) {
-		pgs_session_error(session, "payload too large");
 		return false;
 	}
 
@@ -316,13 +314,11 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 	pgs_ss_increase_cryptor_iv(ssctx, PGS_ENCRYPT);
 
 	if (ciphertext_len != 2) {
-		pgs_session_error(session, "shadowsocks encrypt failed");
 		return false;
 	}
 	offset += (2 + ssctx->tag_len);
 
 	if (offset + payload_len + ssctx->tag_len > BUFSIZE_16K) {
-		pgs_session_error(session, "payload too large");
 		return false;
 	}
 
@@ -340,8 +336,6 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 		ssctx->iv_sent = true;
 
 		if (!ok || ciphertext_len != payload_len) {
-			pgs_session_error(session,
-					  "shadowsocks encrypt failed");
 			return false;
 		}
 	} else {
@@ -352,16 +346,12 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 		pgs_ss_increase_cryptor_iv(ssctx, PGS_ENCRYPT);
 
 		if (!ok || ciphertext_len != payload_len) {
-			pgs_session_error(session,
-					  "shadowsocks encrypt failed");
 			return false;
 		}
 	}
 
 	*olen = offset + payload_len + ssctx->tag_len;
 	evbuffer_add(outboundw, ssctx->wbuf, *olen);
-
-	pgs_session_debug(session, "local -> remote: %d", *olen);
 
 	return true;
 }
