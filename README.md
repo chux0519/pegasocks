@@ -72,7 +72,7 @@ You can also customize the search root of JeMalloc/Libevent2/MbedTLS/OpenSSLx/PC
 
 ## Configuration
 
-see [wiki](https://github.com/chux0519/pegasocks/wiki/%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E)
+see [man page](https://github.com/chux0519/pegasocks/wiki/manpage) or [wiki](https://github.com/chux0519/pegasocks/wiki/%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E)
 
 
 ## Interaction

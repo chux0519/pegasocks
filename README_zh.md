@@ -74,7 +74,7 @@ C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
 
 ## 配置
 
-见[配置文档](https://github.com/chux0519/pegasocks/wiki/%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E)
+见[配置文档](https://github.com/chux0519/pegasocks/wiki/%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E)或者[手册](https://github.com/chux0519/pegasocks/wiki/manpage)
 
 
 ## 交互
