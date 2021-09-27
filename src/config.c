@@ -417,6 +417,8 @@ pgs_config_extra_ss_t *pgs_config_extra_ss_parse(pgs_config_t *config,
 	if (method != NULL) {
 		if (strcasecmp(method, "aes-128-cfb") == 0) {
 			ptr->method = AES_128_CFB;
+		} else if (strcasecmp(method, "aes-128-gcm") == 0) {
+			ptr->method = AEAD_AES_128_GCM;
 		} else if (strcasecmp(method, "aes-256-gcm") == 0) {
 			ptr->method = AEAD_AES_256_GCM;
 		} else if (strcasecmp(method, "chacha20-poly1305") == 0) {
