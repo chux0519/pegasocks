@@ -70,6 +70,7 @@ C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
 
 - `-c` 指定配置文件，默认会依次尝试 `$XDG_CONFIG_HOME/.pegasrc` 或者 `$XDG_CONFIG_HOME/pegas/config` 
 - `-t` 指定工作线程数量，默认为 4
+- `-a` 指定 ACL 文件，在开启 ACL 支持后生效
 
 ## 配置
 
