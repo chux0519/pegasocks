@@ -1,0 +1,255 @@
+PEGASOCKS(1)
+===========
+:doctype: manpage
+
+
+NAME
+----
+pegas - A lightweight proxy client written in C, intends to support multiple protocols
+
+
+SYNOPSIS
+--------
+*pegas* ['OPTIONS']
+
+
+DESCRIPTION
+-----------
+The pegas(1) is a (socks5)proxy client written in C, intended to support multiple types of proxy protocols(trojan, v2ray, *shadowsocks, ..). It is lightweight and supports unix-like systems(Linux/WSL/BSDs/OSX).
+
+
+OPTIONS
+-------
+*-a* <ACL>::
+    Specifies the ACL file if pegas is build with ACL feature
+
+*-c* <CONFIG>::
+    Specifies the configuration file, by default it will try `$XDG_CONFIG_HOME/.pegasrc` or `$XDG_CONFIG_HOME/pegas/config` in order.
+
+
+*-t* <THREAD>::
+    Specifies the number of worker threads, default is 4
+
+CONFIGS
+-------
+
+*ROOT*
+
+The configuration file of pegasocks is in json format, the outermost fields are as follows, the fields with * are optional fields.
+
+|===
+|Filed |Type |Description
+
+|servers
+|*SERVER*
+|Array of *SERVER*, check *SERVER* section for detail.
+
+|local_address
+|string
+|For example: 127.0.0.1, 0.0.0.0
+
+|local_port
+|int
+|For example: 1080
+
+|log_level
+|int
+|_0_(debug), _1_(info), _2_(warn), _3_(error)
+
+|*log_file
+|string
+|Log file location. if set, the log will be written to the specified location, if not set, it will be written to stderr by default
+
+|*ping_interval
+|int
+|The program will periodically check the network status of the server. Here you can set the check interval. The default is 120, and the unit is second.
+
+|*control_port
+|int
+|if set, pegas will listen on the port(TCP), and users can interact with pegas through this port
+
+|*control_file
+|string
+|pegas will listen on an unix socket by default(/tmp/pegas.sock), if _control_port_ is set, this option will be ignored 
+
+|===
+
+*SERVER*
+
+All types of server have some common fields
+
+|===
+|Filed |Type |Description
+
+|server_type
+|string
+|Type of server, _v2ray_, _trojan_ and _shadowsocks_ are supported now
+
+|server_address
+|string
+|IP or hostname of your server
+
+|server_port
+|string
+|
+
+|password
+|string
+|for _v2ray_, it's uuid, for _shadowsocks_ and _trojan_, it's the password
+
+|===
+
+*V2RAY*
+
+If server_type is _v2ray_, there're some other fields
+
+|===
+|Filed |Type |Description
+
+|secure
+|string
+|Encryption algorithm of vmess, supports _aes-128-cfb_, _aes-128-gcm_ and _chacha20-poly1305_ , default to _aes-128-cfb_
+
+|ssl.sni
+|string
+|If ssl is enabled, the sni of remote server
+
+|websocket.path
+|string
+|If websocket is enabled, the path of remote server
+
+|websocket.hostname
+|string
+
+|===
+
+*TROJAN*
+
+If server_type is _trojan_, there're some other fields
+
+|===
+|Filed |Type |Description
+
+|websocket.path
+|string
+|If websocket is enabled, the path of remote server
+
+|websocket.hostname
+|string
+
+|===
+
+*SHADOWSOCKS*
+
+If server_type is _shadowsocks_, there're some other fields
+
+|===
+|Filed |Type |Description
+
+|method
+|string
+|The crypto method, _aes-128-cfb_,_aes-128-gcm_, _aes-256-gcm_ and _chacha20-poly1305_ are supported, default to _aes-128-gcm_
+
+|===
+
+PS: UDP and plugin support is WIP
+
+*EXAMPLES*
+
+*trojan-gfw*
+
+[source,JSON]
+----
+{
+  "servers": [
+    {
+      "server_address": "yourhost.com",
+      "server_type": "trojan",
+      "server_port": 443,
+      "password": "password"
+    }
+  ],
+  "local_address": "0.0.0.0",
+  "local_port": 1080,
+  "log_level": 1
+}
+----
+
+*trojan-go*
+
+[source,JSON]
+----
+{
+  "servers": [
+    {
+      "server_address": "yourhost.com",
+      "server_type": "trojan",
+      "server_port": 443,
+      "password": "password",
+      "websocket": {
+        "path": "/trojan",
+        "hostname": "yourhost.com"
+      }
+    }
+  ],
+  "local_address": "0.0.0.0",
+  "local_port": 1080,
+  "log_level": 1
+}
+----
+
+*v2ray + tls + websocket*
+
+[source,JSON]
+----
+{
+  "servers": [
+    {
+      "server_address": "yourhost.com",
+      "server_type": "v2ray",
+      "server_port": 443,
+      "password": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "ssl": {"sni": "ray.yourhost.com"},
+      "websocket": {
+        "path": "/ray",
+        "hostname": "yourhost.com"
+      }
+    }
+  ],
+  "local_address": "0.0.0.0",
+  "local_port": 1080,
+  "log_level": 1
+}
+----
+
+
+*v2ray + tcp*
+
+[source,JSON]
+----
+{
+  "servers": [
+    {
+      "server_address": "xxxxx.jamjams.net",
+      "server_type": "v2ray",
+      "server_port": 10086,
+      "secure": "aes-128-gcm",
+      "password": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    }
+  ],
+  "local_address": "0.0.0.0",
+  "local_port": 1080,
+  "log_level": 1
+}
+----
+
+
+AUTHOR
+------
+Yongsheng Xu <chuxdesign@hotmail.com>
+
+
+RESOURCES
+---------
+GitHub: <https://github.com/chux0519/pegasocks>
+

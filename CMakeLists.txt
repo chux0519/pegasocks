@@ -250,6 +250,33 @@ target_link_libraries(pegas ${THIRDPARTY_LIBS})
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)
 
+# manpage
+find_program(A2X_EXECUTABLE NAMES a2x a2x.py)
+if(NOT ${A2X_EXECUTABLE} STREQUAL A2X_EXECUTABLE-NOTFOUND)
+  set(A2X_OPTS
+    -D ${CMAKE_BINARY_DIR}
+    -d manpage
+    -f manpage
+    )
+
+  set(MAN_NAMES pegas.1)
+  set(MAN_FILES)
+  foreach(m IN LISTS MAN_NAMES)
+    set(mf ${CMAKE_BINARY_DIR}/${m})
+    set(ms ${CMAKE_SOURCE_DIR}/doc/${m}.asciidoc)
+    add_custom_command(OUTPUT ${mf}
+      COMMAND ${A2X_EXECUTABLE} ${A2X_OPTS} ${ms}
+      DEPENDS ${ms}
+      WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+      COMMENT "Building manpage ${mf}"
+      VERBATIM)
+    list(APPEND MAN_FILES ${mf})
+  endforeach()
+  add_custom_target(man ALL DEPENDS ${MAN_FILES})
+
+  INSTALL(FILES ${MAN_FILES} DESTINATION ${CMAKE_INSTALL_PREFIX}/man/man1)
+endif()
+
 # tests
 enable_testing()
 add_subdirectory(test)
