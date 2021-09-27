@@ -80,11 +80,21 @@ typedef struct pgs_outbound_ctx_ss_s {
 	const uint8_t *cmd;
 	size_t cmd_len;
 
+	bool iv_sent;
+
+	/* AEAD decode state machine */
+	enum {
+		READY = 0,
+		WAIT_MORE_FOR_LEN, /* len(data) < 2 + tag_len */
+		WAIT_MORE_FOR_PAYLOAD, /* len(data) < 2 + tag_len + payload_len + tag_len */
+	} aead_decode_state;
+	size_t plen;
+
 	/* salt + ikm(pass) => encode key; len(salt) = len(key) */
 	uint8_t *enc_key; /* random bytes, to send */
 	uint8_t *enc_iv;
-	uint8_t *dec_key; /* to receive */
-	uint8_t *dec_iv;
+	uint8_t *dec_key; /* to receive by salt (AEAD) */
+	uint8_t *dec_iv; /* to receive(AES) */
 	uint8_t *ikm;
 	uint8_t *enc_salt;
 	size_t key_len;
@@ -118,8 +128,6 @@ pgs_outbound_ctx_ss_t *pgs_outbound_ctx_ss_new(const uint8_t *cmd,
 					       size_t password_len,
 					       pgs_cryptor_type_t cipher);
 void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr);
-void pgs_outbound_ctx_ss_init_decryptor(pgs_outbound_ctx_ss_t *ptr,
-					const uint8_t *salt);
 
 // outbound
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr);

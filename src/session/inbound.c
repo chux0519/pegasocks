@@ -177,21 +177,23 @@ void on_ss_local_read(struct bufferevent *bev, void *ctx)
 
 	struct evbuffer *inboundr = bufferevent_get_input(bev);
 	size_t len = evbuffer_get_length(inboundr);
-	uint8_t *msg = evbuffer_pullup(inboundr, len);
+
 	if (len <= 0)
 		return;
-	pgs_session_debug(session, "local -> encode -> remote");
-	struct bufferevent *outbev = session->outbound->bev;
-	struct evbuffer *outboundw = bufferevent_get_output(outbev);
-	struct evbuffer *wbuf = outboundw;
 
-	size_t olen;
+	uint8_t *msg = evbuffer_pullup(inboundr, len);
+
+	pgs_session_debug(session, "local -> encode -> remote");
+
+	size_t olen = 0;
 	bool ok = shadowsocks_write_remote(session, msg, len, &olen);
-	evbuffer_drain(inboundr, olen);
-	on_session_metrics_send(session, olen);
 	if (!ok) {
+		pgs_session_error(session, "failed to encode shadowsocks");
 		goto error;
 	}
+	evbuffer_drain(inboundr, len);
+	pgs_session_debug(session, "len: %ld, olen: %ld", len, olen);
+	on_session_metrics_send(session, olen);
 
 	return;
 

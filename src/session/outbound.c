@@ -199,6 +199,10 @@ pgs_outbound_ctx_ss_t *pgs_outbound_ctx_ss_new(const uint8_t *cmd,
 	ptr->cmd = cmd;
 	ptr->cmd_len = cmd_len;
 	ptr->cipher = cipher;
+	ptr->iv_sent = false;
+
+	ptr->aead_decode_state = READY;
+	ptr->plen = 0;
 
 	if (is_aead_cipher(cipher)) {
 		// random bytes as salt
@@ -216,25 +220,6 @@ pgs_outbound_ctx_ss_t *pgs_outbound_ctx_ss_new(const uint8_t *cmd,
 	ptr->decryptor = NULL;
 
 	return ptr;
-}
-
-void pgs_outbound_ctx_ss_init_decryptor(
-	pgs_outbound_ctx_ss_t *ptr,
-	const uint8_t *salt /* for aead it's salt, for aes it's iv */)
-{
-	if (ptr->decryptor != NULL)
-		return;
-
-	if (is_aead_cipher(ptr->cipher)) {
-		hkdf_sha1(salt, ptr->key_len, ptr->ikm, ptr->key_len,
-			  (const uint8_t *)SS_INFO, 9, ptr->dec_key,
-			  ptr->key_len);
-	} else {
-		memcpy(ptr->dec_key, ptr->ikm, ptr->key_len);
-		memcpy(ptr->dec_iv, salt, ptr->iv_len);
-	}
-	ptr->decryptor = pgs_cryptor_new(ptr->cipher, PGS_DECRYPT, ptr->dec_key,
-					 ptr->dec_iv);
 }
 
 void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
@@ -905,25 +890,27 @@ static void on_ss_remote_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "ss remote read triggered");
-	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
 	size_t data_len = evbuffer_get_length(input);
-	unsigned char *data = evbuffer_pullup(input, data_len);
 
 	if (data_len <= 0)
 		return;
 
-	// parse
-	size_t olen = 0;
-	bool ok = shadowsocks_write_local(session, data, data_len, &olen);
-	evbuffer_drain(input, olen);
-	on_session_metrics_recv(session, olen);
+	unsigned char *data = evbuffer_pullup(input, data_len);
 
+	// parse
+	size_t olen = 0, clen = 0;
+	bool ok =
+		shadowsocks_write_local(session, data, data_len, &olen, &clen);
 	if (!ok) {
 		pgs_session_error(session, "failed to decode shadowsocks");
 		goto error;
 	}
+	pgs_session_debug(session, "clen: %ld, olen: %ld", clen, olen);
+
+	evbuffer_drain(input, clen);
+	on_session_metrics_recv(session, olen);
 
 	return;
 
