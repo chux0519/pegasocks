@@ -1,10 +1,25 @@
-#include "pgs_crypto.h"
+#include "crypto.h"
 #ifdef USE_MBEDTLS
 #include <mbedtls/cipher.h>
 #else
 #include <openssl/evp.h>
 #endif
 #include "assert.h"
+
+static void debug_hex(const uint8_t *buf, size_t len)
+{
+	uint8_t *hexstring = to_hexstring(buf, len);
+	printf("%s\n", hexstring);
+	free(hexstring);
+}
+
+static void assert_buf_with_hex(const uint8_t *buf, size_t len,
+				const uint8_t *hex)
+{
+	uint8_t *hexstring = to_hexstring(buf, len);
+	assert(strcmp((const char *)hex, (const char *)hexstring) == 0);
+	free(hexstring);
+}
 
 void test_sha224()
 {
@@ -118,10 +133,6 @@ void test_aes_128_cfb_decrypt()
 	assert(strcmp(result, (const char *)output) == 0);
 }
 
-void test_crypto_aes()
-{
-}
-
 void test_crypto_aead_encrypt()
 {
 	unsigned char key[16] = {
@@ -134,25 +145,20 @@ void test_crypto_aead_encrypt()
 	unsigned char tag1[16] = { 0xa5, 0x33, 0x26, 0xb6, 0x34, 0xa1,
 				   0x17, 0xf8, 0x78, 0xdc, 0x09, 0x0e,
 				   0x76, 0x93, 0x47, 0x5e };
-	pgs_aead_cryptor_t *encryptor;
 
-#ifdef USE_MBEDTLS
-	mbedtls_cipher_type_t cipher_gcm = MBEDTLS_CIPHER_AES_128_GCM;
-	encryptor = pgs_aead_cryptor_new(&cipher_gcm, key, iv, PGS_ENCRYPT);
-#else
-	const EVP_CIPHER *cipher_gcm = EVP_aes_128_gcm();
-	encryptor = pgs_aead_cryptor_new(cipher_gcm, key, iv, PGS_ENCRYPT);
-#endif
+	pgs_cryptor_t *encryptor =
+		pgs_cryptor_new(AEAD_AES_128_GCM, PGS_ENCRYPT, key, iv);
+	assert(encryptor != NULL);
 
 	{
 		// First round
 		unsigned char en_tag[16] = { 0 };
 		unsigned char out[8] = { 0 };
-		int output_len;
-		bool ret = pgs_aead_cryptor_encrypt(encryptor, plaintext, 8,
-						    en_tag, out, &output_len);
+		size_t output_len;
+		bool ret = pgs_cryptor_encrypt(encryptor, plaintext, 8, en_tag,
+					       out, &output_len);
 		assert(ret == true);
-
+		assert(output_len == 8);
 		for (int i = 0; i < output_len; i++) {
 			assert(out[i] == result1[i]);
 		}
@@ -160,8 +166,11 @@ void test_crypto_aead_encrypt()
 		for (int i = 0; i < 16; i++) {
 			assert(en_tag[i] == tag1[i]);
 		}
-		assert(output_len == 8);
 	}
+
+	// mock iv increase
+	iv[1] = 1;
+	pgs_cryptor_reset_iv(encryptor, iv);
 
 	// Second round
 	unsigned char iv2[12] = { 0, 1, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
@@ -173,13 +182,13 @@ void test_crypto_aead_encrypt()
 	{
 		unsigned char en_tag[16] = { 0 };
 		unsigned char out[8] = { 0 };
-		int output_len;
+		size_t output_len;
 		for (int i = 0; i < 12; i++) {
 			assert(iv2[i] == encryptor->iv[i]);
 		}
 
-		assert(pgs_aead_cryptor_encrypt(encryptor, plaintext, 8, en_tag,
-						out, &output_len) == true);
+		assert(pgs_cryptor_encrypt(encryptor, plaintext, 8, en_tag, out,
+					   &output_len) == true);
 
 		for (int i = 0; i < 16; i++) {
 			assert(en_tag[i] == tag2[i]);
@@ -191,7 +200,7 @@ void test_crypto_aead_encrypt()
 		}
 	}
 
-	pgs_aead_cryptor_free(encryptor);
+	pgs_cryptor_free(encryptor);
 }
 
 void test_crypto_aead_decrypt()
@@ -207,27 +216,25 @@ void test_crypto_aead_decrypt()
 				   0x17, 0xf8, 0x78, 0xdc, 0x09, 0x0e,
 				   0x76, 0x93, 0x47, 0x5e };
 
-	pgs_aead_cryptor_t *decryptor;
-#ifdef USE_MBEDTLS
-	mbedtls_cipher_type_t cipher_gcm = MBEDTLS_CIPHER_AES_128_GCM;
-	decryptor = pgs_aead_cryptor_new(&cipher_gcm, key, iv, PGS_DECRYPT);
-#else
-	const EVP_CIPHER *cipher_gcm = EVP_aes_128_gcm();
-	decryptor = pgs_aead_cryptor_new(cipher_gcm, key, iv, PGS_DECRYPT);
-#endif
+	pgs_cryptor_t *decryptor =
+		pgs_cryptor_new(AEAD_AES_128_GCM, PGS_DECRYPT, key, iv);
 
 	{
 		// First round
 		unsigned char out[8] = { 0 };
-		int output_len;
-		pgs_aead_cryptor_decrypt(decryptor, ciphertext, 8, tag1, out,
-					 &output_len);
+		size_t output_len;
+		pgs_cryptor_decrypt(decryptor, ciphertext, 8, tag1, out,
+				    &output_len);
 
 		assert(output_len == 8);
 		for (int i = 0; i < output_len; i++) {
 			assert(out[i] == plaintext[i]);
 		}
 	}
+
+	// mock iv increase
+	iv[1] = 1;
+	pgs_cryptor_reset_iv(decryptor, iv);
 
 	// Second round
 	unsigned char iv2[12] = { 0, 1, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
@@ -238,13 +245,13 @@ void test_crypto_aead_decrypt()
 				   0x0f, 0xe2, 0xe7, 0x5a };
 	{
 		unsigned char out[8] = { 0 };
-		int output_len;
+		size_t output_len;
 		for (int i = 0; i < 12; i++) {
 			assert(iv2[i] == decryptor->iv[i]);
 		}
 
-		assert(pgs_aead_cryptor_decrypt(decryptor, ciphertext2, 8, tag2,
-						out, &output_len) == true);
+		assert(pgs_cryptor_decrypt(decryptor, ciphertext2, 8, tag2, out,
+					   &output_len) == true);
 
 		for (int i = 0; i < output_len; i++) {
 			assert(out[i] == plaintext[i]);
@@ -252,7 +259,115 @@ void test_crypto_aead_decrypt()
 		assert(output_len == 8);
 	}
 
-	pgs_aead_cryptor_free(decryptor);
+	pgs_cryptor_free(decryptor);
+}
+
+void test_crypto_chachapoly()
+{
+	unsigned char key[32] = {
+		1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+		1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+	};
+	unsigned char iv[12] = { 0, 0, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
+	unsigned char plaintext[8] = "password";
+	unsigned char result1[] = "fd9746aee3fa483f";
+	unsigned char tag1[] = "b2a8670b1f13212546e07e09f61072dc";
+
+	pgs_cryptor_t *encryptor =
+		pgs_cryptor_new(AEAD_CHACHA20_POLY1305, PGS_ENCRYPT, key, iv);
+	assert(encryptor != NULL);
+
+	{
+		// First round
+		unsigned char en_tag[16] = { 0 };
+		unsigned char out[8] = { 0 };
+		size_t output_len;
+		bool ret = pgs_cryptor_encrypt(encryptor, plaintext, 8, en_tag,
+					       out, &output_len);
+		assert(ret == true);
+		assert(output_len == 8);
+
+		assert_buf_with_hex(out, 8, result1);
+		assert_buf_with_hex(en_tag, 16, tag1);
+	}
+
+	// mock iv increase
+	iv[1] = 1;
+	pgs_cryptor_reset_iv(encryptor, iv);
+
+	// Second round
+	unsigned char iv2[12] = { 0, 1, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4 };
+	unsigned char result2[] = "ede0eeefdcbf59c0";
+	unsigned char tag2[] = "768ac949ab8b0ee584b2772ddcbc437b";
+	{
+		unsigned char en_tag[16] = { 0 };
+		unsigned char out[8] = { 0 };
+		size_t output_len;
+		for (int i = 0; i < 12; i++) {
+			assert(iv2[i] == encryptor->iv[i]);
+		}
+
+		assert(pgs_cryptor_encrypt(encryptor, plaintext, 8, en_tag, out,
+					   &output_len) == true);
+		assert(output_len == 8);
+		assert_buf_with_hex(out, 8, result2);
+		assert_buf_with_hex(en_tag, 16, tag2);
+	}
+
+	pgs_cryptor_free(encryptor);
+}
+
+void test_evp_bytes_to_key()
+{
+	const uint8_t input[] = "key";
+	size_t input_len = 3;
+	uint8_t output[32] = { 0 };
+	size_t output_len = 32;
+	const char *res =
+		"3c6e0b8a9c15224a8228b9a98ca1531dd1e2a35fba509b6432edb96d850e119f";
+
+	evp_bytes_to_key(input, input_len, output, output_len);
+	uint8_t *hexstring = to_hexstring(output, output_len);
+	assert(strcmp(res, (const char *)hexstring) == 0);
+	free(hexstring);
+}
+
+void test_hkdf_sha1()
+{
+	uint8_t salt[32] = { 0x4b, 0x7a, 0x8b, 0x2d, 0x6e, 0x8b, 0xfe, 0x11,
+			     0x9e, 0xca, 0x2f, 0x62, 0x4f, 0x60, 0x23, 0x9c,
+			     0xcf, 0xc9, 0xf6, 0x29, 0xb7, 0x8e, 0x5f, 0x6e,
+			     0x36, 0xef, 0xab, 0x0f, 0xf8, 0x71, 0x94, 0x56 };
+
+	uint8_t okm_str[] =
+		"bae0e694e5f042b126f55d88be19804ad9b1b90beac5b9494a60b7768856b4c2";
+	uint8_t password[] = "password";
+	uint8_t ikm_str[] =
+		"5f4dcc3b5aa765d61d8327deb882cf992b95990a9151374abd8ff8c5a7a0fe08";
+
+	uint8_t ikm[32];
+	evp_bytes_to_key(password, 8, ikm, 32);
+	uint8_t *hexstring = to_hexstring(ikm, 32);
+	assert(strcmp((const char *)ikm_str, (const char *)hexstring) == 0);
+	free(hexstring);
+
+	uint8_t okm[32];
+	bool ok = hkdf_sha1(salt, 32, ikm, 32, (const uint8_t *)SS_INFO, 9, okm,
+			    32);
+	assert(ok);
+	hexstring = to_hexstring(okm, 32);
+	assert(strcmp((const char *)okm_str, (const char *)hexstring) == 0);
+	free(hexstring);
+}
+
+void test_increase_nonce()
+{
+	uint8_t nonce[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	uint8_t output[12] = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	pgs_increase_nonce(nonce, 12);
+	for (size_t i = 0; i < 12; i++) {
+		assert(nonce[i] == output[i]);
+	}
 }
 
 int main()
@@ -271,11 +386,17 @@ int main()
 	printf("test_aes_128_cfb_encrypt passed\n");
 	test_aes_128_cfb_decrypt();
 	printf("test_aes_128_cfb_decrypt passed\n");
-	test_crypto_aes();
-	printf("test_crypto_aes passed\n");
 	test_crypto_aead_encrypt();
 	printf("test_crypto_aead_encrypt passed\n");
 	test_crypto_aead_decrypt();
 	printf("test_crypto_aead_decrypt passed\n");
+	test_crypto_chachapoly();
+	printf("test_crypto_chachapoly passed\n");
+	test_evp_bytes_to_key();
+	printf("test_evp_bytes_to_key passed\n");
+	test_hkdf_sha1();
+	printf("test_hkdf_sha1 passed\n");
+	test_increase_nonce();
+	printf("test_increase_nonce passed\n");
 	return 0;
 }

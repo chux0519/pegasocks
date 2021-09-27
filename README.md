@@ -2,7 +2,7 @@
 
 # pegasocks [![Cirrus CI Build Status](https://api.cirrus-ci.com/github/chux0519/pegasocks.svg)](https://cirrus-ci.com/github/chux0519/pegasocks)
 
-is a (socks5)proxy client written in C, intended to support multiple types of proxy protocols(trojan, v2ray, ..).
+is a (socks5)proxy client written in C, intended to support multiple types of proxy protocols(trojan, v2ray, \*shadowsock, ..).
 It is lightweight and supports unix-like systems(Linux/WSL/BSDs/OSX).
 
 ⚠️ This project is under development, please consider the cost and risk of use at your own discretion.
@@ -68,6 +68,7 @@ You can also customize the search root of JeMalloc/Libevent2/MbedTLS/OpenSSLx/PC
 
 - `-c` specifies the configuration file, by default it will try `$XDG_CONFIG_HOME/.pegasrc` or `$XDG_CONFIG_HOME/pegas/config` in order 
 - `-t` specifies the number of worker threads, default is 4
+- `-a` specifies the ACL file if pegas is build with ACL feature
 
 ## Configuration
 

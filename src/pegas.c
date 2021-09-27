@@ -11,12 +11,13 @@
 #include <sys/un.h>
 #include <netinet/in.h>
 
-#include "pgs_local_server.h"
-#include "pgs_config.h"
-#include "pgs_server_manager.h"
-#include "pgs_helper_thread.h"
-#include "pgs_applet.h"
-#include "pgs_acl.h"
+#include "applet.h"
+#include "acl.h"
+#include "config.h"
+
+#include "server/local.h"
+#include "server/manager.h"
+#include "server/helper.h"
 
 #define MAX_LOG_MPSC_SIZE 64
 
@@ -240,10 +241,14 @@ int main(int argc, char **argv)
 	pgs_server_manager_t *sm =
 		pgs_server_manager_new(config->servers, config->servers_count);
 
-	pgs_local_server_ctx_t ctx = { server_fd, mpsc, config, sm, acl };
+	pgs_ssl_ctx_t *ssl_ctx = pgs_ssl_ctx_new();
+	assert(ssl_ctx != NULL);
+	pgs_local_server_ctx_t ctx = {
+		server_fd, mpsc, config, sm, acl, ssl_ctx
+	};
 
 	pgs_helper_thread_arg_t helper_thread_arg = { sm, logger, config,
-						      ctrl_fd };
+						      ctrl_fd, ssl_ctx };
 
 	// Spawn threads
 	pthread_t threads[server_threads + 1];
@@ -275,6 +280,7 @@ int main(int argc, char **argv)
 	pgs_logger_free(logger);
 	pgs_mpsc_free(mpsc);
 	pgs_config_free(config);
+	pgs_ssl_ctx_free(ssl_ctx);
 
 #ifdef WITH_ACL
 	if (acl != NULL)
