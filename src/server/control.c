@@ -21,9 +21,11 @@ static bool starts_with(const char *pre, const char *str)
 	return strncasecmp(pre, str, strlen(pre)) == 0;
 }
 
-void pgs_control_server_start(int fd, struct event_base *base,
-			      pgs_server_manager_t *sm, pgs_logger_t *logger,
-			      const pgs_config_t *config)
+pgs_control_server_ctx_t *pgs_control_server_start(int fd,
+						   struct event_base *base,
+						   pgs_server_manager_t *sm,
+						   pgs_logger_t *logger,
+						   const pgs_config_t *config)
 {
 	pgs_control_server_ctx_t *ptr = pgs_control_server_ctx_new();
 	ptr->base = base;
@@ -42,6 +44,7 @@ void pgs_control_server_start(int fd, struct event_base *base,
 		pgs_logger_info(logger, "Controller Listening at: %s",
 				config->control_file);
 	}
+	return ptr;
 }
 
 pgs_control_server_ctx_t *pgs_control_server_ctx_new()

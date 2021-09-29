@@ -40,7 +40,9 @@ set(CMAKE_C_FLAGS_UBSAN
     FORCE)
 # SAN end =======================================
 
-set(PEGAS_SOURCES src/pegas.c
+set(PEGAS_SOURCES 
+                  src/main.c
+                  src/pegas.c
                   src/config.c
                   src/mpsc.c
                   src/log.c

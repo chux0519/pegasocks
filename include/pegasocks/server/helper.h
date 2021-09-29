@@ -21,6 +21,9 @@ struct pgs_timer_cb_arg_s {
 struct pgs_helper_thread_ctx_s {
 	uint32_t tid;
 	struct event_base *base;
+
+	// share
+	int ctrl_fd;
 	pgs_server_manager_t *sm;
 	pgs_logger_t *logger;
 	const pgs_config_t *config;
@@ -38,6 +41,7 @@ struct pgs_helper_thread_arg_s {
 pgs_helper_thread_ctx_t *
 pgs_helper_thread_ctx_new(pgs_helper_thread_arg_t *arg);
 void pgs_helper_thread_ctx_free(pgs_helper_thread_ctx_t *ptr);
+void pgs_helper_thread_stop(pgs_helper_thread_ctx_t *ptr, int timeout);
 
 void *pgs_helper_thread_start(void *data);
 void pgs_timer_init(int interval, pgs_timer_cb_t, pgs_helper_thread_ctx_t *ptr);

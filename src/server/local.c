@@ -44,44 +44,38 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
 {
 	pgs_local_server_t *ptr = malloc(sizeof(pgs_local_server_t));
-	ptr->tid = (uint32_t)pthread_self();
 	ptr->logger = pgs_logger_new(ctx->mpsc, ctx->config->log_level,
 				     ctx->config->log_isatty);
-	ptr->base = event_base_new();
 
-	ptr->dns_base =
-		evdns_base_new(ptr->base, EVDNS_BASE_INITIALIZE_NAMESERVERS);
-	evdns_base_set_option(ptr->dns_base, "max-probe-timeout:", "5");
-	evdns_base_set_option(ptr->dns_base, "probe-backoff-factor:", "1");
-
+	ptr->server_fd = ctx->fd;
 	ptr->config = ctx->config;
 	ptr->sm = ctx->sm;
 	ptr->acl = ctx->acl;
 	ptr->ssl_ctx = ctx->ssl_ctx;
 	assert(ptr->ssl_ctx != NULL);
-	ptr->listener =
-		evconnlistener_new(ptr->base, accept_conn_cb, ptr,
-				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
-				   -1, ctx->fd);
-	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
 
 	return ptr;
 }
 
-// Run the Loop
-void pgs_local_server_run(pgs_local_server_t *local)
+void pgs_local_server_stop(pgs_local_server_t *local, int timeout)
 {
-	// event_add(local->udp_event, NULL);
-	event_base_dispatch(local->base);
+	struct timeval tv;
+	tv.tv_sec = timeout;
+	tv.tv_usec = 0;
+	event_base_loopexit(local->base, &tv);
 }
 
 // Destroy local server
 void pgs_local_server_destroy(pgs_local_server_t *local)
 {
-	evconnlistener_free(local->listener);
-	event_base_free(local->base);
-	evdns_base_free(local->dns_base, 0);
-	pgs_logger_free(local->logger);
+	if (local->listener)
+		evconnlistener_free(local->listener);
+	if (local->base)
+		event_base_free(local->base);
+	if (local->dns_base)
+		evdns_base_free(local->dns_base, 0);
+	if (local->logger)
+		pgs_logger_free(local->logger);
 	free(local);
 }
 
@@ -91,19 +85,39 @@ void pgs_local_server_destroy(pgs_local_server_t *local)
  * */
 void *start_local_server(void *data)
 {
-	pgs_local_server_ctx_t *ctx = (pgs_local_server_ctx_t *)data;
-	pgs_local_server_t *local = pgs_local_server_new(ctx);
+	pgs_local_server_t *local = (pgs_local_server_t *)data;
+	local->tid = (uint32_t)pthread_self();
+	local->logger->tid = (uint32_t)pthread_self();
+	struct event_config *cfg = event_config_new();
+	event_config_set_flag(cfg, EVENT_BASE_FLAG_NOLOCK);
+	local->base = event_base_new_with_config(cfg);
+	event_config_free(cfg);
+
+	local->dns_base =
+		evdns_base_new(local->base, EVDNS_BASE_INITIALIZE_NAMESERVERS);
+	evdns_base_set_option(local->dns_base, "max-probe-timeout:", "5");
+	evdns_base_set_option(local->dns_base, "probe-backoff-factor:", "1");
+
+	local->listener =
+		evconnlistener_new(local->base, accept_conn_cb, local,
+				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
+				   -1, local->server_fd);
+	evconnlistener_set_error_cb(local->listener, accept_error_cb);
 
 	pgs_logger_info(local->logger, "Listening at %s:%d",
 			local->config->local_address,
 			local->config->local_port);
 
 	// will block here
-	pgs_local_server_run(local);
+	event_base_dispatch(local->base);
 
-	// Destroy here
-	// After loop exit
-	pgs_local_server_destroy(local);
+	//evconnlistener_free(local->listener);
+	//evdns_base_free(local->dns_base, 0);
+	//event_base_free(local->base);
+	//local->dns_base = NULL;
+	//local->base = NULL;
+
+	printf("server thread exit\n");
 
 	return 0;
 }

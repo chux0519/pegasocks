@@ -37,7 +37,7 @@ typedef struct pgs_local_server_ctx_s {
 } pgs_local_server_ctx_t;
 
 pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx);
-void pgs_local_server_run(pgs_local_server_t *local);
+void pgs_local_server_stop(pgs_local_server_t *local, int timeout);
 void pgs_local_server_destroy(pgs_local_server_t *local);
 
 void *start_local_server(void *data);

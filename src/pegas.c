@@ -1,3 +1,14 @@
+#include "pegas.h"
+#include "config.h"
+#include "acl.h"
+#include "mpsc.h"
+#include "defs.h"
+#include "ssl.h"
+
+#include "server/manager.h"
+#include "server/helper.h"
+#include "server/local.h"
+
 #include <arpa/inet.h>
 #include <string.h>
 #include <stdlib.h>
@@ -11,41 +22,169 @@
 #include <sys/un.h>
 #include <netinet/in.h>
 
-#include "applet.h"
-#include "acl.h"
-#include "config.h"
+static pgs_config_t *CONFIG = NULL;
+static pgs_acl_t *ACL = NULL;
+static pgs_mpsc_t *MPSC = NULL;
+static pgs_logger_t *LOGGER = NULL; /* log consumer */
+static pgs_server_manager_t *SM = NULL;
+static pgs_ssl_ctx_t *SSL_CTX = NULL;
 
-#include "server/local.h"
-#include "server/manager.h"
-#include "server/helper.h"
+static pthread_t *THREADS = NULL;
+static pgs_local_server_t **LOCAL_SERVERS = NULL;
 
-#define MAX_LOG_MPSC_SIZE 64
+static pthread_t HELPER_THREAD = 0;
+static pgs_helper_thread_ctx_t *HELPER_THREAD_CTX = NULL;
 
-#ifndef PGS_VERSION
-#define PGS_VERSION "v0.0.0-develop"
+static int lfd = 0;
+static int cfd = 0;
+static int snum = 0;
+
+static bool RUNNING = false;
+
+static int init_local_server_fd(const pgs_config_t *config, int *fd,
+				int sock_type);
+static int init_control_fd(const pgs_config_t *config, int *fd);
+
+static bool pgs_start_local_servers();
+static bool pgs_start_helper();
+
+bool pgs_init(const char *config, const char *acl, int threads)
+{
+	pgs_clean();
+
+	snum = threads;
+	CONFIG = pgs_config_load(config);
+	if (CONFIG == NULL) {
+		return false;
+	}
+
+#ifdef WITH_ACL
+	if (acl != NULL) {
+		ACL = pgs_acl_new(acl);
+		if (ACL == NULL) {
+			return false;
+		}
+	}
 #endif
 
-static void spawn_workers(pthread_t *threads, int server_threads,
-			  pgs_local_server_ctx_t *ctx)
-{
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-	// Local server threads
-	for (int i = 0; i < server_threads; i++) {
-		pthread_create(&threads[i], &attr, start_local_server,
-			       (void *)ctx);
+	if (init_local_server_fd(CONFIG, &lfd, SOCK_STREAM) < 0) {
+		return false;
 	}
+	if (init_control_fd(CONFIG, &cfd) < 0) {
+		return false;
+	}
+	MPSC = pgs_mpsc_new(MAX_LOG_MPSC_SIZE);
 
-	pthread_attr_destroy(&attr);
+	LOGGER = pgs_logger_new(MPSC, CONFIG->log_level, CONFIG->log_isatty);
+
+	SM = pgs_server_manager_new(CONFIG->servers, CONFIG->servers_count);
+
+	SSL_CTX = pgs_ssl_ctx_new();
+
+	return true;
 }
 
-static void kill_workers(pthread_t *threads, int server_threads)
+bool pgs_start()
 {
-	for (int i = 0; i < server_threads; i++) {
-		pthread_kill(threads[i], SIGINT);
+	if (RUNNING)
+		return false;
+
+	if (!pgs_start_local_servers())
+		return false;
+	// start helper thread
+	if (!pgs_start_helper())
+		return false;
+
+	assert(HELPER_THREAD != 0);
+
+	RUNNING = true;
+
+	// will block here
+	pthread_join(HELPER_THREAD, NULL);
+
+	pgs_stop();
+	pgs_clean();
+
+	RUNNING = false;
+	return true;
+}
+
+void pgs_stop()
+{
+	int timeout = 0;
+
+	if (LOCAL_SERVERS != NULL) {
+		for (int i = 0; i < snum; i++) {
+			if (LOCAL_SERVERS[i] != NULL) {
+				pgs_local_server_stop(
+					LOCAL_SERVERS[i],
+					timeout /* default timeout */);
+			}
+		}
 	}
+
+	if (HELPER_THREAD_CTX != NULL) {
+		pgs_helper_thread_stop(HELPER_THREAD_CTX, timeout);
+	}
+}
+
+void pgs_clean()
+{
+	if (LOCAL_SERVERS != NULL) {
+		for (int i = 0; i < snum; i++) {
+			if (LOCAL_SERVERS[i] != NULL) {
+				pgs_local_server_destroy(LOCAL_SERVERS[i]);
+				LOCAL_SERVERS[i] = NULL;
+			}
+		}
+		free(LOCAL_SERVERS);
+		LOCAL_SERVERS = NULL;
+	}
+
+	if (THREADS != NULL) {
+		free(THREADS);
+		THREADS = NULL;
+	}
+	if (HELPER_THREAD_CTX != NULL) {
+		pgs_helper_thread_ctx_free(HELPER_THREAD_CTX);
+		HELPER_THREAD_CTX = NULL;
+	}
+	if (HELPER_THREAD != 0) {
+		HELPER_THREAD = 0;
+	}
+	if (SSL_CTX != NULL) {
+		pgs_ssl_ctx_free(SSL_CTX);
+		SSL_CTX = NULL;
+	}
+	if (SM != NULL) {
+		pgs_server_manager_free(SM);
+		SM = NULL;
+	}
+	if (LOGGER != NULL) {
+		pgs_logger_free(LOGGER);
+		LOGGER = NULL;
+	}
+	if (MPSC != NULL) {
+		pgs_mpsc_free(MPSC);
+		MPSC = NULL;
+	}
+
+	if (CONFIG != NULL) {
+		pgs_config_free(CONFIG);
+		CONFIG = NULL;
+	}
+#ifdef WITH_ACL
+	if (ACL != NULL) {
+		pgs_acl_free(ACL);
+		ACL = NULL;
+	}
+#endif
+
+	// will be closed by bufferevents
+	lfd = 0;
+	cfd = 0;
+
+	snum = 0;
 }
 
 static int init_local_server_fd(const pgs_config_t *config, int *fd,
@@ -140,152 +279,48 @@ static int init_control_fd(const pgs_config_t *config, int *fd)
 	return err;
 }
 
-int main(int argc, char **argv)
+static bool pgs_start_local_servers()
 {
-	signal(SIGPIPE, SIG_IGN);
+	// create local servers(detached)
+	pgs_local_server_ctx_t ctx = { lfd, MPSC, CONFIG, SM, ACL, SSL_CTX };
 
-	sigset_t set;
-	sigemptyset(&set);
-	sigaddset(&set, SIGPIPE);
-	pthread_sigmask(SIG_BLOCK, &set, NULL);
-
-#ifdef DEBUG_EVENT
-	event_enable_debug_logging(EVENT_DBG_ALL);
-#endif
-
-	// default settings
-	int server_threads = 4;
-	char *config_path = NULL;
-	char *acl_path = NULL;
-
-	// parse opt
-	int opt = 0;
-	while ((opt = getopt(argc, argv, "va:c:t:")) != -1) {
-		switch (opt) {
-		case 'v':
-			printf("%s\n", PGS_VERSION);
-			exit(0);
-		case 'a':
-			acl_path = optarg;
-			break;
-		case 'c':
-			config_path = optarg;
-			break;
-		case 't':
-			server_threads = atoi(optarg);
-			break;
-		}
+	THREADS = malloc(snum * sizeof(pthread_t));
+	LOCAL_SERVERS = malloc(snum * sizeof(pgs_local_server_t *));
+	for (int i = 0; i < snum; i++) {
+		LOCAL_SERVERS[i] = NULL;
 	}
 
-	// get config path
-	char full_config_path[512] = { 0 };
-	char config_home[512] = { 0 };
-	if (!config_path) {
-		const char *xdg_config_home = getenv("XDG_CONFIG_HOME");
-		const char *home = getenv("HOME");
-		if (!xdg_config_home || strlen(xdg_config_home) == 0) {
-			sprintf(config_home, "%s/.config", home);
-		} else {
-			strcpy(config_home, xdg_config_home);
-		}
-		sprintf(full_config_path, "%s/.pegasrc", config_home);
-		if (access(full_config_path, F_OK) == -1) {
-			sprintf(full_config_path, "%s/pegas/config",
-				config_home);
-			if (access(full_config_path, F_OK) == -1) {
-				fprintf(stderr, "config is required");
-				return -1;
-			}
-		}
-		config_path = full_config_path;
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	// Local server threads
+	for (int i = 0; i < snum; i++) {
+		LOCAL_SERVERS[i] = pgs_local_server_new(&ctx);
+		pthread_create(&THREADS[i], &attr, start_local_server,
+			       (void *)LOCAL_SERVERS[i]);
 	}
+	pthread_attr_destroy(&attr);
+	return true;
+}
 
-	// load config
-	pgs_config_t *config = pgs_config_load(config_path);
-	if (config == NULL) {
-		fprintf(stderr, "invalid config\n");
-		return -1;
-	}
-
-	pgs_acl_t *acl = NULL;
-
-#ifdef WITH_ACL
-	if (acl_path != NULL) {
-		acl = pgs_acl_new(acl_path);
-		if (acl == NULL) {
-			fprintf(stderr, "failed to load acl file\n");
-			return -1;
-		}
-	}
-#endif
-
-	pgs_config_info(config, "worker threads: %d, config: %s",
-			server_threads, config_path);
-
-	int server_fd, ctrl_fd;
-	if (init_local_server_fd(config, &server_fd, SOCK_STREAM) < 0) {
-		perror("failed to init local tcp server");
-		return -1;
-	}
-	if (init_control_fd(config, &ctrl_fd) < 0) {
-		perror("failed to init local server");
-		return -1;
-	}
-
-	// mpsc with MAX_LOG_MPSC_SIZE message slots
-	pgs_mpsc_t *mpsc = pgs_mpsc_new(MAX_LOG_MPSC_SIZE);
-	// logger for logger server
-	pgs_logger_t *logger =
-		pgs_logger_new(mpsc, config->log_level, config->log_isatty);
-
-	pgs_server_manager_t *sm =
-		pgs_server_manager_new(config->servers, config->servers_count);
-
-	pgs_ssl_ctx_t *ssl_ctx = pgs_ssl_ctx_new();
-	assert(ssl_ctx != NULL);
-	pgs_local_server_ctx_t ctx = {
-		server_fd, mpsc, config, sm, acl, ssl_ctx
-	};
-
-	pgs_helper_thread_arg_t helper_thread_arg = { sm, logger, config,
-						      ctrl_fd, ssl_ctx };
-
-	// Spawn threads
-	pthread_t threads[server_threads + 1];
+/*
+ * Logger / metrics / control(rpc) / signal
+ */
+static bool pgs_start_helper()
+{
+	pgs_helper_thread_arg_t arg = { SM, LOGGER, CONFIG, cfd, SSL_CTX };
 	pthread_attr_t attr;
 
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-	// Start helper thread
-	pthread_create(&threads[0], &attr, pgs_helper_thread_start,
-		       (void *)&helper_thread_arg);
+	HELPER_THREAD_CTX = pgs_helper_thread_ctx_new(&arg);
 
-	// Local server threads
-	spawn_workers(threads + 1, server_threads, &ctx);
-
-#ifdef WITH_APPLET
-	pgs_tray_context_t tray_ctx = { logger,	       sm,
-					threads + 1,   server_threads,
-					spawn_workers, kill_workers,
-					NULL };
-	pgs_tray_start(&tray_ctx);
-#endif
-
-	// block on helper thread
-	pthread_join(threads[0], NULL);
+	pthread_create(&HELPER_THREAD, &attr, pgs_helper_thread_start,
+		       (void *)HELPER_THREAD_CTX);
 
 	pthread_attr_destroy(&attr);
 
-	pgs_logger_free(logger);
-	pgs_mpsc_free(mpsc);
-	pgs_config_free(config);
-	pgs_ssl_ctx_free(ssl_ctx);
-
-#ifdef WITH_ACL
-	if (acl != NULL)
-		pgs_acl_free(acl);
-#endif
-
-	return 0;
+	return true;
 }
