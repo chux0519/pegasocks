@@ -40,29 +40,51 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 	pgs_session_start(session);
 }
 
-// New server
-pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx)
+/*
+ * New server, this must be called in a seperate thread
+ * it will create a base loop without LOCK, so not thread-safe (one loop per thread)
+ * */
+pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
+					 pgs_config_t *config, pgs_acl_t *acl,
+					 pgs_server_manager_t *sm,
+					 pgs_ssl_ctx_t *ssl_ctx)
 {
 	pgs_local_server_t *ptr = malloc(sizeof(pgs_local_server_t));
-	ptr->logger = pgs_logger_new(ctx->mpsc, ctx->config->log_level,
-				     ctx->config->log_isatty);
 
-	ptr->server_fd = ctx->fd;
-	ptr->config = ctx->config;
-	ptr->sm = ctx->sm;
-	ptr->acl = ctx->acl;
-	ptr->ssl_ctx = ctx->ssl_ctx;
-	assert(ptr->ssl_ctx != NULL);
+	ptr->logger =
+		pgs_logger_new(mpsc, config->log_level, config->log_isatty);
+
+	ptr->tid = (uint32_t)pthread_self();
+	struct event_config *cfg = event_config_new();
+	event_config_set_flag(cfg, EVENT_BASE_FLAG_NOLOCK);
+	ptr->base = event_base_new_with_config(cfg);
+	event_config_free(cfg);
+
+	ptr->dns_base =
+		evdns_base_new(ptr->base, EVDNS_BASE_INITIALIZE_NAMESERVERS);
+	evdns_base_set_option(ptr->dns_base, "max-probe-timeout:", "5");
+	evdns_base_set_option(ptr->dns_base, "probe-backoff-factor:", "1");
+
+	// shared across server threads
+	ptr->server_fd = fd;
+	ptr->config = config;
+	ptr->sm = sm;
+	ptr->acl = acl;
+	ptr->ssl_ctx = ssl_ctx;
+
+	// server
+	ptr->listener =
+		evconnlistener_new(ptr->base, accept_conn_cb, ptr,
+				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
+				   -1, fd);
+	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
 
 	return ptr;
 }
 
 void pgs_local_server_stop(pgs_local_server_t *local, int timeout)
 {
-	struct timeval tv;
-	tv.tv_sec = timeout;
-	tv.tv_usec = 0;
-	event_base_loopexit(local->base, &tv);
+	event_base_loopbreak(local->base);
 }
 
 // Destroy local server
@@ -70,10 +92,10 @@ void pgs_local_server_destroy(pgs_local_server_t *local)
 {
 	if (local->listener)
 		evconnlistener_free(local->listener);
-	if (local->base)
-		event_base_free(local->base);
 	if (local->dns_base)
 		evdns_base_free(local->dns_base, 0);
+	if (local->base)
+		event_base_free(local->base);
 	if (local->logger)
 		pgs_logger_free(local->logger);
 	free(local);
@@ -85,37 +107,27 @@ void pgs_local_server_destroy(pgs_local_server_t *local)
  * */
 void *start_local_server(void *data)
 {
-	pgs_local_server_t *local = (pgs_local_server_t *)data;
-	local->tid = (uint32_t)pthread_self();
-	local->logger->tid = (uint32_t)pthread_self();
-	struct event_config *cfg = event_config_new();
-	event_config_set_flag(cfg, EVENT_BASE_FLAG_NOLOCK);
-	local->base = event_base_new_with_config(cfg);
-	event_config_free(cfg);
+	// pgs_local_server_new(&ctx);
+	pgs_local_server_ctx_t *ctx = (pgs_local_server_ctx_t *)data;
 
-	local->dns_base =
-		evdns_base_new(local->base, EVDNS_BASE_INITIALIZE_NAMESERVERS);
-	evdns_base_set_option(local->dns_base, "max-probe-timeout:", "5");
-	evdns_base_set_option(local->dns_base, "probe-backoff-factor:", "1");
+	pgs_local_server_t *local =
+		pgs_local_server_new(ctx->fd, ctx->mpsc, ctx->config, ctx->acl,
+				     ctx->sm, ctx->ssl_ctx);
 
-	local->listener =
-		evconnlistener_new(local->base, accept_conn_cb, local,
-				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
-				   -1, local->server_fd);
-	evconnlistener_set_error_cb(local->listener, accept_error_cb);
+	// it will be used to stop/free pegas from other threads
+	*ctx->local_server_ref = local;
 
 	pgs_logger_info(local->logger, "Listening at %s:%d",
 			local->config->local_address,
 			local->config->local_port);
 
-	// will block here
 	event_base_dispatch(local->base);
 
-	//evconnlistener_free(local->listener);
-	//evdns_base_free(local->dns_base, 0);
-	//event_base_free(local->base);
-	//local->dns_base = NULL;
-	//local->base = NULL;
+	printf("server thread destroy\n");
+
+	pgs_local_server_destroy(local);
+
+	free(ctx);
 
 	printf("server thread exit\n");
 

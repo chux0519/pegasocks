@@ -30,10 +30,11 @@ static pgs_server_manager_t *SM = NULL;
 static pgs_ssl_ctx_t *SSL_CTX = NULL;
 
 static pthread_t *THREADS = NULL;
-static pgs_local_server_t **LOCAL_SERVERS = NULL;
+static pgs_local_server_t **LOCAL_SERVERS = NULL; /* array of const points */
 
 static pthread_t HELPER_THREAD = 0;
-static pgs_helper_thread_ctx_t *HELPER_THREAD_CTX = NULL;
+
+static pgs_helper_thread_t *HELPER_THREAD_CTX = NULL; /* const pointer */
 
 static int lfd = 0;
 static int cfd = 0;
@@ -50,8 +51,6 @@ static bool pgs_start_helper();
 
 bool pgs_init(const char *config, const char *acl, int threads)
 {
-	pgs_clean();
-
 	snum = threads;
 	CONFIG = pgs_config_load(config);
 	if (CONFIG == NULL) {
@@ -100,12 +99,24 @@ bool pgs_start()
 	RUNNING = true;
 
 	// will block here
+
+	for (int i = 0; i < snum; i++) {
+		pthread_join(THREADS[i], NULL);
+	}
+
+	printf("server threads joined\n");
+
 	pthread_join(HELPER_THREAD, NULL);
 
-	pgs_stop();
-	pgs_clean();
+	printf("helper thread joined\n");
+
+	// stoped by other threads
 
 	RUNNING = false;
+
+	// cleanup
+	pgs_clean();
+
 	return true;
 }
 
@@ -119,12 +130,19 @@ void pgs_stop()
 				pgs_local_server_stop(
 					LOCAL_SERVERS[i],
 					timeout /* default timeout */);
+				// clean the thread resources
+				// pgs_local_server_destroy(LOCAL_SERVERS[i]);
+				printf("worker %d exit\n", i);
 			}
 		}
 	}
 
 	if (HELPER_THREAD_CTX != NULL) {
 		pgs_helper_thread_stop(HELPER_THREAD_CTX, timeout);
+		// pgs_helper_thread_free(HELPER_THREAD_CTX);
+		// free(HELPER_THREAD_CTX);
+		printf("helper exit\n");
+		// will clean resources in their own threads
 	}
 }
 
@@ -133,7 +151,6 @@ void pgs_clean()
 	if (LOCAL_SERVERS != NULL) {
 		for (int i = 0; i < snum; i++) {
 			if (LOCAL_SERVERS[i] != NULL) {
-				pgs_local_server_destroy(LOCAL_SERVERS[i]);
 				LOCAL_SERVERS[i] = NULL;
 			}
 		}
@@ -146,7 +163,6 @@ void pgs_clean()
 		THREADS = NULL;
 	}
 	if (HELPER_THREAD_CTX != NULL) {
-		pgs_helper_thread_ctx_free(HELPER_THREAD_CTX);
 		HELPER_THREAD_CTX = NULL;
 	}
 	if (HELPER_THREAD != 0) {
@@ -281,9 +297,6 @@ static int init_control_fd(const pgs_config_t *config, int *fd)
 
 static bool pgs_start_local_servers()
 {
-	// create local servers(detached)
-	pgs_local_server_ctx_t ctx = { lfd, MPSC, CONFIG, SM, ACL, SSL_CTX };
-
 	THREADS = malloc(snum * sizeof(pthread_t));
 	LOCAL_SERVERS = malloc(snum * sizeof(pgs_local_server_t *));
 	for (int i = 0; i < snum; i++) {
@@ -292,13 +305,23 @@ static bool pgs_start_local_servers()
 
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	// pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
 	// Local server threads
 	for (int i = 0; i < snum; i++) {
-		LOCAL_SERVERS[i] = pgs_local_server_new(&ctx);
-		pthread_create(&THREADS[i], &attr, start_local_server,
-			       (void *)LOCAL_SERVERS[i]);
+		// ctx is freed in worker threads
+		pgs_local_server_ctx_t *ctx =
+			malloc(sizeof(pgs_local_server_ctx_t));
+		ctx->fd = lfd;
+		ctx->mpsc = MPSC;
+		ctx->config = CONFIG;
+		ctx->sm = SM;
+		ctx->acl = ACL;
+		ctx->ssl_ctx = SSL_CTX;
+		ctx->local_server_ref = (void **)&LOCAL_SERVERS[i];
+
+		pthread_create(&THREADS[i], &attr, start_local_server, ctx);
 	}
 	pthread_attr_destroy(&attr);
 	return true;
@@ -309,16 +332,19 @@ static bool pgs_start_local_servers()
  */
 static bool pgs_start_helper()
 {
-	pgs_helper_thread_arg_t arg = { SM, LOGGER, CONFIG, cfd, SSL_CTX };
 	pthread_attr_t attr;
-
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-	HELPER_THREAD_CTX = pgs_helper_thread_ctx_new(&arg);
+	pgs_helper_thread_ctx_t *ctx = malloc(sizeof(pgs_helper_thread_t));
+	ctx->cfd = cfd;
+	ctx->config = CONFIG;
+	ctx->logger = LOGGER;
+	ctx->sm = SM;
+	ctx->ssl_ctx = SSL_CTX;
+	ctx->helper_ref = (void **)&HELPER_THREAD_CTX;
 
-	pthread_create(&HELPER_THREAD, &attr, pgs_helper_thread_start,
-		       (void *)HELPER_THREAD_CTX);
+	pthread_create(&HELPER_THREAD, &attr, pgs_helper_thread_start, ctx);
 
 	pthread_attr_destroy(&attr);
 

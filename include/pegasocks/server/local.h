@@ -34,9 +34,14 @@ typedef struct pgs_local_server_ctx_s {
 	pgs_server_manager_t *sm;
 	pgs_acl_t *acl;
 	pgs_ssl_ctx_t *ssl_ctx;
+
+	void **local_server_ref; /* it will be used to stop the server from other threads */
 } pgs_local_server_ctx_t;
 
-pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx);
+pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
+					 pgs_config_t *config, pgs_acl_t *acl,
+					 pgs_server_manager_t *sm,
+					 pgs_ssl_ctx_t *ssl_ctx);
 void pgs_local_server_stop(pgs_local_server_t *local, int timeout);
 void pgs_local_server_destroy(pgs_local_server_t *local);
 

@@ -16,18 +16,12 @@ static void shutdown(int signum)
 {
 	printf("shutdown\n");
 	pgs_stop();
-	pgs_clean();
 }
 
 int main(int argc, char **argv)
 {
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGINT, shutdown);
-
-	sigset_t set;
-	sigemptyset(&set);
-	sigaddset(&set, SIGPIPE);
-	pthread_sigmask(SIG_BLOCK, &set, NULL);
 
 #ifdef DEBUG_EVENT
 	event_enable_debug_logging(EVENT_DBG_ALL);
@@ -83,6 +77,7 @@ int main(int argc, char **argv)
 	bool ok = pgs_init(config_path, acl_path, server_threads);
 	if (!ok) {
 		printf("init failed");
+		return -1;
 	}
 	ok = pgs_start();
 
