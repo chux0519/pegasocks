@@ -36,6 +36,16 @@ static void on_trojan_g204_event(struct bufferevent *bev, short events,
 				 void *ctx)
 {
 	pgs_metrics_task_ctx_t *mctx = ctx;
+	if (events & BEV_EVENT_TIMEOUT) {
+		pgs_logger_error(mctx->logger, "(%s)%s:%d g204 timeout",
+				 mctx->config->server_type,
+				 mctx->config->server_address,
+				 mctx->config->server_port);
+		bufferevent_free(bev);
+		if (mctx)
+			pgs_metrics_task_ctx_free(mctx);
+		return;
+	}
 	const pgs_config_extra_trojan_t *tconfig = mctx->config->extra;
 	if (tconfig->websocket.enabled) {
 		on_ws_g204_event(bev, events, ctx);
@@ -59,6 +69,13 @@ static void on_v2ray_g204_event(struct bufferevent *bev, short events,
 				void *ctx)
 {
 	pgs_metrics_task_ctx_t *mctx = ctx;
+	if (events & BEV_EVENT_TIMEOUT) {
+		pgs_logger_error(mctx->logger, "v2ray g204 timeout");
+		bufferevent_free(bev);
+		if (mctx)
+			pgs_metrics_task_ctx_free(mctx);
+		return;
+	}
 	const pgs_config_extra_v2ray_t *vconfig = mctx->config->extra;
 	if (vconfig->websocket.enabled) {
 		on_ws_g204_event(bev, events, ctx);
@@ -156,8 +173,10 @@ static void on_ws_g204_event(struct bufferevent *bev, short events, void *ctx)
 	if (events & BEV_EVENT_CONNECTED)
 		do_ws_remote_request(bev, ctx);
 	if (events & BEV_EVENT_ERROR)
-		pgs_logger_error(mctx->logger, "Error from bufferevent");
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		pgs_logger_error(mctx->logger, "ws g204 error");
+	if (events & BEV_EVENT_TIMEOUT)
+		pgs_logger_error(mctx->logger, "ws g204 timeout");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
 		bufferevent_free(bev);
 		if (mctx)
 			pgs_metrics_task_ctx_free(mctx);
@@ -260,6 +279,8 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 		double g204_time = elapse(mctx->start_at);
 		pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
 		mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
+		// drop it, clean up
+		on_ws_g204_event(bev, BEV_EVENT_EOF, ctx);
 	}
 }
 static void on_trojan_gfw_g204_read(struct bufferevent *bev, void *ctx)
@@ -329,6 +350,13 @@ static void on_ss_g204_read(struct bufferevent *bev, void *ctx)
 static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx)
 {
 	pgs_metrics_task_ctx_t *mctx = ctx;
+	if (events & BEV_EVENT_TIMEOUT) {
+		pgs_logger_error(mctx->logger, "shadowsocks g204 timeout");
+		bufferevent_free(bev);
+		if (mctx)
+			pgs_metrics_task_ctx_free(mctx);
+		return;
+	}
 	if (events & BEV_EVENT_CONNECTED) {
 		// set connected
 		mctx->outbound->ready = true;
