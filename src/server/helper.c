@@ -23,8 +23,12 @@ static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 {
 	pgs_timer_t *arg = data;
 	for (int i = 0; i < arg->ctx->sm->server_len; i++) {
-		get_metrics_g204_connect(arg->ctx->base, arg->ctx->sm, i,
-					 arg->ctx->logger, arg->ctx->ssl_ctx);
+		pgs_metrics_task_ctx_t *t = get_metrics_g204_connect(
+			i, arg->ctx->base, arg->ctx->sm, arg->ctx->logger,
+			arg->ctx->ssl_ctx, arg->ctx->mtasks);
+		if (t) {
+			pgs_list_add(arg->ctx->mtasks, t->node);
+		}
 	}
 	arg->tv.tv_sec = arg->ctx->config->ping_interval;
 	arg->tv.tv_usec = 0;
@@ -76,6 +80,9 @@ pgs_helper_thread_t *pgs_helper_thread_new(int cfd, pgs_config_t *config,
 
 	ptr->ev_term = evuser_new(ptr->base, pgs_helper_term, ptr->base);
 
+	ptr->mtasks = pgs_list_new();
+	ptr->mtasks->free = (void *)pgs_metrics_task_ctx_free;
+
 	ptr->tid = (uint32_t)pthread_self();
 	ptr->cfd = cfd;
 	ptr->config = config;
@@ -90,6 +97,9 @@ void pgs_helper_thread_free(pgs_helper_thread_t *ptr)
 	if (ptr->ev_term) {
 		evuser_del(ptr->ev_term);
 		event_free(ptr->ev_term);
+	}
+	if (ptr->mtasks) {
+		pgs_list_free(ptr->mtasks);
 	}
 	if (ptr->control_server)
 		pgs_control_server_ctx_destroy(ptr->control_server);

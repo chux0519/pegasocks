@@ -43,7 +43,8 @@ static void on_trojan_g204_event(struct bufferevent *bev, short events,
 				 mctx->config->server_port);
 		bufferevent_free(bev);
 		if (mctx)
-			pgs_metrics_task_ctx_free(mctx);
+			PGS_FREE_METRICS_TASK(mctx);
+		PGS_FREE_METRICS_TASK(mctx);
 		return;
 	}
 	const pgs_config_extra_trojan_t *tconfig = mctx->config->extra;
@@ -73,7 +74,7 @@ static void on_v2ray_g204_event(struct bufferevent *bev, short events,
 		pgs_logger_error(mctx->logger, "v2ray g204 timeout");
 		bufferevent_free(bev);
 		if (mctx)
-			pgs_metrics_task_ctx_free(mctx);
+			PGS_FREE_METRICS_TASK(mctx);
 		return;
 	}
 	const pgs_config_extra_v2ray_t *vconfig = mctx->config->extra;
@@ -95,15 +96,16 @@ static void on_v2ray_g204_read(struct bufferevent *bev, void *ctx)
 	}
 }
 
-void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
-			      int idx, pgs_logger_t *logger,
-			      pgs_ssl_ctx_t *ssl_ctx)
+pgs_metrics_task_ctx_t *
+get_metrics_g204_connect(int idx, struct event_base *base,
+			 pgs_server_manager_t *sm, pgs_logger_t *logger,
+			 pgs_ssl_ctx_t *ssl_ctx, pgs_list_t *mtasks)
 {
 	const pgs_server_config_t *config = &sm->server_configs[idx];
 	const uint8_t *cmd = g204_cmd;
 	uint64_t cmd_len = 20;
-	pgs_metrics_task_ctx_t *mctx =
-		pgs_metrics_task_ctx_new(base, config, sm, idx, logger, NULL);
+	pgs_metrics_task_ctx_t *mctx = pgs_metrics_task_ctx_new(
+		idx, base, config, sm, logger, NULL, mtasks);
 
 	pgs_session_outbound_t *ptr = pgs_session_outbound_new();
 	mctx->outbound = ptr;
@@ -144,7 +146,7 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 	} else {
 		pgs_logger_error(logger, "Not supported server type: %s",
 				 config->server_type);
-		return;
+		goto error;
 	}
 
 	bufferevent_enable(ptr->bev, EV_READ);
@@ -160,11 +162,12 @@ void get_metrics_g204_connect(struct event_base *base, pgs_server_manager_t *sm,
 	pgs_logger_debug(logger, "connect: %s:%d", config->server_address,
 			 config->server_port);
 
-	return;
+	return mctx;
 
 error:
 	if (mctx)
-		pgs_metrics_task_ctx_free(mctx);
+		PGS_FREE_METRICS_TASK(mctx);
+	return NULL;
 }
 
 static void on_ws_g204_event(struct bufferevent *bev, short events, void *ctx)
@@ -179,7 +182,7 @@ static void on_ws_g204_event(struct bufferevent *bev, short events, void *ctx)
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
 		bufferevent_free(bev);
 		if (mctx)
-			pgs_metrics_task_ctx_free(mctx);
+			PGS_FREE_METRICS_TASK(mctx);
 	}
 }
 
@@ -324,7 +327,7 @@ static void on_trojan_gfw_g204_event(struct bufferevent *bev, short events,
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		bufferevent_free(bev);
 		if (mctx)
-			pgs_metrics_task_ctx_free(mctx);
+			PGS_FREE_METRICS_TASK(mctx);
 	}
 }
 static void on_v2ray_tcp_g204_read(struct bufferevent *bev, void *ctx)
@@ -354,7 +357,7 @@ static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx)
 		pgs_logger_error(mctx->logger, "shadowsocks g204 timeout");
 		bufferevent_free(bev);
 		if (mctx)
-			pgs_metrics_task_ctx_free(mctx);
+			PGS_FREE_METRICS_TASK(mctx);
 		return;
 	}
 	if (events & BEV_EVENT_CONNECTED) {
@@ -381,7 +384,7 @@ static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx)
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		bufferevent_free(bev);
 		if (mctx)
-			pgs_metrics_task_ctx_free(mctx);
+			PGS_FREE_METRICS_TASK(mctx);
 	}
 }
 
@@ -414,7 +417,7 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		bufferevent_free(bev);
 		if (mctx)
-			pgs_metrics_task_ctx_free(mctx);
+			PGS_FREE_METRICS_TASK(mctx);
 	}
 }
 
@@ -435,10 +438,10 @@ static void do_ws_remote_request(struct bufferevent *bev, void *ctx)
 }
 
 pgs_metrics_task_ctx_t *
-pgs_metrics_task_ctx_new(struct event_base *base,
+pgs_metrics_task_ctx_new(int idx, struct event_base *base,
 			 const pgs_server_config_t *config,
-			 pgs_server_manager_t *sm, int idx,
-			 pgs_logger_t *logger, pgs_session_outbound_t *outbound)
+			 pgs_server_manager_t *sm, pgs_logger_t *logger,
+			 pgs_session_outbound_t *outbound, pgs_list_t *tasks)
 {
 	pgs_metrics_task_ctx_t *ptr = malloc(sizeof(pgs_metrics_task_ctx_t));
 	ptr->base = base;
@@ -448,6 +451,9 @@ pgs_metrics_task_ctx_new(struct event_base *base,
 	ptr->server_idx = idx;
 	ptr->logger = logger;
 	ptr->outbound = outbound;
+
+	ptr->node = pgs_list_node_new(ptr);
+	ptr->mtasks = tasks;
 	gettimeofday(&ptr->start_at, NULL);
 	return ptr;
 }
