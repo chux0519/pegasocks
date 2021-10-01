@@ -12,6 +12,7 @@
 #include "config.h"
 #include "manager.h"
 #include "ssl.h"
+#include "utils.h"
 
 typedef struct pgs_local_server_s {
 	uint32_t tid;
@@ -20,6 +21,9 @@ typedef struct pgs_local_server_s {
 	struct evdns_base *dns_base;
 	struct evconnlistener *listener;
 	pgs_logger_t *logger;
+
+	pgs_list_t *sessions;
+
 	// shared from main thread, read only
 	pgs_config_t *config;
 	pgs_server_manager_t *sm;

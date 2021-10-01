@@ -46,6 +46,7 @@ set(PEGAS_SOURCES
                   src/config.c
                   src/mpsc.c
                   src/log.c
+                  src/utils.c
                   src/codec/websocket.c
                   src/codec/trojan.c
                   src/codec/vmess.c

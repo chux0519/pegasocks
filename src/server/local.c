@@ -36,6 +36,10 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 
 	// new session
 	pgs_session_t *session = pgs_session_new(fd, local);
+
+	// cache this
+	pgs_list_add(local->sessions, session->node);
+
 	// start session
 	pgs_session_start(session);
 }
@@ -64,6 +68,9 @@ pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
 		evdns_base_new(ptr->base, EVDNS_BASE_INITIALIZE_NAMESERVERS);
 	evdns_base_set_option(ptr->dns_base, "max-probe-timeout:", "5");
 	evdns_base_set_option(ptr->dns_base, "probe-backoff-factor:", "1");
+
+	ptr->sessions = pgs_list_new();
+	ptr->sessions->free = (void *)pgs_session_free;
 
 	// shared across server threads
 	ptr->server_fd = fd;
@@ -122,6 +129,9 @@ void *start_local_server(void *data)
 			local->config->local_port);
 
 	event_base_dispatch(local->base);
+
+	// free all pending/active sessions
+	pgs_list_free(local->sessions);
 
 	printf("server thread destroy\n");
 

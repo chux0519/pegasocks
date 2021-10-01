@@ -496,7 +496,7 @@ static void on_bypass_remote_event(struct bufferevent *bev, short events,
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		bufferevent_free(bev);
 
-		pgs_session_free(session);
+		PGS_FREE_SESSION(session);
 	}
 }
 
@@ -518,7 +518,7 @@ static void on_bypass_remote_read(struct bufferevent *bev, void *ctx)
 	return;
 
 error:
-	pgs_session_free(session);
+	PGS_FREE_SESSION(session);
 }
 
 /*
@@ -576,7 +576,7 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		bufferevent_free(bev);
 
-		pgs_session_free(session);
+		PGS_FREE_SESSION(session);
 	}
 }
 
@@ -691,7 +691,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 	return;
 
 error:
-	pgs_session_free(session);
+	PGS_FREE_SESSION(session);
 }
 
 /*
@@ -745,7 +745,7 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		bufferevent_free(bev);
 
-		pgs_session_free(session);
+		PGS_FREE_SESSION(session);
 	}
 }
 static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
@@ -882,7 +882,7 @@ static void on_ss_remote_event(struct bufferevent *bev, short events, void *ctx)
 				  "Error from bufferevent: on_ss_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		bufferevent_free(bev);
-		pgs_session_free(session);
+		PGS_FREE_SESSION(session);
 	}
 }
 
@@ -915,5 +915,5 @@ static void on_ss_remote_read(struct bufferevent *bev, void *ctx)
 	return;
 
 error:
-	pgs_session_free(session);
+	PGS_FREE_SESSION(session);
 }

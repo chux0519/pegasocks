@@ -75,6 +75,5 @@ error:
 		free(udp_packet);
 		udp_packet = NULL;
 	}
-	pgs_session_free(session);
 	return false;
 }
