@@ -21,7 +21,7 @@ static void accept_error_cb(struct evconnlistener *listener, void *ctx)
 			 err, evutil_socket_error_to_string(err));
 
 	// after loop exit, outter process have to free the local_server
-	event_base_loopexit(base, NULL);
+	event_base_loopbreak(base);
 }
 
 static void accept_conn_cb(struct evconnlistener *listener, int fd,
@@ -44,6 +44,16 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 	pgs_session_start(session);
 }
 
+static void pgs_local_server_term(int sig, short events, void *arg)
+{
+	printf("worker thread shuting down\n");
+	event_base_loopbreak(arg);
+	//struct timeval tv;
+	//tv.tv_usec = 0;
+	//tv.tv_sec = 0;
+	//event_base_loopexit(arg, &tv);
+}
+
 /*
  * New server, this must be called in a seperate thread
  * it will create a base loop without LOCK, so not thread-safe (one loop per thread)
@@ -57,6 +67,13 @@ pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
 
 	ptr->logger =
 		pgs_logger_new(mpsc, config->log_level, config->log_isatty);
+
+	// shared across server threads
+	ptr->server_fd = fd;
+	ptr->config = config;
+	ptr->sm = sm;
+	ptr->acl = acl;
+	ptr->ssl_ctx = ssl_ctx;
 
 	ptr->tid = (uint32_t)pthread_self();
 	struct event_config *cfg = event_config_new();
@@ -72,13 +89,6 @@ pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
 	ptr->sessions = pgs_list_new();
 	ptr->sessions->free = (void *)pgs_session_free;
 
-	// shared across server threads
-	ptr->server_fd = fd;
-	ptr->config = config;
-	ptr->sm = sm;
-	ptr->acl = acl;
-	ptr->ssl_ctx = ssl_ctx;
-
 	// server
 	ptr->listener =
 		evconnlistener_new(ptr->base, accept_conn_cb, ptr,
@@ -86,17 +96,18 @@ pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
 				   -1, fd);
 	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
 
-	return ptr;
-}
+	ptr->ev_term = evuser_new(ptr->base, pgs_local_server_term, ptr->base);
 
-void pgs_local_server_stop(pgs_local_server_t *local, int timeout)
-{
-	event_base_loopbreak(local->base);
+	return ptr;
 }
 
 // Destroy local server
 void pgs_local_server_destroy(pgs_local_server_t *local)
 {
+	if (local->ev_term) {
+		evuser_del(local->ev_term);
+		event_free(local->ev_term);
+	}
 	if (local->listener)
 		evconnlistener_free(local->listener);
 	if (local->dns_base)
@@ -106,6 +117,11 @@ void pgs_local_server_destroy(pgs_local_server_t *local)
 	if (local->logger)
 		pgs_logger_free(local->logger);
 	free(local);
+}
+
+static void timer_noop(evutil_socket_t fd, short event, void *data)
+{
+	// empty timer, to keep the loop running
 }
 
 /*
@@ -128,7 +144,18 @@ void *start_local_server(void *data)
 			local->config->local_address,
 			local->config->local_port);
 
+	// use a dumb timer to keep the event loop, otherwise, the terminate event will not take effect
+	struct timeval tv;
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
+	struct event *timer =
+		event_new(local->base, -1, EV_PERSIST, timer_noop, NULL);
+	event_add(timer, &tv);
+
 	event_base_dispatch(local->base);
+
+	evtimer_del(timer);
+	event_free(timer);
 
 	// free all pending/active sessions
 	pgs_list_free(local->sessions);

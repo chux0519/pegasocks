@@ -127,20 +127,20 @@ void pgs_stop()
 	if (LOCAL_SERVERS != NULL) {
 		for (int i = 0; i < snum; i++) {
 			if (LOCAL_SERVERS[i] != NULL) {
-				pgs_local_server_stop(
-					LOCAL_SERVERS[i],
-					timeout /* default timeout */);
 				// clean the thread resources
 				// pgs_local_server_destroy(LOCAL_SERVERS[i]);
+				// TODO: send SIGINT
+				evuser_trigger(LOCAL_SERVERS[i]->ev_term);
 				printf("worker %d exit\n", i);
 			}
 		}
 	}
 
 	if (HELPER_THREAD_CTX != NULL) {
-		pgs_helper_thread_stop(HELPER_THREAD_CTX, timeout);
+		// pgs_helper_thread_stop(HELPER_THREAD_CTX, timeout);
 		// pgs_helper_thread_free(HELPER_THREAD_CTX);
 		// free(HELPER_THREAD_CTX);
+		evuser_trigger(HELPER_THREAD_CTX->ev_term);
 		printf("helper exit\n");
 		// will clean resources in their own threads
 	}

@@ -17,6 +17,8 @@ typedef struct pgs_helper_thread_s {
 	int cfd;
 	pgs_control_server_ctx_t *control_server;
 
+	struct event *ev_term;
+
 	// share
 	pgs_server_manager_t *sm;
 	pgs_logger_t *logger;
@@ -45,7 +47,6 @@ pgs_helper_thread_t *pgs_helper_thread_new(int cfd, pgs_config_t *config,
 					   pgs_server_manager_t *sm,
 					   pgs_ssl_ctx_t *ssl_ctx);
 void pgs_helper_thread_free(pgs_helper_thread_t *ptr);
-void pgs_helper_thread_stop(pgs_helper_thread_t *ptr, int timeout);
 
 void *pgs_helper_thread_start(void *data);
 

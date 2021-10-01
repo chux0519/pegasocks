@@ -33,6 +33,12 @@ static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 	return;
 }
 
+static void pgs_helper_term(int sig, short events, void *arg)
+{
+	printf("helper thread shuting down\n");
+	event_base_loopbreak(arg);
+}
+
 pgs_timer_t *pgs_timer_init(int interval, pgs_timer_cb_t cb,
 			    pgs_helper_thread_t *ptr)
 {
@@ -68,6 +74,8 @@ pgs_helper_thread_t *pgs_helper_thread_new(int cfd, pgs_config_t *config,
 	ptr->control_server =
 		pgs_control_server_start(cfd, ptr->base, sm, logger, config);
 
+	ptr->ev_term = evuser_new(ptr->base, pgs_helper_term, ptr->base);
+
 	ptr->tid = (uint32_t)pthread_self();
 	ptr->cfd = cfd;
 	ptr->config = config;
@@ -79,6 +87,10 @@ pgs_helper_thread_t *pgs_helper_thread_new(int cfd, pgs_config_t *config,
 
 void pgs_helper_thread_free(pgs_helper_thread_t *ptr)
 {
+	if (ptr->ev_term) {
+		evuser_del(ptr->ev_term);
+		event_free(ptr->ev_term);
+	}
 	if (ptr->control_server)
 		pgs_control_server_ctx_destroy(ptr->control_server);
 	if (ptr->base)
@@ -101,7 +113,6 @@ void *pgs_helper_thread_start(void *data)
 	// timer for connect and g204, interval can be setted by config
 	pgs_timer_t *t2 = pgs_timer_init(1, pgs_metrics_timer_cb, helper);
 
-	// control server
 	event_base_dispatch(helper->base);
 
 	pgs_timer_destroy(t2);
@@ -118,9 +129,4 @@ void *pgs_helper_thread_start(void *data)
 
 	printf("helper thread exit\n");
 	return 0;
-}
-
-void pgs_helper_thread_stop(pgs_helper_thread_t *ptr, int timeout)
-{
-	event_base_loopbreak(ptr->base);
 }
