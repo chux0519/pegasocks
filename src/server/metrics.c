@@ -44,7 +44,6 @@ static void on_trojan_g204_event(struct bufferevent *bev, short events,
 		bufferevent_free(bev);
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
-		PGS_FREE_METRICS_TASK(mctx);
 		return;
 	}
 	const pgs_config_extra_trojan_t *tconfig = mctx->config->extra;
