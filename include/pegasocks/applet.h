@@ -10,22 +10,13 @@
 #include <unistd.h>
 #endif
 
-typedef struct pgs_tray_context_s pgs_tray_context_t;
-
-typedef void(spawn_fn)(pthread_t *threads, int server_threads,
-		       pgs_local_server_ctx_t *ctx);
-
-typedef void(shutdown_fn)(pthread_t *threads, int server_threads);
-
-struct pgs_tray_context_s {
+typedef struct pgs_tray_context_s {
 	pgs_logger_t *logger;
 	pgs_server_manager_t *sm;
-	pthread_t *threads;
-	int thread_num;
-	spawn_fn *spawn_workers;
-	shutdown_fn *kill_workers;
 	char *metrics_label;
-};
+
+	void (*quit)();
+} pgs_tray_context_t;
 
 #ifdef WITH_APPLET
 #if defined(_WIN32) || defined(_WIN64)

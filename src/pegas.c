@@ -5,6 +5,10 @@
 #include "defs.h"
 #include "ssl.h"
 
+#ifdef WITH_APPLET
+#include "applet.h"
+#endif
+
 #include "server/manager.h"
 #include "server/helper.h"
 #include "server/local.h"
@@ -98,6 +102,11 @@ bool pgs_start()
 
 	RUNNING = true;
 
+#ifdef WITH_APPLET
+	pgs_tray_context_t tray_ctx = { LOGGER, SM, NULL, pgs_stop };
+	pgs_tray_start(&tray_ctx);
+#endif
+
 	// will block here
 
 	for (int i = 0; i < snum; i++) {
@@ -128,8 +137,6 @@ void pgs_stop()
 		for (int i = 0; i < snum; i++) {
 			if (LOCAL_SERVERS[i] != NULL) {
 				// clean the thread resources
-				// pgs_local_server_destroy(LOCAL_SERVERS[i]);
-				// TODO: send SIGINT
 				evuser_trigger(LOCAL_SERVERS[i]->ev_term);
 				printf("worker %d exit\n", i);
 			}
@@ -137,12 +144,8 @@ void pgs_stop()
 	}
 
 	if (HELPER_THREAD_CTX != NULL) {
-		// pgs_helper_thread_stop(HELPER_THREAD_CTX, timeout);
-		// pgs_helper_thread_free(HELPER_THREAD_CTX);
-		// free(HELPER_THREAD_CTX);
 		evuser_trigger(HELPER_THREAD_CTX->ev_term);
 		printf("helper exit\n");
-		// will clean resources in their own threads
 	}
 }
 
