@@ -45,6 +45,7 @@ static int cfd = 0;
 static int snum = 0;
 
 static bool RUNNING = false;
+static bool SHUTINGDOWN = false;
 
 static int init_local_server_fd(const pgs_config_t *config, int *fd,
 				int sock_type);
@@ -131,7 +132,9 @@ bool pgs_start()
 
 void pgs_stop()
 {
-	int timeout = 0;
+	if (SHUTINGDOWN)
+		return;
+	SHUTINGDOWN = true;
 
 	if (LOCAL_SERVERS != NULL) {
 		for (int i = 0; i < snum; i++) {
@@ -147,6 +150,8 @@ void pgs_stop()
 		evuser_trigger(HELPER_THREAD_CTX->ev_term);
 		printf("helper exit\n");
 	}
+
+	SHUTINGDOWN = false;
 }
 
 void pgs_clean()
