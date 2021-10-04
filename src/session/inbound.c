@@ -414,7 +414,8 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			// create outbound
 			session->outbound = pgs_session_outbound_new();
 			if (!pgs_session_outbound_init(
-				    session->outbound, false, NULL, config, cmd,
+				    session->outbound, false,
+				    session->local_server->config, config, cmd,
 				    cmdlen, session->local_server, session))
 				goto error;
 
