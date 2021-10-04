@@ -46,12 +46,7 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 
 static void pgs_local_server_term(int sig, short events, void *arg)
 {
-	printf("worker thread shuting down\n");
 	event_base_loopbreak(arg);
-	//struct timeval tv;
-	//tv.tv_usec = 0;
-	//tv.tv_sec = 0;
-	//event_base_loopexit(arg, &tv);
 }
 
 /*
@@ -160,13 +155,9 @@ void *start_local_server(void *data)
 	// free all pending/active sessions
 	pgs_list_free(local->sessions);
 
-	printf("server thread destroy\n");
-
 	pgs_local_server_destroy(local);
 
 	free(ctx);
-
-	printf("server thread exit\n");
 
 	return 0;
 }

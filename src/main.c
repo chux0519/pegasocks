@@ -14,7 +14,6 @@
 
 static void shutdown(int signum)
 {
-	printf("shutdown\n");
 	pgs_stop();
 }
 
@@ -74,12 +73,10 @@ int main(int argc, char **argv)
 		config_path = full_config_path;
 	}
 
-	bool ok = pgs_init(config_path, acl_path, server_threads);
-	if (!ok) {
-		printf("init failed");
+	bool ok = pgs_start(config_path, acl_path, server_threads);
+
+	if (!ok)
 		return -1;
-	}
-	ok = pgs_start();
 
 	return 0;
 }

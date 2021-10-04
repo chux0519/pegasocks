@@ -47,6 +47,9 @@ static int snum = 0;
 static bool RUNNING = false;
 static bool SHUTINGDOWN = false;
 
+static bool pgs_init(const char *config, const char *acl, int threads);
+static void pgs_clean();
+
 static int init_local_server_fd(const pgs_config_t *config, int *fd,
 				int sock_type);
 static int init_control_fd(const pgs_config_t *config, int *fd);
@@ -54,48 +57,17 @@ static int init_control_fd(const pgs_config_t *config, int *fd);
 static bool pgs_start_local_servers();
 static bool pgs_start_helper();
 
-bool pgs_init(const char *config, const char *acl, int threads)
-{
-	snum = threads;
-	CONFIG = pgs_config_load(config);
-	if (CONFIG == NULL) {
-		return false;
-	}
-
-#ifdef WITH_ACL
-	if (acl != NULL) {
-		ACL = pgs_acl_new(acl);
-		if (ACL == NULL) {
-			return false;
-		}
-	}
-#endif
-
-	if (init_local_server_fd(CONFIG, &lfd, SOCK_STREAM) < 0) {
-		return false;
-	}
-	if (init_control_fd(CONFIG, &cfd) < 0) {
-		return false;
-	}
-	MPSC = pgs_mpsc_new(MAX_LOG_MPSC_SIZE);
-
-	LOGGER = pgs_logger_new(MPSC, CONFIG->log_level, CONFIG->log_isatty);
-
-	SM = pgs_server_manager_new(CONFIG->servers, CONFIG->servers_count);
-
-	SSL_CTX = pgs_ssl_ctx_new();
-
-	return true;
-}
-
-bool pgs_start()
+bool pgs_start(const char *config, const char *acl, int threads)
 {
 	if (RUNNING)
 		return false;
 
+	if (!pgs_init(config, acl, threads))
+		return false;
+
 	if (!pgs_start_local_servers())
 		return false;
-	// start helper thread
+
 	if (!pgs_start_helper())
 		return false;
 
@@ -114,11 +86,7 @@ bool pgs_start()
 		pthread_join(THREADS[i], NULL);
 	}
 
-	printf("server threads joined\n");
-
 	pthread_join(HELPER_THREAD, NULL);
-
-	printf("helper thread joined\n");
 
 	// stoped by other threads
 
@@ -141,76 +109,18 @@ void pgs_stop()
 			if (LOCAL_SERVERS[i] != NULL) {
 				// clean the thread resources
 				evuser_trigger(LOCAL_SERVERS[i]->ev_term);
-				printf("worker %d exit\n", i);
 			}
 		}
 	}
 
 	if (HELPER_THREAD_CTX != NULL) {
 		evuser_trigger(HELPER_THREAD_CTX->ev_term);
-		printf("helper exit\n");
 	}
 
 	SHUTINGDOWN = false;
 }
 
-void pgs_clean()
-{
-	if (LOCAL_SERVERS != NULL) {
-		for (int i = 0; i < snum; i++) {
-			if (LOCAL_SERVERS[i] != NULL) {
-				LOCAL_SERVERS[i] = NULL;
-			}
-		}
-		free(LOCAL_SERVERS);
-		LOCAL_SERVERS = NULL;
-	}
-
-	if (THREADS != NULL) {
-		free(THREADS);
-		THREADS = NULL;
-	}
-	if (HELPER_THREAD_CTX != NULL) {
-		HELPER_THREAD_CTX = NULL;
-	}
-	if (HELPER_THREAD != 0) {
-		HELPER_THREAD = 0;
-	}
-	if (SSL_CTX != NULL) {
-		pgs_ssl_ctx_free(SSL_CTX);
-		SSL_CTX = NULL;
-	}
-	if (SM != NULL) {
-		pgs_server_manager_free(SM);
-		SM = NULL;
-	}
-	if (LOGGER != NULL) {
-		pgs_logger_free(LOGGER);
-		LOGGER = NULL;
-	}
-	if (MPSC != NULL) {
-		pgs_mpsc_free(MPSC);
-		MPSC = NULL;
-	}
-
-	if (CONFIG != NULL) {
-		pgs_config_free(CONFIG);
-		CONFIG = NULL;
-	}
-#ifdef WITH_ACL
-	if (ACL != NULL) {
-		pgs_acl_free(ACL);
-		ACL = NULL;
-	}
-#endif
-
-	// will be closed by bufferevents
-	lfd = 0;
-	cfd = 0;
-
-	snum = 0;
-}
-
+// static functions
 static int init_local_server_fd(const pgs_config_t *config, int *fd,
 				int sock_type)
 {
@@ -357,4 +267,95 @@ static bool pgs_start_helper()
 	pthread_attr_destroy(&attr);
 
 	return true;
+}
+
+static bool pgs_init(const char *config, const char *acl, int threads)
+{
+	snum = threads;
+	CONFIG = pgs_config_load(config);
+	if (CONFIG == NULL) {
+		return false;
+	}
+
+#ifdef WITH_ACL
+	if (acl != NULL) {
+		ACL = pgs_acl_new(acl);
+		if (ACL == NULL) {
+			return false;
+		}
+	}
+#endif
+
+	if (init_local_server_fd(CONFIG, &lfd, SOCK_STREAM) < 0) {
+		return false;
+	}
+	if (init_control_fd(CONFIG, &cfd) < 0) {
+		return false;
+	}
+	MPSC = pgs_mpsc_new(MAX_LOG_MPSC_SIZE);
+
+	LOGGER = pgs_logger_new(MPSC, CONFIG->log_level, CONFIG->log_isatty);
+
+	SM = pgs_server_manager_new(CONFIG->servers, CONFIG->servers_count);
+
+	SSL_CTX = pgs_ssl_ctx_new();
+
+	return true;
+}
+
+static void pgs_clean()
+{
+	if (LOCAL_SERVERS != NULL) {
+		for (int i = 0; i < snum; i++) {
+			if (LOCAL_SERVERS[i] != NULL) {
+				LOCAL_SERVERS[i] = NULL;
+			}
+		}
+		free(LOCAL_SERVERS);
+		LOCAL_SERVERS = NULL;
+	}
+
+	if (THREADS != NULL) {
+		free(THREADS);
+		THREADS = NULL;
+	}
+	if (HELPER_THREAD_CTX != NULL) {
+		HELPER_THREAD_CTX = NULL;
+	}
+	if (HELPER_THREAD != 0) {
+		HELPER_THREAD = 0;
+	}
+	if (SSL_CTX != NULL) {
+		pgs_ssl_ctx_free(SSL_CTX);
+		SSL_CTX = NULL;
+	}
+	if (SM != NULL) {
+		pgs_server_manager_free(SM);
+		SM = NULL;
+	}
+	if (LOGGER != NULL) {
+		pgs_logger_free(LOGGER);
+		LOGGER = NULL;
+	}
+	if (MPSC != NULL) {
+		pgs_mpsc_free(MPSC);
+		MPSC = NULL;
+	}
+
+	if (CONFIG != NULL) {
+		pgs_config_free(CONFIG);
+		CONFIG = NULL;
+	}
+#ifdef WITH_ACL
+	if (ACL != NULL) {
+		pgs_acl_free(ACL);
+		ACL = NULL;
+	}
+#endif
+
+	// will be closed by bufferevents
+	lfd = 0;
+	cfd = 0;
+
+	snum = 0;
 }

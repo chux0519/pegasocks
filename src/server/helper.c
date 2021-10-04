@@ -39,7 +39,6 @@ static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 
 static void pgs_helper_term(int sig, short events, void *arg)
 {
-	printf("helper thread shuting down\n");
 	event_base_loopbreak(arg);
 }
 
@@ -133,12 +132,10 @@ void *pgs_helper_thread_start(void *data)
 
 	// drain logs
 	pgs_logger_tryrecv(helper->logger, helper->config->log_file);
-	printf("logs drained\n");
 
 	pgs_helper_thread_free(helper);
 
 	free(ctx);
 
-	printf("helper thread exit\n");
 	return 0;
 }
