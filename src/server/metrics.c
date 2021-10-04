@@ -149,10 +149,7 @@ get_metrics_g204_connect(int idx, struct event_base *base,
 	}
 
 	bufferevent_enable(ptr->bev, EV_READ);
-	struct timeval tv;
-	tv.tv_sec = 5;
-	tv.tv_usec = 0;
-	bufferevent_set_timeouts(ptr->bev, &tv, NULL);
+	PGS_OUTBOUND_SET_READ_TIMEOUT(ptr, 10);
 
 	bufferevent_socket_connect_hostname(ptr->bev, mctx->dns_base, AF_INET,
 					    config->server_address,

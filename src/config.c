@@ -236,7 +236,7 @@ pgs_config_t *pgs_config_new()
 	ptr->local_port = 0;
 	ptr->control_port = 0;
 	ptr->control_file = "/tmp/pegas.sock";
-	ptr->timeout = 0;
+	ptr->timeout = 30;
 	ptr->log_level = 0;
 	ptr->log_file = stderr;
 	return ptr;

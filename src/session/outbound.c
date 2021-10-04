@@ -447,6 +447,7 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 
 		bufferevent_enable(ptr->bev, EV_READ);
 
+		PGS_OUTBOUND_SET_READ_TIMEOUT(ptr, gconfig->timeout);
 		bufferevent_socket_connect_hostname(ptr->bev, local->dns_base,
 						    AF_INET,
 						    config->server_address,
@@ -466,6 +467,8 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 
 			pgs_logger_info(local->logger, "bypass: %s:%d",
 					ptr->dest, ptr->port);
+
+			PGS_OUTBOUND_SET_READ_TIMEOUT(ptr, gconfig->timeout);
 			bufferevent_socket_connect_hostname(ptr->bev,
 							    local->dns_base,
 							    AF_INET, ptr->dest,
@@ -489,11 +492,13 @@ static void on_bypass_remote_event(struct bufferevent *bev, short events,
 		on_bypass_local_read(session->inbound->bev, ctx);
 	}
 
+	if (events & BEV_EVENT_TIMEOUT)
+		pgs_session_error(session, "bypass remote timeout");
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(
 			session,
 			"Error from bufferevent: on_bypass_remote_event");
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
 		bufferevent_free(bev);
 
 		PGS_FREE_SESSION(session);
@@ -569,11 +574,13 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 			}
 		}
 	}
+	if (events & BEV_EVENT_TIMEOUT)
+		pgs_session_error(session, "trojan remote timeout");
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(
 			session,
 			"Error from bufferevent: on_trojan_remote_event");
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
 		bufferevent_free(bev);
 
 		PGS_FREE_SESSION(session);
@@ -738,11 +745,13 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 			}
 		}
 	}
+	if (events & BEV_EVENT_TIMEOUT)
+		pgs_session_error(session, "v2ray remote timeout");
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(
 			session,
 			"Error from bufferevent: on_v2ray_remote_event");
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
 		bufferevent_free(bev);
 
 		PGS_FREE_SESSION(session);
@@ -877,10 +886,12 @@ static void on_ss_remote_event(struct bufferevent *bev, short events, void *ctx)
 		session->outbound->ready = true;
 		on_ss_local_read(bev, ctx);
 	}
+	if (events & BEV_EVENT_TIMEOUT)
+		pgs_session_error(session, "shadowsocks remote timeout");
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(session,
 				  "Error from bufferevent: on_ss_remote_event");
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
 		bufferevent_free(bev);
 		PGS_FREE_SESSION(session);
 	}
