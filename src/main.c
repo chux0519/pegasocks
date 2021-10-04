@@ -12,8 +12,17 @@
 #define PGS_VERSION "v0.0.0-develop"
 #endif
 
+static bool should_exit = false;
+
 static void shutdown(int signum)
 {
+	should_exit = true;
+	pgs_stop();
+}
+
+static void restart(int signum)
+{
+	should_exit = false;
 	pgs_stop();
 }
 
@@ -21,6 +30,7 @@ int main(int argc, char **argv)
 {
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGINT, shutdown);
+	signal(SIGUSR1, restart);
 
 #ifdef DEBUG_EVENT
 	event_enable_debug_logging(EVENT_DBG_ALL);
@@ -73,10 +83,12 @@ int main(int argc, char **argv)
 		config_path = full_config_path;
 	}
 
-	bool ok = pgs_start(config_path, acl_path, server_threads);
+	while (!should_exit) {
+		bool ok = pgs_start(config_path, acl_path, server_threads);
 
-	if (!ok)
-		return -1;
+		if (!ok)
+			return -1;
+	}
 
 	return 0;
 }

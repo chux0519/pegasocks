@@ -120,7 +120,17 @@ void pgs_stop()
 	SHUTINGDOWN = false;
 }
 
-// static functions
+void pgs_get_servers(char *out, int max_len, int *olen)
+{
+	pgs_sm_get_servers(SM, out, max_len, olen);
+}
+
+bool pgs_set_server(int idx)
+{
+	return pgs_sm_set_server(SM, idx);
+}
+
+// ======================== static functions
 static int init_local_server_fd(const pgs_config_t *config, int *fd,
 				int sock_type)
 {

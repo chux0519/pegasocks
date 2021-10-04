@@ -1,5 +1,6 @@
 #include "server/control.h"
 
+#include "server/manager.h"
 #include <ctype.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -138,7 +139,7 @@ static void on_control_read(struct bufferevent *bev, void *ctx)
 				"switched to server %s, index: %d",
 				control_ctx->config->servers[idx].server_address,
 				idx);
-			control_ctx->sm->cur_server_index = idx;
+			pgs_set_server(control_ctx->sm, idx);
 			evbuffer_add_printf(output, "OK\n");
 		}
 
