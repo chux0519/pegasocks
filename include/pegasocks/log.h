@@ -8,10 +8,24 @@
 
 #include "mpsc.h"
 
-typedef struct pgs_logger_s pgs_logger_t;
 typedef enum { DEBUG, INFO, WARN, ERROR } LOG_LEVEL;
-typedef struct pgs_logger_msg_s pgs_logger_msg_t;
-typedef struct pgs_logger_server_s pgs_logger_server_t;
+
+typedef struct pgs_logger_s {
+	pgs_mpsc_t *mpsc;
+	LOG_LEVEL level;
+	uint32_t tid;
+	bool isatty;
+} pgs_logger_t;
+
+typedef struct pgs_logger_msg_s {
+	char *msg;
+	uint32_t tid;
+} pgs_logger_msg_t;
+
+typedef struct pgs_logger_server_s {
+	pgs_logger_t *logger;
+	FILE *output;
+} pgs_logger_server_t;
 
 #define MAX_MSG_LEN 4096
 #define TIME_FORMAT "%Y-%m-%d %H:%M:%S"
@@ -46,23 +60,6 @@ typedef struct pgs_logger_server_s pgs_logger_server_t;
 
 void pgs_logger_debug_buffer(pgs_logger_t *logger, unsigned char *buf,
 			     int size);
-
-struct pgs_logger_s {
-	pgs_mpsc_t *mpsc;
-	LOG_LEVEL level;
-	uint32_t tid;
-	bool isatty;
-};
-
-struct pgs_logger_msg_s {
-	char *msg;
-	uint32_t tid;
-};
-
-struct pgs_logger_server_s {
-	pgs_logger_t *logger;
-	FILE *output;
-};
 
 pgs_logger_t *pgs_logger_new(pgs_mpsc_t *mpsc, LOG_LEVEL level, bool isatty);
 void pgs_logger_free(pgs_logger_t *logger);

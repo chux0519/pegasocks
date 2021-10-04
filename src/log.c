@@ -49,27 +49,29 @@ void pgs_logger_free(pgs_logger_t *logger)
 
 void pgs_logger_log(LOG_LEVEL level, pgs_logger_t *logger, const char *fmt, ...)
 {
-	va_list args;
-
 	if (level < logger->level) {
 		return;
 	}
 
+	va_list args;
 	// construct string, then send to mpsc
 	// LEVEL date-time tid: MSG
-	char msg[MAX_MSG_LEN - 32];
-	char datetime[32];
+	char msg[MAX_MSG_LEN];
+	char datetime[20];
 	PARSE_TIME_NOW(datetime);
 	va_start(args, fmt);
-	vsprintf(msg, fmt, args);
+	int size = vsnprintf(msg, MAX_MSG_LEN - 1, fmt, args);
 	va_end(args);
 
-	char *m = malloc(sizeof(char) * MAX_MSG_LEN);
+	if (size <= 0)
+		return;
+
+	char *m = malloc(sizeof(char) * (size + 64));
 
 	if (logger->isatty) {
-		sprintf(m, "%s%s [thread-%04d] %s: \e[0m%s", log_colors[level],
-			datetime, (int)(logger->tid % 10000), log_levels[level],
-			msg);
+		sprintf(m, "%s%s [thread-%04d] %s: \e[0m%s",
+			log_colors[level] /*10*/, datetime /*20*/,
+			(int)(logger->tid % 10000), log_levels[level], msg);
 
 	} else {
 		sprintf(m, "%s [thread-%04d] %s: %s", datetime,
