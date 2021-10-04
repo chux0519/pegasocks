@@ -57,8 +57,10 @@ pgs_timer_t *pgs_timer_init(int interval, pgs_timer_cb_t cb,
 
 void pgs_timer_destroy(pgs_timer_t *ctx)
 {
-	if (ctx->ev)
+	if (ctx->ev) {
 		evtimer_del(ctx->ev);
+		event_free(ctx->ev);
+	}
 	if (ctx)
 		free(ctx);
 }

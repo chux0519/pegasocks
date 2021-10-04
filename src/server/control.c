@@ -56,10 +56,11 @@ pgs_control_server_ctx_t *pgs_control_server_ctx_new()
 
 void pgs_control_server_ctx_destroy(pgs_control_server_ctx_t *ptr)
 {
-	if (ptr) {
+	if (ptr->listener)
+		evconnlistener_free(ptr->listener);
+
+	if (ptr)
 		free(ptr);
-		ptr = NULL;
-	}
 }
 
 static void accept_error_cb(struct evconnlistener *listener, void *ctx)
