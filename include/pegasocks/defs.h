@@ -27,4 +27,13 @@ typedef void(on_event_cb)(struct bufferevent *bev, short events, void *ctx);
 typedef void(on_read_cb)(struct bufferevent *bev, void *ctx);
 typedef void(on_udp_read_cb)(int fd, short event, void *ctx);
 
+// for older version of libevent
+#ifndef evuser_new
+#define evuser_new(b, cb, arg) event_new((b), -1, 0, (cb), (arg))
+#define evuser_del(ev) event_del(ev)
+#define evuser_pending(ev, tv) event_pending((ev), 0, (tv))
+#define evuser_initialized(ev) event_initialized(ev)
+#define evuser_trigger(ev) event_active((ev), 0, 0)
+#endif
+
 #endif
