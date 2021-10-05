@@ -4,6 +4,8 @@
 
 static pgs_tray_t tray;
 
+static bool dirty = false;
+
 static char full_icon_path[512] = { 0 };
 
 void pgs_tray_submenu_update(pgs_tray_context_t *ctx,
@@ -111,7 +113,7 @@ void pgs_tray_update()
 	if (tray.menu[0].context) {
 		pgs_tray_submenu_update(tray.menu[0].context,
 					tray.menu[0].submenu);
-		tray_update(&tray);
+		dirty = true;
 	}
 }
 
@@ -123,6 +125,10 @@ void pgs_tray_start(pgs_tray_context_t *ctx)
 		return;
 	}
 	while (tray_loop(1) == 0) {
+		if (dirty) {
+			tray_update(&tray);
+			dirty = false;
+		}
 	}
 	pgs_tray_clean();
 }
