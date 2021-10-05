@@ -3,7 +3,8 @@
 
 #include "stdbool.h"
 
-bool pgs_start(const char *config, const char *acl, int threads);
+bool pgs_start(const char *config, const char *acl, int threads,
+	       void (*shutdown)());
 void pgs_stop();
 
 /*

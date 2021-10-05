@@ -84,7 +84,9 @@ int main(int argc, char **argv)
 	}
 
 	while (!should_exit) {
-		bool ok = pgs_start(config_path, acl_path, server_threads);
+		bool ok = pgs_start(
+			config_path, acl_path, server_threads,
+			shutdown /* used by applet, can be NULL when not use applet */);
 
 		if (!ok)
 			return -1;

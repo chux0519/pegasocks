@@ -1,6 +1,11 @@
 #include "server/metrics.h"
 
+#include "server/manager.h"
 #include <event2/buffer.h>
+
+#ifdef WITH_APPLET
+#include "applet.h"
+#endif
 
 const unsigned char g204_cmd[] = { 0x05, 0x01, 0x00, 0x03, 0x0d, 0x77, 0x77,
 				   0x77, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
@@ -22,6 +27,14 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 
 static void on_ss_g204_read(struct bufferevent *bev, void *ctx);
 static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx);
+
+static void pgs_metrics_update(pgs_server_stats_t *stats, double g204_time)
+{
+	stats->g204_delay = g204_time;
+#ifdef WITH_APPLET
+	pgs_tray_update();
+#endif
+}
 
 static double elapse(struct timeval start_at)
 {
@@ -230,7 +243,8 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 	} else {
 		double g204_time = elapse(mctx->start_at);
 		pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
-		mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
+		pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
+				   g204_time);
 	}
 }
 
@@ -277,7 +291,8 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 	} else {
 		double g204_time = elapse(mctx->start_at);
 		pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
-		mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
+		pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
+				   g204_time);
 		// drop it, clean up
 		on_ws_g204_event(bev, BEV_EVENT_EOF, ctx);
 	}
@@ -288,7 +303,8 @@ static void on_trojan_gfw_g204_read(struct bufferevent *bev, void *ctx)
 	pgs_metrics_task_ctx_t *mctx = ctx;
 	double g204_time = elapse(mctx->start_at);
 	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
-	mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
+	pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
+			   g204_time);
 	on_trojan_gfw_g204_event(bev, BEV_EVENT_EOF, ctx);
 }
 static void on_trojan_gfw_g204_event(struct bufferevent *bev, short events,
@@ -331,7 +347,8 @@ static void on_v2ray_tcp_g204_read(struct bufferevent *bev, void *ctx)
 	pgs_metrics_task_ctx_t *mctx = ctx;
 	double g204_time = elapse(mctx->start_at);
 	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
-	mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
+	pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
+			   g204_time);
 	// drop it, clean up
 	on_v2ray_tcp_g204_event(bev, BEV_EVENT_EOF, ctx);
 }
@@ -341,7 +358,8 @@ static void on_ss_g204_read(struct bufferevent *bev, void *ctx)
 	pgs_metrics_task_ctx_t *mctx = ctx;
 	double g204_time = elapse(mctx->start_at);
 	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
-	mctx->sm->server_stats[mctx->server_idx].g204_delay = g204_time;
+	pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
+			   g204_time);
 	// drop it, clean up
 	on_ss_g204_event(bev, BEV_EVENT_EOF, ctx);
 }

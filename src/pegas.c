@@ -57,7 +57,8 @@ static int init_control_fd(const pgs_config_t *config, int *fd);
 static bool pgs_start_local_servers();
 static bool pgs_start_helper();
 
-bool pgs_start(const char *config, const char *acl, int threads)
+bool pgs_start(const char *config, const char *acl, int threads,
+	       void (*shutdown)())
 {
 	if (RUNNING)
 		return false;
@@ -76,7 +77,7 @@ bool pgs_start(const char *config, const char *acl, int threads)
 	RUNNING = true;
 
 #ifdef WITH_APPLET
-	pgs_tray_context_t tray_ctx = { LOGGER, SM, NULL, pgs_stop };
+	pgs_tray_context_t tray_ctx = { LOGGER, SM, NULL, shutdown };
 	pgs_tray_start(&tray_ctx);
 #endif
 

@@ -106,6 +106,15 @@ void pgs_tray_clean()
 		free(ctx->metrics_label);
 }
 
+void pgs_tray_update()
+{
+	if (tray.menu[0].context) {
+		pgs_tray_submenu_update(tray.menu[0].context,
+					tray.menu[0].submenu);
+		tray_update(&tray);
+	}
+}
+
 void pgs_tray_start(pgs_tray_context_t *ctx)
 {
 	pgs_tray_init(ctx);
@@ -113,13 +122,7 @@ void pgs_tray_start(pgs_tray_context_t *ctx)
 		printf("failed to create tray\n");
 		return;
 	}
-	int iter = 0;
 	while (tray_loop(1) == 0) {
-		if (++iter % 5 == 0) {
-			pgs_tray_submenu_update(ctx, tray.menu[0].submenu);
-			tray_update(&tray);
-			iter = 0;
-		}
 	}
 	pgs_tray_clean();
 }

@@ -41,7 +41,7 @@ typedef struct tray_menu pgs_tray_menu_t;
 
 void pgs_tray_init(pgs_tray_context_t *ctx);
 void pgs_tray_clean();
-
+void pgs_tray_update();
 #endif
 
 void pgs_tray_start(pgs_tray_context_t *ctx);
