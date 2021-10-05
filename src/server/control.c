@@ -1,5 +1,6 @@
 #include "server/control.h"
 
+#include "server/manager.h"
 #include <ctype.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -21,9 +22,11 @@ static bool starts_with(const char *pre, const char *str)
 	return strncasecmp(pre, str, strlen(pre)) == 0;
 }
 
-void pgs_control_server_start(int fd, struct event_base *base,
-			      pgs_server_manager_t *sm, pgs_logger_t *logger,
-			      const pgs_config_t *config)
+pgs_control_server_ctx_t *pgs_control_server_start(int fd,
+						   struct event_base *base,
+						   pgs_server_manager_t *sm,
+						   pgs_logger_t *logger,
+						   const pgs_config_t *config)
 {
 	pgs_control_server_ctx_t *ptr = pgs_control_server_ctx_new();
 	ptr->base = base;
@@ -42,6 +45,7 @@ void pgs_control_server_start(int fd, struct event_base *base,
 		pgs_logger_info(logger, "Controller Listening at: %s",
 				config->control_file);
 	}
+	return ptr;
 }
 
 pgs_control_server_ctx_t *pgs_control_server_ctx_new()
@@ -53,10 +57,11 @@ pgs_control_server_ctx_t *pgs_control_server_ctx_new()
 
 void pgs_control_server_ctx_destroy(pgs_control_server_ctx_t *ptr)
 {
-	if (ptr) {
+	if (ptr->listener)
+		evconnlistener_free(ptr->listener);
+
+	if (ptr)
 		free(ptr);
-		ptr = NULL;
-	}
 }
 
 static void accept_error_cb(struct evconnlistener *listener, void *ctx)
@@ -134,7 +139,7 @@ static void on_control_read(struct bufferevent *bev, void *ctx)
 				"switched to server %s, index: %d",
 				control_ctx->config->servers[idx].server_address,
 				idx);
-			control_ctx->sm->cur_server_index = idx;
+			pgs_sm_set_server(control_ctx->sm, idx);
 			evbuffer_add_printf(output, "OK\n");
 		}
 

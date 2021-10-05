@@ -26,4 +26,8 @@ void pgs_server_manager_free(pgs_server_manager_t *sm);
 
 pgs_server_config_t *pgs_server_manager_get_config(pgs_server_manager_t *sm);
 
+void pgs_sm_get_servers(pgs_server_manager_t *SM, char *out, int max_len,
+			int *olen);
+bool pgs_sm_set_server(pgs_server_manager_t *SM, int idx);
+
 #endif

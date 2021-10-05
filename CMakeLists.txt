@@ -40,10 +40,12 @@ set(CMAKE_C_FLAGS_UBSAN
     FORCE)
 # SAN end =======================================
 
-set(PEGAS_SOURCES src/pegas.c
+set(PEGAS_SOURCES 
+                  src/pegas.c
                   src/config.c
                   src/mpsc.c
                   src/log.c
+                  src/utils.c
                   src/codec/websocket.c
                   src/codec/trojan.c
                   src/codec/vmess.c
@@ -57,6 +59,8 @@ set(PEGAS_SOURCES src/pegas.c
                   src/server/metrics.c
                   src/server/control.c
 )
+
+
 set(THIRDPARTY_SOURCES 3rd-party/parson/parson.c
                        3rd-party/hash_32a.c
                        3rd-party/sha3.c
@@ -199,7 +203,7 @@ if(WITH_APPLET)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DTRAY_APPKIT=1 -DOBJC_OLD_DISPATCH_PROTOTYPES=1 -framework Cocoa")
     # add app bundle
     set(BUNDLE_TARGET PegasApp)
-    add_executable(${BUNDLE_TARGET} ${PEGAS_SOURCES} ${THIRDPARTY_SOURCES})
+    add_executable(${BUNDLE_TARGET} src/main.c ${PEGAS_SOURCES} ${THIRDPARTY_SOURCES})
     target_link_libraries(${BUNDLE_TARGET} pthread ${THIRDPARTY_LIBS})
 
     set_target_properties(${BUNDLE_TARGET} PROPERTIES
@@ -245,8 +249,23 @@ endif(DEFINED DEBUG_EVENT)
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Android")
   list(APPEND THIRDPARTY_LIBS pthread)
 endif()
-add_executable(pegas ${PEGAS_SOURCES} ${THIRDPARTY_SOURCES})
-target_link_libraries(pegas ${THIRDPARTY_LIBS})
+
+add_library(libpegas ${PEGAS_SOURCES} ${THIRDPARTY_SOURCES})
+set_target_properties(libpegas
+    PROPERTIES
+    OUTPUT_NAME "pegas"
+    PUBLIC_HEADER "include/pegasocks/pegas.h"
+)
+target_link_libraries(libpegas ${THIRDPARTY_LIBS})
+install(TARGETS libpegas
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  PUBLIC_HEADER DESTINATION include/pegasocks
+)
+
+add_executable(pegas src/main.c)
+target_link_libraries(pegas libpegas)
+
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)
 

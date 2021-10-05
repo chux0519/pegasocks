@@ -13,6 +13,14 @@
 #include <event2/event.h>
 #include <event2/bufferevent.h>
 
+#define PGS_OUTBOUND_SET_READ_TIMEOUT(outbound, sec)                           \
+	do {                                                                   \
+		struct timeval tv;                                             \
+		tv.tv_sec = sec;                                               \
+		tv.tv_usec = 0;                                                \
+		bufferevent_set_timeouts((outbound->bev), &tv, NULL);          \
+	} while (0)
+
 typedef struct pgs_session_outbound_s {
 	bool ready;
 	bool bypass;

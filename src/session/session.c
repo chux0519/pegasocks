@@ -38,8 +38,9 @@ pgs_session_t *pgs_session_new(int fd, pgs_local_server_t *local_server)
 	gettimeofday(&ptr->metrics->end, NULL);
 	ptr->metrics->recv = 0;
 	ptr->metrics->send = 0;
-
 	ptr->local_server = local_server;
+
+	ptr->node = pgs_list_node_new(ptr);
 
 	return ptr;
 }
@@ -59,7 +60,7 @@ void pgs_session_free(pgs_session_t *session)
 {
 	if (session->outbound) {
 		gettimeofday(&session->metrics->end, NULL);
-		char tm_start_str[32], tm_end_str[32];
+		char tm_start_str[20], tm_end_str[20];
 		PARSE_SESSION_TIMEVAL(tm_start_str, session->metrics->start);
 		PARSE_SESSION_TIMEVAL(tm_end_str, session->metrics->end);
 		if (session->inbound &&

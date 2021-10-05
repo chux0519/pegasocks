@@ -12,6 +12,7 @@
 #include "config.h"
 #include "manager.h"
 #include "ssl.h"
+#include "utils.h"
 
 typedef struct pgs_local_server_s {
 	uint32_t tid;
@@ -20,6 +21,11 @@ typedef struct pgs_local_server_s {
 	struct evdns_base *dns_base;
 	struct evconnlistener *listener;
 	pgs_logger_t *logger;
+
+	// to graceful shutdown
+	pgs_list_t *sessions;
+	struct event *ev_term;
+
 	// shared from main thread, read only
 	pgs_config_t *config;
 	pgs_server_manager_t *sm;
@@ -34,10 +40,14 @@ typedef struct pgs_local_server_ctx_s {
 	pgs_server_manager_t *sm;
 	pgs_acl_t *acl;
 	pgs_ssl_ctx_t *ssl_ctx;
+
+	void **local_server_ref; /* it will be used to stop the server from other threads */
 } pgs_local_server_ctx_t;
 
-pgs_local_server_t *pgs_local_server_new(pgs_local_server_ctx_t *ctx);
-void pgs_local_server_run(pgs_local_server_t *local);
+pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
+					 pgs_config_t *config, pgs_acl_t *acl,
+					 pgs_server_manager_t *sm,
+					 pgs_ssl_ctx_t *ssl_ctx);
 void pgs_local_server_destroy(pgs_local_server_t *local);
 
 void *start_local_server(void *data);

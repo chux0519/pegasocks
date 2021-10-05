@@ -13,7 +13,8 @@ static void quit_cb(pgs_tray_menu_t *item)
 {
 	(void)item;
 	pgs_tray_context_t *ctx = tray.menu[0].context;
-	ctx->kill_workers(ctx->threads, ctx->thread_num);
+	ctx->quit();
+	tray_exit();
 }
 
 static void pick_server_cb(pgs_tray_menu_t *item)
@@ -88,6 +89,9 @@ void pgs_tray_init(pgs_tray_context_t *ctx)
 		sprintf(full_icon_path, "%s/%s", local_icon_path, TRAY_ICON);
 		tray.icon = full_icon_path;
 	}
+#if defined(__APPLE__) || defined(__MACH__)
+	tray.icon = TRAY_ICON;
+#endif
 
 	tray.menu[0].submenu = servers_submenu;
 	tray.menu[0].context = ctx;

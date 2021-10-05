@@ -94,7 +94,7 @@ void on_bypass_local_read(struct bufferevent *bev, void *ctx)
 	return;
 
 error:
-	pgs_session_free(session);
+	PGS_FREE_SESSION(session);
 }
 
 /*
@@ -146,7 +146,7 @@ void on_trojan_local_read(struct bufferevent *bev, void *ctx)
 	return;
 
 error:
-	pgs_session_free(session);
+	PGS_FREE_SESSION(session);
 }
 
 void on_v2ray_local_read(struct bufferevent *bev, void *ctx)
@@ -198,7 +198,7 @@ void on_ss_local_read(struct bufferevent *bev, void *ctx)
 	return;
 
 error:
-	pgs_session_free(session);
+	PGS_FREE_SESSION(session);
 }
 
 /* UDP */
@@ -247,7 +247,7 @@ error:
 		free(packet);
 		packet = NULL;
 	}
-	pgs_session_free(session);
+	PGS_FREE_SESSION(session);
 }
 
 void on_udp_read_v2ray(const uint8_t *buf, ssize_t len, void *ctx)
@@ -276,7 +276,7 @@ void on_udp_read_v2ray(const uint8_t *buf, ssize_t len, void *ctx)
 	return;
 
 error:
-	pgs_session_free(session);
+	PGS_FREE_SESSION(session);
 }
 
 void on_remote_udp_read(int fd, short event, void *ctx)
@@ -350,7 +350,7 @@ static void on_local_event(struct bufferevent *bev, short events, void *ctx)
 				  "Error from bufferevent: on_local_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		bufferevent_free(bev);
-		pgs_session_free(session);
+		PGS_FREE_SESSION(session);
 	}
 }
 
@@ -414,7 +414,8 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			// create outbound
 			session->outbound = pgs_session_outbound_new();
 			if (!pgs_session_outbound_init(
-				    session->outbound, false, NULL, config, cmd,
+				    session->outbound, false,
+				    session->local_server->config, config, cmd,
 				    cmdlen, session->local_server, session))
 				goto error;
 
@@ -496,7 +497,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 	}
 	return;
 error:
-	pgs_session_free(session);
+	PGS_FREE_SESSION(session);
 }
 
 /*
@@ -643,5 +644,5 @@ error:
 	if (dest != NULL) {
 		free(dest);
 	}
-	pgs_session_free(session);
+	PGS_FREE_SESSION(session);
 }
