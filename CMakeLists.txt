@@ -41,7 +41,6 @@ set(CMAKE_C_FLAGS_UBSAN
 # SAN end =======================================
 
 set(PEGAS_SOURCES 
-                  src/main.c
                   src/pegas.c
                   src/config.c
                   src/mpsc.c
@@ -60,6 +59,8 @@ set(PEGAS_SOURCES
                   src/server/metrics.c
                   src/server/control.c
 )
+
+
 set(THIRDPARTY_SOURCES 3rd-party/parson/parson.c
                        3rd-party/hash_32a.c
                        3rd-party/sha3.c
@@ -248,8 +249,23 @@ endif(DEFINED DEBUG_EVENT)
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Android")
   list(APPEND THIRDPARTY_LIBS pthread)
 endif()
-add_executable(pegas ${PEGAS_SOURCES} ${THIRDPARTY_SOURCES})
-target_link_libraries(pegas ${THIRDPARTY_LIBS})
+
+add_library(libpegas ${PEGAS_SOURCES} ${THIRDPARTY_SOURCES})
+set_target_properties(libpegas
+    PROPERTIES
+    OUTPUT_NAME "pegas"
+    PUBLIC_HEADER "include/pegasocks/pegas.h"
+)
+target_link_libraries(libpegas ${THIRDPARTY_LIBS})
+install(TARGETS libpegas
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  PUBLIC_HEADER DESTINATION include/pegasocks
+)
+
+add_executable(pegas src/main.c)
+target_link_libraries(pegas libpegas)
+
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)
 
