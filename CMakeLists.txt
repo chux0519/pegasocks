@@ -203,7 +203,7 @@ if(WITH_APPLET)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DTRAY_APPKIT=1 -DOBJC_OLD_DISPATCH_PROTOTYPES=1 -framework Cocoa")
     # add app bundle
     set(BUNDLE_TARGET PegasApp)
-    add_executable(${BUNDLE_TARGET} ${PEGAS_SOURCES} ${THIRDPARTY_SOURCES})
+    add_executable(${BUNDLE_TARGET} src/main.c ${PEGAS_SOURCES} ${THIRDPARTY_SOURCES})
     target_link_libraries(${BUNDLE_TARGET} pthread ${THIRDPARTY_LIBS})
 
     set_target_properties(${BUNDLE_TARGET} PROPERTIES
