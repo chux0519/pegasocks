@@ -4,25 +4,32 @@
 #include <stddef.h>
 
 // evdns helper
-#define PGS_DNS_INIT(base, dns_base_ptr, config, logger)                       \
-	do {                                                                   \
-		if ((config)->dns_server) {                                    \
-			*(dns_base_ptr) = evdns_base_new((base), 0);           \
-			if (evdns_base_nameserver_ip_add(                      \
-				    *(dns_base_ptr), (config)->dns_server) !=  \
-			    0)                                                 \
-				pgs_logger_error(                              \
-					(logger),                              \
-					"Failed to set DNS server: %s",        \
-					(config)->dns_server);                 \
-		} else {                                                       \
-			*(dns_base_ptr) = evdns_base_new(                      \
-				(base), EVDNS_BASE_INITIALIZE_NAMESERVERS);    \
-		}                                                              \
-		evdns_base_set_option(*(dns_base_ptr),                         \
-				      "max-probe-timeout:", "5");              \
-		evdns_base_set_option(*(dns_base_ptr),                         \
-				      "probe-backoff-factor:", "1");           \
+#define PGS_DNS_INIT(base, dns_base_ptr, config, logger)                        \
+	do {                                                                    \
+		if ((config)->dns_servers->len > 0) {                           \
+			*(dns_base_ptr) = evdns_base_new((base), 0);            \
+			pgs_list_node_t *cur, *next;                            \
+			pgs_list_foreach((config)->dns_servers, cur, next)      \
+			{                                                       \
+				pgs_logger_debug((logger),                      \
+						 "Add DNS server: %s",          \
+						 (const char *)cur->val);       \
+				if (evdns_base_nameserver_ip_add(               \
+					    *(dns_base_ptr),                    \
+					    (const char *)cur->val) != 0)       \
+					pgs_logger_error(                       \
+						(logger),                       \
+						"Failed to add DNS server: %s", \
+						(const char *)cur->val);        \
+			}                                                       \
+		} else {                                                        \
+			*(dns_base_ptr) = evdns_base_new(                       \
+				(base), EVDNS_BASE_INITIALIZE_NAMESERVERS);     \
+		}                                                               \
+		evdns_base_set_option(*(dns_base_ptr),                          \
+				      "max-probe-timeout:", "5");               \
+		evdns_base_set_option(*(dns_base_ptr),                          \
+				      "probe-backoff-factor:", "1");            \
 	} while (0)
 
 // ======================== list for sessions and outbound metrics requests
@@ -49,5 +56,10 @@ void pgs_list_free(pgs_list_t *ptr);
 pgs_list_node_t *pgs_list_add(pgs_list_t *ptr, pgs_list_node_t *node);
 
 void pgs_list_del(pgs_list_t *ptr, pgs_list_node_t *node);
+
+#define pgs_list_foreach(list, cur, _next)                                     \
+	for ((cur) = (list)->head, (_next) = (cur) ? ((cur)->next) : (NULL);   \
+	     (cur) != NULL;                                                    \
+	     (cur) = (_next), (_next) = (cur) ? ((cur)->next) : (NULL))
 
 #endif
