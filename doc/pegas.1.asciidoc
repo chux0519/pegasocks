@@ -72,6 +72,10 @@ The configuration file of pegasocks is in json format, the outermost fields are 
 |string
 |pegas will listen on an unix socket by default(/tmp/pegas.sock), if _control_port_ is set, this option will be ignored 
 
+|*dns_servers
+|array of string
+|if set, pegas will only use the setted servers to resolve DNS, by default, it will initiate DNS with `EVDNS_BASE_INITIALIZE_NAMESERVERS` of libevent. 
+
 |===
 
 *SERVER*
