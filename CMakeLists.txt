@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.10)
 
 project(pegasocks LANGUAGES C)
 
-cmake_policy(SET CMP0074 OLD)
-
 set (CMAKE_C_STANDARD 11)
 
 # SAN start =======================================
