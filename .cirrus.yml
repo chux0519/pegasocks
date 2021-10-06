@@ -75,7 +75,7 @@ linux_openssl_task:
         - git submodule update --init
         - curl -L https://github.com/libevent/libevent/archive/refs/heads/master.zip -o libevent.zip
         - unzip libevent.zip
-        - cd libevent-master && cmake -DCMAKE_BUILD_TYPE=Release . && make install && cd ..
+        - cd libevent-master && cmake -DCMAKE_BUILD_TYPE=Release -DEVENT__DISABLE_MBEDTLS=ON . && make install && cd ..
     build_default_test_script:
         - mkdir -p build/default
         - cd build/default
