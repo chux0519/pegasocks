@@ -109,7 +109,7 @@ C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
 
 OSX上，默认会将二进制打包成 app bundle，直接将打包出的 `build/PegasApp.app` 复制到应用程序即可。
 
-⚠️注:如果遇到无法启动的状况，请确认
+⚠️注:如果遇到无法启动或者启动崩溃的状况，请确认
 
-1. 系统安装了 libevent (brew install libevent)
+1. 系统安装了最新的 libevent (手动编译 libevent master 分支，不要通过 homebrew，后者提供的是 libevent2.12，在 mac 下会遇到[这个问题](https://github.com/chux0519/pegasocks/issues/23))
 2. 是否有 **配置文件**，app bundle 会检测 `~/.config/.pegasrc` 或者 `~/.config/pegas/config`

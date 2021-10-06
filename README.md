@@ -107,7 +107,7 @@ To show the icon, put `logo/icon.svg` to where pegas sit.
 
 On OSX, the binary will be packaged into an app bundle by default, just copy the packaged `build/PegasApp.app` to the application directly.
 
-⚠️Note: If you encounter a situation where you can't start, please make sure that
+⚠️Note: If you encounter a situation where you can't start or hit a crash, please make sure that
 
-1. libevent and are installed on your system (brew install libevent)
+1. the latest libevent is installed in your system (do it manually, libevent2.12 from homebew will cause [this issue](https://github.com/chux0519/pegasocks/issues/23))
 2. if there is a **configuration** file, the app bundle will detect `~/.config/.pegasrc` or `~/.config/pegas/config`
