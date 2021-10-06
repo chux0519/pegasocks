@@ -70,7 +70,7 @@ linux_openssl_task:
 
     install_script:
         - apt update && apt upgrade -y
-        - DEBIAN_FRONTEND=noninteractive apt install -y git cmake build-essential libssl-dev libpcre3-dev
+        - DEBIAN_FRONTEND=noninteractive apt install -y unzip curl git cmake build-essential libssl-dev libpcre3-dev
     prepare_script:
         - git submodule update --init
         - curl -L https://github.com/libevent/libevent/archive/refs/heads/master.zip -o libevent.zip
