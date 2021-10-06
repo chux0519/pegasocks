@@ -71,15 +71,13 @@ pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
 	ptr->ssl_ctx = ssl_ctx;
 
 	ptr->tid = (uint32_t)pthread_self();
+
 	struct event_config *cfg = event_config_new();
 	event_config_set_flag(cfg, EVENT_BASE_FLAG_NOLOCK);
 	ptr->base = event_base_new_with_config(cfg);
 	event_config_free(cfg);
 
-	ptr->dns_base =
-		evdns_base_new(ptr->base, EVDNS_BASE_INITIALIZE_NAMESERVERS);
-	evdns_base_set_option(ptr->dns_base, "max-probe-timeout:", "5");
-	evdns_base_set_option(ptr->dns_base, "probe-backoff-factor:", "1");
+	PGS_DNS_INIT(ptr->base, &ptr->dns_base, config, ptr->logger);
 
 	ptr->sessions = pgs_list_new();
 	ptr->sessions->free = (void *)pgs_session_free;

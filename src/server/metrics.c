@@ -110,14 +110,15 @@ static void on_v2ray_g204_read(struct bufferevent *bev, void *ctx)
 
 pgs_metrics_task_ctx_t *
 get_metrics_g204_connect(int idx, struct event_base *base,
-			 pgs_server_manager_t *sm, pgs_logger_t *logger,
-			 pgs_ssl_ctx_t *ssl_ctx, pgs_list_t *mtasks)
+			 struct evdns_base *dns_base, pgs_server_manager_t *sm,
+			 pgs_logger_t *logger, pgs_ssl_ctx_t *ssl_ctx,
+			 pgs_list_t *mtasks)
 {
 	const pgs_server_config_t *config = &sm->server_configs[idx];
 	const uint8_t *cmd = g204_cmd;
 	uint64_t cmd_len = 20;
 	pgs_metrics_task_ctx_t *mctx = pgs_metrics_task_ctx_new(
-		idx, base, config, sm, logger, NULL, mtasks);
+		idx, base, dns_base, config, sm, logger, NULL, mtasks);
 
 	pgs_session_outbound_t *ptr = pgs_session_outbound_new();
 	mctx->outbound = ptr;
@@ -453,13 +454,14 @@ static void do_ws_remote_request(struct bufferevent *bev, void *ctx)
 
 pgs_metrics_task_ctx_t *
 pgs_metrics_task_ctx_new(int idx, struct event_base *base,
+			 struct evdns_base *dns_base,
 			 const pgs_server_config_t *config,
 			 pgs_server_manager_t *sm, pgs_logger_t *logger,
 			 pgs_session_outbound_t *outbound, pgs_list_t *tasks)
 {
 	pgs_metrics_task_ctx_t *ptr = malloc(sizeof(pgs_metrics_task_ctx_t));
 	ptr->base = base;
-	ptr->dns_base = evdns_base_new(base, EVDNS_BASE_INITIALIZE_NAMESERVERS);
+	ptr->dns_base = dns_base;
 	ptr->config = config;
 	ptr->sm = sm;
 	ptr->server_idx = idx;
@@ -478,10 +480,6 @@ void pgs_metrics_task_ctx_free(pgs_metrics_task_ctx_t *ptr)
 		if (ptr->outbound) {
 			pgs_session_outbound_free(ptr->outbound);
 			ptr->outbound = NULL;
-		}
-		if (ptr->dns_base) {
-			evdns_base_free(ptr->dns_base, 0);
-			ptr->dns_base = NULL;
 		}
 		free(ptr);
 		ptr = NULL;

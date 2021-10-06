@@ -1,6 +1,7 @@
 #ifndef _PGS_HELPER_THREAD_H
 #define _PGS_HELPER_THREAD_H
 
+#include "event2/bufferevent.h"
 #include <event2/util.h>
 #include <stdint.h>
 
@@ -14,6 +15,7 @@ typedef void(pgs_timer_cb_t)(evutil_socket_t fd, short event, void *data);
 typedef struct pgs_helper_thread_s {
 	uint32_t tid;
 	struct event_base *base;
+	struct evdns_base *dns_base;
 
 	int cfd;
 	pgs_control_server_ctx_t *control_server;
