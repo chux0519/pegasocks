@@ -2,6 +2,7 @@
 #include "parson/parson.h"
 #include "crypto.h"
 
+#include "utils.h"
 #include <stdio.h>
 #include <unistd.h>
 
@@ -45,6 +46,7 @@ pgs_config_t *pgs_config_parse(const char *json)
 	JSON_Object *root_obj;
 	JSON_Object *log_file_obj;
 	JSON_Array *servers_array;
+	JSON_Array *dns_servers;
 
 	ptr->root_value = json_parse_string(json);
 
@@ -101,10 +103,20 @@ pgs_config_t *pgs_config_parse(const char *json)
 	else
 		ptr->ping_interval = 120;
 
-	const char *dns_server =
-		json_object_get_string(root_obj, CONFIG_DNS_SERVER);
-	if (dns_server != NULL)
-		ptr->dns_server = dns_server;
+	dns_servers = json_object_get_array(root_obj, CONFIG_DNS_SERVERS);
+	if (dns_servers != NULL) {
+		// parse dns servers
+		int len = json_array_get_count(dns_servers);
+		for (int i = 0; i < len; ++i) {
+			const char *dns_server =
+				json_array_get_string(dns_servers, i);
+			if (dns_server != NULL) {
+				pgs_list_add(
+					ptr->dns_servers,
+					pgs_list_node_new((void *)dns_server));
+			}
+		}
+	}
 
 	servers_array = json_object_get_array(root_obj, CONFIG_SERVERS);
 	if (servers_array == NULL)
@@ -244,7 +256,7 @@ pgs_config_t *pgs_config_new()
 	ptr->timeout = 30;
 	ptr->log_level = 0;
 	ptr->log_file = stderr;
-	ptr->dns_server = NULL;
+	ptr->dns_servers = pgs_list_new();
 	return ptr;
 }
 
@@ -285,12 +297,12 @@ void pgs_config_free(pgs_config_t *config)
 		fclose(config->log_file);
 	if (config->servers)
 		pgs_servers_config_free(config->servers, config->servers_count);
-
+	if (config->dns_servers)
+		pgs_list_free(config->dns_servers);
 	if (config->root_value != NULL) {
 		json_value_free(config->root_value);
 		config->root_value = NULL;
 	}
-
 	free(config);
 
 	config = NULL;

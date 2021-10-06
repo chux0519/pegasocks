@@ -12,6 +12,7 @@ set(CONFIG_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/src/config.c
     ${CMAKE_SOURCE_DIR}/src/log.c
     ${CMAKE_SOURCE_DIR}/src/mpsc.c
+    ${CMAKE_SOURCE_DIR}/src/utils.c
     ${CMAKE_SOURCE_DIR}/3rd-party/sha3.c
     ${CMAKE_SOURCE_DIR}/3rd-party/hash_32a.c
     ${CMAKE_SOURCE_DIR}/3rd-party/parson/parson.c
