@@ -101,6 +101,11 @@ pgs_config_t *pgs_config_parse(const char *json)
 	else
 		ptr->ping_interval = 120;
 
+	const char *dns_server =
+		json_object_get_string(root_obj, CONFIG_DNS_SERVER);
+	if (dns_server != NULL)
+		ptr->dns_server = dns_server;
+
 	servers_array = json_object_get_array(root_obj, CONFIG_SERVERS);
 	if (servers_array == NULL)
 		goto error;
@@ -239,6 +244,7 @@ pgs_config_t *pgs_config_new()
 	ptr->timeout = 30;
 	ptr->log_level = 0;
 	ptr->log_file = stderr;
+	ptr->dns_server = NULL;
 	return ptr;
 }
 

@@ -26,11 +26,13 @@ typedef struct pgs_metrics_task_ctx_s {
 
 pgs_metrics_task_ctx_t *
 get_metrics_g204_connect(int idx, struct event_base *base,
-			 pgs_server_manager_t *sm, pgs_logger_t *logger,
-			 pgs_ssl_ctx_t *ssl_ctx, pgs_list_t *mtasks);
+			 struct evdns_base *dns_base, pgs_server_manager_t *sm,
+			 pgs_logger_t *logger, pgs_ssl_ctx_t *ssl_ctx,
+			 pgs_list_t *mtasks);
 
 pgs_metrics_task_ctx_t *
 pgs_metrics_task_ctx_new(int i, struct event_base *base,
+			 struct evdns_base *dns_base,
 			 const pgs_server_config_t *config,
 			 pgs_server_manager_t *sm, pgs_logger_t *logger,
 			 pgs_session_outbound_t *outbound, pgs_list_t *mtasks);

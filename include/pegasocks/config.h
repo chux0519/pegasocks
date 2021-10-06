@@ -27,6 +27,7 @@
 #define CONFIG_LOG_LEVEL "log_level"
 #define CONFIG_TIMEOUT "timeout"
 #define CONFIG_SERVERS "servers"
+#define CONFIG_DNS_SERVER "dns_server"
 
 // server fields
 #define CONFIG_SERVER_ADDRESS "server_address"
@@ -78,6 +79,7 @@ typedef struct pgs_config_s {
 	int log_level;
 	FILE *log_file;
 	bool log_isatty;
+	const char *dns_server;
 } pgs_config_t;
 
 typedef struct pgs_config_ssl_s {

@@ -3,6 +3,29 @@
 
 #include <stddef.h>
 
+// evdns helper
+#define PGS_DNS_INIT(base, dns_base_ptr, config, logger)                       \
+	do {                                                                   \
+		if ((config)->dns_server) {                                    \
+			*(dns_base_ptr) = evdns_base_new((base), 0);           \
+			if (evdns_base_nameserver_ip_add(                      \
+				    *(dns_base_ptr), (config)->dns_server) !=  \
+			    0)                                                 \
+				pgs_logger_error(                              \
+					(logger),                              \
+					"Failed to set DNS server: %s",        \
+					(config)->dns_server);                 \
+		} else {                                                       \
+			*(dns_base_ptr) = evdns_base_new(                      \
+				(base), EVDNS_BASE_INITIALIZE_NAMESERVERS);    \
+		}                                                              \
+		evdns_base_set_option(*(dns_base_ptr),                         \
+				      "max-probe-timeout:", "5");              \
+		evdns_base_set_option(*(dns_base_ptr),                         \
+				      "probe-backoff-factor:", "1");           \
+	} while (0)
+
+// ======================== list for sessions and outbound metrics requests
 typedef struct pgs_list_node_s {
 	void *val;
 

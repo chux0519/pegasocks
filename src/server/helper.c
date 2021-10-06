@@ -2,6 +2,7 @@
 #include "server/metrics.h"
 #include "server/control.h"
 
+#include "utils.h"
 #include <assert.h>
 #include <signal.h>
 #include <pthread.h>
@@ -24,8 +25,8 @@ static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 	pgs_timer_t *arg = data;
 	for (int i = 0; i < arg->ctx->sm->server_len; i++) {
 		pgs_metrics_task_ctx_t *t = get_metrics_g204_connect(
-			i, arg->ctx->base, arg->ctx->sm, arg->ctx->logger,
-			arg->ctx->ssl_ctx, arg->ctx->mtasks);
+			i, arg->ctx->base, arg->ctx->dns_base, arg->ctx->sm,
+			arg->ctx->logger, arg->ctx->ssl_ctx, arg->ctx->mtasks);
 		if (t) {
 			pgs_list_add(arg->ctx->mtasks, t->node);
 		}
@@ -74,6 +75,8 @@ pgs_helper_thread_t *pgs_helper_thread_new(int cfd, pgs_config_t *config,
 	struct event_config *cfg = event_config_new();
 	event_config_set_flag(cfg, EVENT_BASE_FLAG_NOLOCK);
 	ptr->base = event_base_new_with_config(cfg);
+	PGS_DNS_INIT(ptr->base, &ptr->dns_base, config, logger);
+
 	event_config_free(cfg);
 
 	ptr->control_server =
@@ -104,6 +107,8 @@ void pgs_helper_thread_free(pgs_helper_thread_t *ptr)
 	}
 	if (ptr->control_server)
 		pgs_control_server_ctx_destroy(ptr->control_server);
+	if (ptr->dns_base)
+		evdns_base_free(ptr->dns_base, 0);
 	if (ptr->base)
 		event_base_free(ptr->base);
 	free(ptr);
