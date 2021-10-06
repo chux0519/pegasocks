@@ -21,7 +21,7 @@ Unlike most other clients that support multiple protocols, pegasocks does not re
 ## Dependencies
 
 - openssl 1.1.1 / mbedtls 2.27.0
-- libevent2
+- libevent2.12 (on OSX, need the [latest](https://github.com/libevent/libevent/tree/master) version)
 - pcre (lagacy) optional，will need it when ACL is enabled
 
 Other dependencies are managed through git submodule, so you need to run following command after git clone.

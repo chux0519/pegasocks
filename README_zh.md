@@ -21,7 +21,7 @@ C 语言编写，轻量，支持类 unix 系统(Linux/WSL/BSDs/OSX)。
 ## 依赖
 
 - openssl 1.1.1 / mbedtls 2.27.0
-- libevent2
+- libevent2.12 (OSX 上需要[最新版本](https://github.com/libevent/libevent/tree/master))
 - pcre (lagacy) 可选的，开启 ACL 支持时会需要它
 
 其他依赖通过 git submodule 来进行管理，因此需要在获取代码后
