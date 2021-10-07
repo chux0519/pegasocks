@@ -39,7 +39,38 @@ void test_base_config()
 	assert(config->ping_interval == 120);
 	assert(config->timeout == 60);
 	assert(config->log_level == 1);
+	assert(config->ssl_verify == true);
+	pgs_config_free(config);
+}
 
+void test_ssl_config()
+{
+	static const char json[] = "{\
+				\"servers\": [\
+            {\
+                \"server_address\": \"1.1.1.1\",\
+                \"server_type\": \"trojan\",\
+                \"server_port\": 443,\
+                \"ssl\": {\
+                    \"sni\": \"trojan.example.com\"\
+                },\
+                \"password\": \"password\"\
+            }\
+        ],\
+        \"local_address\": \"0.0.0.0\",\
+        \"local_port\": 1080,\
+        \"control_port\": 11080,\
+        \"ping_interval\": 120,\
+        \"timeout\": 60,\
+        \"log_file\": \"log_file\",\
+				\"ssl\": {\
+						\"verify\": false \
+				},\
+        \"log_level\": 1\
+    }";
+	pgs_config_t *config = pgs_config_parse((const char *)json);
+	assert(config != NULL);
+	assert(config->ssl_verify == false);
 	pgs_config_free(config);
 }
 
@@ -404,6 +435,9 @@ int main()
 {
 	test_base_config();
 	printf("test_base_config passed\n");
+
+	test_ssl_config();
+	printf("test_ssl_config passed\n");
 
 	test_trojan_gfw_config();
 	printf("test_trojan_gfw_config passed\n");
