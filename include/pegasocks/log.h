@@ -35,9 +35,11 @@ typedef struct pgs_logger_server_s {
 #define pgs_logger_warn(logger, ...) pgs_logger_log(WARN, logger, __VA_ARGS__)
 #define pgs_logger_error(logger, ...) pgs_logger_log(ERROR, logger, __VA_ARGS__)
 #define pgs_logger_main_info(fp, ...) pgs_logger_main_log(INFO, fp, __VA_ARGS__)
-#define pgs_logger_main_bug(fp, ...) pgs_logger_main_log(DEBUG, fp, __VA_ARGS__)
+#define pgs_logger_main_debug(fp, ...)                                         \
+	pgs_logger_main_log(DEBUG, fp, __VA_ARGS__)
 #define pgs_logger_main_error(fp, ...)                                         \
 	pgs_logger_main_log(ERROR, fp, __VA_ARGS__)
+#define pgs_logger_main_warn(fp, ...) pgs_logger_main_log(WARN, fp, __VA_ARGS__)
 
 #define PARSE_TIME_NOW(buffer)                                                 \
 	do {                                                                   \

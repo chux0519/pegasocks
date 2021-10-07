@@ -3,13 +3,14 @@
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <stdio.h>
 
 struct pgs_ssl_ctx_s {
 	SSL_CTX *_;
 };
 
 // default to openssl
-pgs_ssl_ctx_t *pgs_ssl_ctx_new()
+pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config)
 {
 	pgs_ssl_ctx_t *ptr = malloc(sizeof(pgs_ssl_ctx_t));
 	ptr->_ = NULL;
@@ -18,8 +19,39 @@ pgs_ssl_ctx_t *pgs_ssl_ctx_new()
 				 OPENSSL_INIT_LOAD_CRYPTO_STRINGS,
 			 NULL);
 	if ((ptr->_ = SSL_CTX_new(SSLv23_client_method()))) {
-		SSL_CTX_set_verify(ptr->_, SSL_VERIFY_NONE, NULL);
-		SSL_CTX_set_verify_depth(ptr->_, 0);
+		bool cert_loaded = false;
+
+		// TODO: this will not verify the hostname, check: https://archives.seul.org/libevent/users/Jan-2013/msg00039.html
+		SSL_CTX_set_verify(ptr->_, SSL_VERIFY_PEER, NULL);
+
+		// try load from crt
+		if (config->crt != NULL) {
+			if (SSL_CTX_load_verify_locations(ptr->_, config->crt,
+							  NULL) != 1) {
+				pgs_config_error(config,
+						 "Failed to load cert: %s",
+						 config->crt);
+			} else {
+				pgs_config_info(config, "cert: %s loaded",
+						config->crt);
+				cert_loaded = true;
+			}
+		}
+		// try load from system
+		if (!cert_loaded) {
+			X509_STORE *store = SSL_CTX_get_cert_store(ptr->_);
+			if (X509_STORE_set_default_paths(store) != 1) {
+				pgs_config_warn(
+					config,
+					"Failed to load system default cert, set verify mode to SSL_VERIFY_NONE now.",
+					config->crt);
+				SSL_CTX_set_verify(ptr->_, SSL_VERIFY_NONE,
+						   NULL);
+			} else {
+				pgs_config_info(config, "system cert loaded");
+			}
+		}
+
 		SSL_CTX_set_mode(ptr->_, SSL_MODE_AUTO_RETRY);
 		SSL_CTX_set_session_cache_mode(ptr->_, SSL_SESS_CACHE_CLIENT);
 	}

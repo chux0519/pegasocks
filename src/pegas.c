@@ -309,7 +309,7 @@ static bool pgs_init(const char *config, const char *acl, int threads)
 
 	SM = pgs_server_manager_new(CONFIG->servers, CONFIG->servers_count);
 
-	SSL_CTX = pgs_ssl_ctx_new();
+	SSL_CTX = pgs_ssl_ctx_new(CONFIG);
 
 	return true;
 }
