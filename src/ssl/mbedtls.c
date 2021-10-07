@@ -12,6 +12,7 @@ struct pgs_ssl_ctx_s {
 	mbedtls_ssl_config conf;
 	mbedtls_entropy_context entropy;
 	mbedtls_ctr_drbg_context ctr_drbg;
+	mbedtls_x509_crt cacert;
 };
 
 pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config)
@@ -33,10 +34,37 @@ pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config)
 		goto error;
 	}
 
-	mbedtls_ssl_conf_authmode(&ctx->conf, MBEDTLS_SSL_VERIFY_NONE);
-
 	mbedtls_ssl_conf_rng(&ctx->conf, mbedtls_ctr_drbg_random,
 			     &ctx->ctr_drbg);
+
+	if (!config->ssl_verify) {
+		mbedtls_ssl_conf_authmode(&ctx->conf, MBEDTLS_SSL_VERIFY_NONE);
+	} else {
+		bool cert_loaded = false;
+		if (config->ssl_crt) {
+			mbedtls_x509_crt_init(&ctx->cacert);
+			if (mbedtls_x509_crt_parse_file(&ctx->cacert,
+							config->ssl_crt) != 0) {
+				pgs_config_error(config,
+						 "Failed to load cert: %s",
+						 config->ssl_crt);
+			} else {
+				cert_loaded = true;
+				pgs_config_info(config, "cert: %s loaded",
+						config->ssl_crt);
+				mbedtls_ssl_conf_ca_chain(&ctx->conf,
+							  &ctx->cacert, NULL);
+				mbedtls_ssl_conf_authmode(
+					&ctx->conf,
+					MBEDTLS_SSL_VERIFY_REQUIRED);
+			}
+		}
+		if (!cert_loaded) {
+			// fallback
+			mbedtls_ssl_conf_authmode(&ctx->conf,
+						  MBEDTLS_SSL_VERIFY_NONE);
+		}
+	}
 
 	return ctx;
 
@@ -47,6 +75,7 @@ error:
 
 void pgs_ssl_ctx_free(pgs_ssl_ctx_t *ctx)
 {
+	mbedtls_x509_crt_free(&ctx->cacert);
 	mbedtls_ctr_drbg_free(&ctx->ctr_drbg);
 	mbedtls_entropy_free(&ctx->entropy);
 	mbedtls_ssl_config_free(&ctx->conf);
@@ -57,6 +86,7 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev,
 				      struct event_base *base,
 				      pgs_ssl_ctx_t *ssl_ctx, const char *sni)
 {
+	// note: remember to free this
 	mbedtls_ssl_context *ssl = malloc(sizeof(mbedtls_ssl_context));
 
 	mbedtls_ssl_init(ssl);
