@@ -1,3 +1,4 @@
+#include "config.h"
 #include "crypto.h"
 #include "session/session.h"
 #include "codec/codec.h"
@@ -499,8 +500,6 @@ static void on_bypass_remote_event(struct bufferevent *bev, short events,
 			session,
 			"Error from bufferevent: on_bypass_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
-		bufferevent_free(bev);
-
 		PGS_FREE_SESSION(session);
 	}
 }
@@ -581,8 +580,6 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 			session,
 			"Error from bufferevent: on_trojan_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
-		bufferevent_free(bev);
-
 		PGS_FREE_SESSION(session);
 	}
 }
@@ -752,8 +749,6 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 			session,
 			"Error from bufferevent: on_v2ray_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
-		bufferevent_free(bev);
-
 		PGS_FREE_SESSION(session);
 	}
 }
