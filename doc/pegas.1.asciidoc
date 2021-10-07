@@ -76,6 +76,14 @@ The configuration file of pegasocks is in json format, the outermost fields are 
 |array of string
 |if set, pegas will only use the setted servers to resolve DNS, by default, it will initiate DNS with `EVDNS_BASE_INITIALIZE_NAMESERVERS` of libevent. 
 
+|*ssl.cert
+|string (path)
+|The crt file to use for ssl, for example: `/etc/ssl/ca-certificates.crt`, `/usr/local/etc/openssl/cert.pem`
+
+|*ssl.verify
+|boolean
+|If set to false, it will skip ssl verification, default to true.
+
 |===
 
 *SERVER*
