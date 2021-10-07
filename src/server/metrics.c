@@ -54,7 +54,6 @@ static void on_trojan_g204_event(struct bufferevent *bev, short events,
 				 mctx->config->server_type,
 				 mctx->config->server_address,
 				 mctx->config->server_port);
-		bufferevent_free(bev);
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
 		return;
@@ -84,7 +83,6 @@ static void on_v2ray_g204_event(struct bufferevent *bev, short events,
 	pgs_metrics_task_ctx_t *mctx = ctx;
 	if (events & BEV_EVENT_TIMEOUT) {
 		pgs_logger_error(mctx->logger, "v2ray g204 timeout");
-		bufferevent_free(bev);
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
 		return;
@@ -190,7 +188,6 @@ static void on_ws_g204_event(struct bufferevent *bev, short events, void *ctx)
 	if (events & BEV_EVENT_TIMEOUT)
 		pgs_logger_error(mctx->logger, "ws g204 timeout");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
-		bufferevent_free(bev);
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
 	}
@@ -338,7 +335,6 @@ static void on_trojan_gfw_g204_event(struct bufferevent *bev, short events,
 	if (events & BEV_EVENT_ERROR)
 		pgs_logger_error(mctx->logger, "Error from bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		bufferevent_free(bev);
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
 	}
@@ -370,7 +366,6 @@ static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx)
 	pgs_metrics_task_ctx_t *mctx = ctx;
 	if (events & BEV_EVENT_TIMEOUT) {
 		pgs_logger_error(mctx->logger, "shadowsocks g204 timeout");
-		bufferevent_free(bev);
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
 		return;
@@ -397,7 +392,6 @@ static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx)
 	if (events & BEV_EVENT_ERROR)
 		pgs_logger_error(mctx->logger, "Error from bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		bufferevent_free(bev);
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
 	}
@@ -430,7 +424,6 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 	if (events & BEV_EVENT_ERROR)
 		pgs_logger_error(mctx->logger, "Error from bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		bufferevent_free(bev);
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
 	}

@@ -86,7 +86,7 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev,
 				      struct event_base *base,
 				      pgs_ssl_ctx_t *ssl_ctx, const char *sni)
 {
-	// note: remember to free this
+	// notice: should be freed when bev is freed
 	mbedtls_ssl_context *ssl = malloc(sizeof(mbedtls_ssl_context));
 
 	mbedtls_ssl_init(ssl);
@@ -99,9 +99,9 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev,
 		return -1;
 	}
 
-	*bev = bufferevent_mbedtls_socket_new(
-		base, -1, ssl, BUFFEREVENT_SSL_CONNECTING,
-		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	*bev = bufferevent_mbedtls_socket_new(base, -1, ssl,
+					      BUFFEREVENT_SSL_CONNECTING,
+					      BEV_OPT_DEFER_CALLBACKS);
 #ifdef BUFFEREVENT_SSL_BATCH_WRITE
 	bufferevent_ssl_set_flags(*bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN |
 						BUFFEREVENT_SSL_BATCH_WRITE);

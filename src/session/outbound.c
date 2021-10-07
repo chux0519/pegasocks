@@ -5,6 +5,14 @@
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
+#include <event2/bufferevent_ssl.h>
+#include <event2/util.h>
+
+#include <stdio.h>
+
+#ifdef USE_MBEDTLS
+#include <mbedtls/ssl.h>
+#endif
 
 /*
  * bypass handlers
@@ -254,7 +262,37 @@ void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 {
 	if (ptr->bev) {
+#ifdef USE_MBEDTLS
+		bool is_be_ssl = false;
+		const pgs_server_config_t *config = ptr->config;
+		if (IS_V2RAY_SERVER(config->server_type)) {
+			pgs_config_extra_v2ray_t *vconf =
+				(pgs_config_extra_v2ray_t *)config->extra;
+			if (vconf->ssl.enabled) {
+				is_be_ssl = true;
+			}
+		}
+		if (IS_TROJAN_SERVER(config->server_type)) {
+			is_be_ssl = true;
+		}
+
+		int fd = bufferevent_getfd(ptr->bev);
+
+		if (is_be_ssl) {
+			mbedtls_ssl_context *ssl =
+				bufferevent_mbedtls_get_ssl(ptr->bev);
+			bufferevent_free(ptr->bev);
+			mbedtls_ssl_free(ssl);
+			free(ssl);
+		} else {
+			bufferevent_free(ptr->bev);
+		}
+
+		if (fd)
+			evutil_closesocket(fd);
+#else
 		bufferevent_free(ptr->bev);
+#endif
 	}
 	if (ptr->ctx) {
 		if (IS_TROJAN_SERVER(ptr->config->server_type)) {
@@ -887,7 +925,6 @@ static void on_ss_remote_event(struct bufferevent *bev, short events, void *ctx)
 		pgs_session_error(session,
 				  "Error from bufferevent: on_ss_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
-		bufferevent_free(bev);
 		PGS_FREE_SESSION(session);
 	}
 }
