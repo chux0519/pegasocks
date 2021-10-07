@@ -79,7 +79,10 @@ void pgs_logger_log(LOG_LEVEL level, pgs_logger_t *logger, const char *fmt, ...)
 	}
 	pgs_logger_msg_t *_msg = pgs_logger_msg_new(m, logger->tid);
 
-	pgs_mpsc_send(logger->mpsc, _msg);
+	if (!pgs_mpsc_send(logger->mpsc, _msg)) {
+		// just drop it
+		pgs_logger_msg_free(_msg);
+	}
 }
 
 // directly send to log file
