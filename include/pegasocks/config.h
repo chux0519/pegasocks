@@ -29,6 +29,7 @@
 #define CONFIG_TIMEOUT "timeout"
 #define CONFIG_SERVERS "servers"
 #define CONFIG_DNS_SERVERS "dns_servers"
+#define CONFIG_CERT "cert"
 
 // server fields
 #define CONFIG_SERVER_ADDRESS "server_address"
@@ -58,6 +59,8 @@ typedef struct pgs_config_ssl_s pgs_v2rayserver_ssl_t;
 	pgs_logger_main_info(config->log_file, __VA_ARGS__)
 #define pgs_config_error(config, ...)                                          \
 	pgs_logger_main_error(config->log_file, __VA_ARGS__)
+#define pgs_config_warn(config, ...)                                           \
+	pgs_logger_main_warn(config->log_file, __VA_ARGS__)
 
 typedef struct pgs_server_config_s {
 	const char *server_address;
@@ -80,6 +83,7 @@ typedef struct pgs_config_s {
 	int log_level;
 	FILE *log_file;
 	bool log_isatty;
+	const char *crt;
 	pgs_list_t *dns_servers;
 } pgs_config_t;
 

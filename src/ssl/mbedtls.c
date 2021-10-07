@@ -14,7 +14,7 @@ struct pgs_ssl_ctx_s {
 	mbedtls_ctr_drbg_context ctr_drbg;
 };
 
-pgs_ssl_ctx_t *pgs_ssl_ctx_new()
+pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config)
 {
 	pgs_ssl_ctx_t *ctx = malloc(sizeof(pgs_ssl_ctx_t));
 
