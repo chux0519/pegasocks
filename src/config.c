@@ -103,9 +103,15 @@ pgs_config_t *pgs_config_parse(const char *json)
 	else
 		ptr->ping_interval = 120;
 
-	const char *crt = json_object_get_string(root_obj, CONFIG_CERT);
-	if (crt)
-		ptr->crt = crt;
+	const char *ssl_crt =
+		json_object_dotget_string(root_obj, CONFIG_SSL_CERT);
+	if (ssl_crt)
+		ptr->ssl_crt = ssl_crt;
+
+	JSON_Value *vssl_verify =
+		json_object_dotget_value(root_obj, CONFIG_SSL_VERIFY);
+	if (vssl_verify)
+		ptr->ssl_verify = json_value_get_boolean(vssl_verify);
 
 	dns_servers = json_object_get_array(root_obj, CONFIG_DNS_SERVERS);
 	if (dns_servers != NULL) {
@@ -260,7 +266,8 @@ pgs_config_t *pgs_config_new()
 	ptr->timeout = 30;
 	ptr->log_level = 0;
 	ptr->log_file = stderr;
-	ptr->crt = NULL;
+	ptr->ssl_crt = NULL;
+	ptr->ssl_verify = true;
 	ptr->dns_servers = pgs_list_new();
 	return ptr;
 }
@@ -348,7 +355,6 @@ pgs_config_extra_trojan_t *pgs_config_extra_trojan_new()
 	pgs_config_extra_trojan_t *ptr =
 		malloc(sizeof(pgs_config_extra_trojan_t));
 	ptr->ssl.enabled = true;
-	ptr->ssl.cert = NULL;
 	ptr->ssl.sni = NULL;
 	ptr->websocket.enabled = false;
 	ptr->websocket.hostname = NULL;
@@ -415,7 +421,6 @@ pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_new()
 	pgs_config_extra_v2ray_t *ptr =
 		malloc(sizeof(pgs_config_extra_v2ray_t));
 	ptr->ssl.enabled = false;
-	ptr->ssl.cert = NULL;
 	ptr->ssl.sni = NULL;
 	ptr->websocket.enabled = false;
 	ptr->websocket.hostname = NULL;

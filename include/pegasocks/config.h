@@ -29,7 +29,8 @@
 #define CONFIG_TIMEOUT "timeout"
 #define CONFIG_SERVERS "servers"
 #define CONFIG_DNS_SERVERS "dns_servers"
-#define CONFIG_CERT "cert"
+#define CONFIG_SSL_CERT "ssl.cert"
+#define CONFIG_SSL_VERIFY "ssl.verify"
 
 // server fields
 #define CONFIG_SERVER_ADDRESS "server_address"
@@ -83,14 +84,14 @@ typedef struct pgs_config_s {
 	int log_level;
 	FILE *log_file;
 	bool log_isatty;
-	const char *crt;
+	const char *ssl_crt;
+	bool ssl_verify;
 	pgs_list_t *dns_servers;
 } pgs_config_t;
 
 typedef struct pgs_config_ssl_s {
 	bool enabled;
 	const char *sni;
-	const char *cert;
 } pgs_config_ssl_t;
 
 typedef struct pgs_config_ws_s {
