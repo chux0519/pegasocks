@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <sys/un.h>
 #include <netinet/in.h>
+#include <stdatomic.h>
 
 static pgs_config_t *CONFIG = NULL;
 static pgs_acl_t *ACL = NULL;
@@ -45,7 +46,7 @@ static int cfd = 0;
 static int snum = 0;
 
 static bool RUNNING = false;
-static bool SHUTINGDOWN = false;
+static _Atomic int SHUTINGDOWN = ATOMIC_VAR_INIT(0);
 
 static bool pgs_init(const char *config, const char *acl, int threads);
 static void pgs_clean();
@@ -83,10 +84,6 @@ bool pgs_start(const char *config, const char *acl, int threads,
 
 	// will block here
 
-	for (int i = 0; i < snum; i++) {
-		pthread_join(THREADS[i], NULL);
-	}
-
 	pthread_join(HELPER_THREAD, NULL);
 
 	// stoped by other threads
@@ -101,9 +98,9 @@ bool pgs_start(const char *config, const char *acl, int threads,
 
 void pgs_stop()
 {
-	if (SHUTINGDOWN)
+	if (atomic_load(&SHUTINGDOWN))
 		return;
-	SHUTINGDOWN = true;
+	atomic_store(&SHUTINGDOWN, 1);
 
 	if (LOCAL_SERVERS != NULL) {
 		for (int i = 0; i < snum; i++) {
@@ -114,11 +111,16 @@ void pgs_stop()
 		}
 	}
 
+	// should join all helper threads here
+	for (int i = 0; i < snum; i++) {
+		pthread_join(THREADS[i], NULL);
+	}
+
 	if (HELPER_THREAD_CTX != NULL) {
 		evuser_trigger(HELPER_THREAD_CTX->ev_term);
 	}
 
-	SHUTINGDOWN = false;
+	atomic_store(&SHUTINGDOWN, 0);
 }
 
 void pgs_get_servers(char *out, int max_len, int *olen)
