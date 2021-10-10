@@ -305,7 +305,7 @@ static bool pgs_init(const char *config, const char *acl, int threads)
 	if (init_control_fd(CONFIG, &cfd) < 0) {
 		return false;
 	}
-	MPSC = pgs_mpsc_new(MAX_LOG_MPSC_SIZE);
+	MPSC = pgs_mpsc_new(DEFAULT_LOG_MPSC_SIZE);
 
 	LOGGER = pgs_logger_new(MPSC, CONFIG->log_level, CONFIG->log_isatty);
 

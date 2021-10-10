@@ -11,11 +11,11 @@ struct pgs_mpsc_s {
 	_Atomic long count;
 	_Atomic long in_pos;
 	long out_pos; // using from one thread(consumer), so thread safe
-	long max;
+	long mask;
 	void *_Atomic *slots;
 };
 
-pgs_mpsc_t *pgs_mpsc_new(long size);
+pgs_mpsc_t *pgs_mpsc_new(long size /* should be power of 2 */);
 
 void pgs_mpsc_free(pgs_mpsc_t *mpsc);
 

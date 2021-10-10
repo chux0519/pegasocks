@@ -8,7 +8,7 @@ pgs_mpsc_t *pgs_mpsc_new(long size)
 	ptr->in_pos = ATOMIC_VAR_INIT(0);
 
 	ptr->out_pos = 0;
-	ptr->max = size;
+	ptr->mask = size - 1;
 	ptr->slots = calloc(size, sizeof(void *));
 	return ptr;
 }
@@ -23,7 +23,7 @@ bool pgs_mpsc_send(pgs_mpsc_t *mpsc, void *data)
 {
 	long count = atomic_fetch_add_explicit(&mpsc->count, 1,
 					       memory_order_acquire);
-	if (count >= mpsc->max) {
+	if (count > mpsc->mask) {
 		atomic_fetch_sub_explicit(&mpsc->count, 1,
 					  memory_order_release);
 		return false;
@@ -31,7 +31,7 @@ bool pgs_mpsc_send(pgs_mpsc_t *mpsc, void *data)
 
 	long in_pos = atomic_fetch_add_explicit(&mpsc->in_pos, 1,
 						memory_order_acquire);
-	void *rv = atomic_exchange_explicit(&mpsc->slots[in_pos % mpsc->max],
+	void *rv = atomic_exchange_explicit(&mpsc->slots[in_pos & mpsc->mask],
 					    data, memory_order_release);
 	assert(rv == NULL);
 	return true;
@@ -44,7 +44,7 @@ void *pgs_mpsc_recv(pgs_mpsc_t *mpsc)
 	if (!ret) {
 		return NULL;
 	}
-	if (++mpsc->out_pos >= mpsc->max)
+	if (++mpsc->out_pos > mpsc->mask)
 		mpsc->out_pos = 0;
 	long r = atomic_fetch_sub_explicit(&mpsc->count, 1,
 					   memory_order_release);
