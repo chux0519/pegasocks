@@ -107,10 +107,10 @@ static void on_v2ray_g204_read(struct bufferevent *bev, void *ctx)
 }
 
 pgs_metrics_task_ctx_t *
-get_metrics_g204_connect(int idx, struct event_base *base,
-			 struct evdns_base *dns_base, pgs_server_manager_t *sm,
-			 pgs_logger_t *logger, pgs_ssl_ctx_t *ssl_ctx,
-			 pgs_list_t *mtasks)
+get_metrics_g204_connect(int idx, const pgs_config_t *gconfig,
+			 struct event_base *base, struct evdns_base *dns_base,
+			 pgs_server_manager_t *sm, pgs_logger_t *logger,
+			 pgs_ssl_ctx_t *ssl_ctx, pgs_list_t *mtasks)
 {
 	const pgs_server_config_t *config = &sm->server_configs[idx];
 	const uint8_t *cmd = g204_cmd;
@@ -132,7 +132,7 @@ get_metrics_g204_connect(int idx, struct event_base *base,
 
 	if (IS_TROJAN_SERVER(config->server_type)) {
 		if (!pgs_session_trojan_outbound_init(
-			    ptr, config, cmd, cmd_len, base, ssl_ctx,
+			    ptr, gconfig, config, cmd, cmd_len, base, ssl_ctx,
 			    on_trojan_g204_event, on_trojan_g204_read, mctx)) {
 			pgs_logger_error(logger,
 					 "Failed to init trojan outbound");
@@ -140,16 +140,16 @@ get_metrics_g204_connect(int idx, struct event_base *base,
 		}
 	} else if (IS_V2RAY_SERVER(config->server_type)) {
 		if (!pgs_session_v2ray_outbound_init(
-			    ptr, config, cmd, cmd_len, base, ssl_ctx,
+			    ptr, gconfig, config, cmd, cmd_len, base, ssl_ctx,
 			    on_v2ray_g204_event, on_v2ray_g204_read, mctx)) {
 			pgs_logger_error(logger,
 					 "Failed to init v2ray outbound");
 			goto error;
 		}
 	} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
-		if (!pgs_session_ss_outbound_init(ptr, config, cmd, cmd_len,
-						  base, on_ss_g204_event,
-						  on_ss_g204_read, mctx)) {
+		if (!pgs_session_ss_outbound_init(
+			    ptr, gconfig, config, cmd, cmd_len, base,
+			    on_ss_g204_event, on_ss_g204_read, mctx)) {
 			pgs_logger_error(logger,
 					 "Failed to init shadowsocks outbound");
 			goto error;

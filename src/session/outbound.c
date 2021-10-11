@@ -19,7 +19,7 @@
 /*
  * init outbound fd
  */
-static bool pgs_outbound_fd_init(int *fd);
+static bool pgs_outbound_fd_init(int *fd, const pgs_config_t *gconfig);
 
 /*
  * bypass handlers
@@ -321,13 +321,11 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 	ptr = NULL;
 }
 
-bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
-				      const pgs_server_config_t *config,
-				      const uint8_t *cmd, size_t cmd_len,
-				      struct event_base *base,
-				      pgs_ssl_ctx_t *ssl_ctx,
-				      on_event_cb *event_cb,
-				      on_read_cb *read_cb, void *cb_ctx)
+bool pgs_session_trojan_outbound_init(
+	pgs_session_outbound_t *ptr, const pgs_config_t *gconfig,
+	const pgs_server_config_t *config, const uint8_t *cmd, size_t cmd_len,
+	struct event_base *base, pgs_ssl_ctx_t *ssl_ctx, on_event_cb *event_cb,
+	on_read_cb *read_cb, void *cb_ctx)
 {
 	int fd = -1;
 	ptr->config = config;
@@ -343,7 +341,7 @@ bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
 		sni = tconf->ssl.sni;
 	}
 
-	if (!pgs_outbound_fd_init(&fd))
+	if (!pgs_outbound_fd_init(&fd, gconfig))
 		goto error;
 
 	if (pgs_session_outbound_ssl_bev_init(&ptr->bev, fd, base, ssl_ctx,
@@ -361,13 +359,11 @@ error:
 	return false;
 }
 
-bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
-				     const pgs_server_config_t *config,
-				     const uint8_t *cmd, size_t cmd_len,
-				     struct event_base *base,
-				     pgs_ssl_ctx_t *ssl_ctx,
-				     on_event_cb *event_cb, on_read_cb *read_cb,
-				     void *cb_ctx)
+bool pgs_session_v2ray_outbound_init(
+	pgs_session_outbound_t *ptr, const pgs_config_t *gconfig,
+	const pgs_server_config_t *config, const uint8_t *cmd, size_t cmd_len,
+	struct event_base *base, pgs_ssl_ctx_t *ssl_ctx, on_event_cb *event_cb,
+	on_read_cb *read_cb, void *cb_ctx)
 {
 	int fd = -1;
 	pgs_config_extra_v2ray_t *vconf =
@@ -375,7 +371,7 @@ bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
 
 	ptr->ctx = pgs_outbound_ctx_v2ray_new(cmd, cmd_len, vconf->secure);
 
-	if (!pgs_outbound_fd_init(&fd))
+	if (!pgs_outbound_fd_init(&fd, gconfig))
 		goto error;
 
 	if (vconf->ssl.enabled) {
@@ -405,6 +401,7 @@ error:
 }
 
 bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
+				  const pgs_config_t *gconfig,
 				  const pgs_server_config_t *config,
 				  const uint8_t *cmd, size_t cmd_len,
 				  struct event_base *base,
@@ -419,7 +416,7 @@ bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
 					strlen((const char *)config->password),
 					ssconf->method);
 
-	if (!pgs_outbound_fd_init(&fd))
+	if (!pgs_outbound_fd_init(&fd, gconfig))
 		goto error;
 
 	ptr->bev = bufferevent_socket_new(
@@ -437,6 +434,7 @@ error:
 }
 
 bool pgs_session_bypass_outbound_init(pgs_session_outbound_t *ptr,
+				      const pgs_config_t *gconfig,
 				      struct event_base *base,
 				      on_event_cb *event_cb,
 				      on_read_cb *read_cb, void *cb_ctx)
@@ -447,7 +445,7 @@ bool pgs_session_bypass_outbound_init(pgs_session_outbound_t *ptr,
 		goto error;
 	ptr->ctx = NULL;
 
-	if (!pgs_outbound_fd_init(&fd))
+	if (!pgs_outbound_fd_init(&fd, gconfig))
 		goto error;
 
 	ptr->bev = bufferevent_socket_new(
@@ -500,17 +498,17 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 		bool ok = false;
 		if (IS_TROJAN_SERVER(config->server_type)) {
 			ok = pgs_session_trojan_outbound_init(
-				ptr, config, cmd, cmd_len, local->base,
+				ptr, gconfig, config, cmd, cmd_len, local->base,
 				local->ssl_ctx, on_trojan_remote_event,
 				on_trojan_remote_read, cb_ctx);
 		} else if (IS_V2RAY_SERVER(config->server_type)) {
 			ok = pgs_session_v2ray_outbound_init(
-				ptr, config, cmd, cmd_len, local->base,
+				ptr, gconfig, config, cmd, cmd_len, local->base,
 				local->ssl_ctx, on_v2ray_remote_event,
 				on_v2ray_remote_read, cb_ctx);
 		} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
 			ok = pgs_session_ss_outbound_init(
-				ptr, config, cmd, cmd_len, local->base,
+				ptr, gconfig, config, cmd, cmd_len, local->base,
 				on_ss_remote_event, on_ss_remote_read, cb_ctx);
 		}
 		if (!ok) {
@@ -534,7 +532,8 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 		if (is_udp) {
 			// do nothing, will create udp relay later
 		} else {
-			pgs_session_bypass_outbound_init(ptr, local->base,
+			pgs_session_bypass_outbound_init(ptr, gconfig,
+							 local->base,
 							 on_bypass_remote_event,
 							 on_bypass_remote_read,
 							 cb_ctx);
@@ -996,15 +995,78 @@ error:
 	PGS_FREE_SESSION(session);
 }
 
-static bool pgs_outbound_fd_init(int *fd)
+static bool pgs_outbound_fd_init(int *fd, const pgs_config_t *gconfig)
 {
 	*fd = socket(AF_INET, SOCK_STREAM, 0);
-
 	int flag = fcntl(*fd, F_GETFL, 0);
 	if (fcntl(*fd, F_SETFL, flag | O_NONBLOCK))
 		return false;
 
-	// TODO: if android and protect server is set, let's protect it, do a sync IO here
+	//#ifdef __ANDROID__
+	if (gconfig->android_protect_address && gconfig->android_protect_port) {
+		int sock;
+		struct sockaddr_in addr = { 0 };
+		sock = socket(AF_INET, SOCK_STREAM, 0);
+		if (sock == -1)
+			return false;
+
+		struct timeval tv;
+		tv.tv_sec = 3;
+		tv.tv_usec = 0;
+		setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,
+			   sizeof(struct timeval));
+		setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv,
+			   sizeof(struct timeval));
+
+		addr.sin_family = AF_INET;
+		addr.sin_port = htons(gconfig->android_protect_port);
+		if (inet_pton(AF_INET, gconfig->android_protect_address,
+			      &(addr.sin_addr)) != 1) {
+			close(sock);
+			return false;
+		}
+
+		if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) ==
+		    -1) {
+			pgs_config_error(
+				gconfig,
+				"[ANDROID] Failed to connect to protect server");
+			close(sock);
+			return false;
+		}
+
+		char buf[4] = { 0 };
+		buf[0] = (*fd >> 24) & 0xFF;
+		buf[1] = (*fd >> 16) & 0xFF;
+		buf[2] = (*fd >> 8) & 0xFF;
+		buf[3] = *fd & 0xFF;
+		int n = write(sock, buf, 4);
+		if (n != 4) {
+			pgs_config_error(
+				gconfig,
+				"[ANDROID] Failed to write to protect server");
+			close(sock);
+			return false;
+		}
+
+		n = read(sock, buf, 4);
+		if (n != 4) {
+			pgs_config_error(
+				gconfig,
+				"[ANDROID] Failed to read from protect server");
+			close(sock);
+			return false;
+		}
+		close(sock);
+
+		int ret = buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3];
+		if (ret != *fd) {
+			pgs_config_error(gconfig,
+					 "[ANDROID] Failed to protect fd");
+			return false;
+		}
+	}
+	//#endif
 
 	return true;
 }

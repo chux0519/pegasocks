@@ -31,6 +31,8 @@
 #define CONFIG_DNS_SERVERS "dns_servers"
 #define CONFIG_SSL_CERT "ssl.cert"
 #define CONFIG_SSL_VERIFY "ssl.verify"
+#define CONFIG_ANDROID_PROTECT_ADDRESS "android.protect_address"
+#define CONFIG_ANDROID_PROTECT_PORT "android.protect_port"
 
 // server fields
 #define CONFIG_SERVER_ADDRESS "server_address"
@@ -87,6 +89,8 @@ typedef struct pgs_config_s {
 	const char *ssl_crt;
 	bool ssl_verify;
 	pgs_list_t *dns_servers;
+	const char *android_protect_address;
+	int android_protect_port;
 } pgs_config_t;
 
 typedef struct pgs_config_ssl_s {

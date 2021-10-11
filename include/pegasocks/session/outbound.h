@@ -140,23 +140,20 @@ void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr);
 // outbound
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr);
 
-bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
-				      const pgs_server_config_t *config,
-				      const uint8_t *cmd, size_t cmd_len,
-				      struct event_base *base,
-				      pgs_ssl_ctx_t *ssl_ctx,
-				      on_event_cb *event_cb,
-				      on_read_cb *read_cb, void *cb_ctx);
+bool pgs_session_trojan_outbound_init(
+	pgs_session_outbound_t *ptr, const pgs_config_t *gconfig,
+	const pgs_server_config_t *config, const uint8_t *cmd, size_t cmd_len,
+	struct event_base *base, pgs_ssl_ctx_t *ssl_ctx, on_event_cb *event_cb,
+	on_read_cb *read_cb, void *cb_ctx);
 
-bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
-				     const pgs_server_config_t *config,
-				     const uint8_t *cmd, size_t cmd_len,
-				     struct event_base *base,
-				     pgs_ssl_ctx_t *ssl_ctx,
-				     on_event_cb *event_cb, on_read_cb *read_cb,
-				     void *cb_ctx);
+bool pgs_session_v2ray_outbound_init(
+	pgs_session_outbound_t *ptr, const pgs_config_t *gconfig,
+	const pgs_server_config_t *config, const uint8_t *cmd, size_t cmd_len,
+	struct event_base *base, pgs_ssl_ctx_t *ssl_ctx, on_event_cb *event_cb,
+	on_read_cb *read_cb, void *cb_ctx);
 
 bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
+				  const pgs_config_t *gconfig,
 				  const pgs_server_config_t *config,
 				  const uint8_t *cmd, size_t cmd_len,
 				  struct event_base *base,
@@ -164,6 +161,7 @@ bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
 				  void *cb_ctx);
 
 bool pgs_session_bypass_outbound_init(pgs_session_outbound_t *ptr,
+				      const pgs_config_t *gconfig,
 				      struct event_base *base,
 				      on_event_cb *event_cb,
 				      on_read_cb *read_cb, void *cb_ctx);
