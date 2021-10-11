@@ -22,6 +22,7 @@ pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config)
 	mbedtls_ssl_config_init(&ctx->conf);
 	mbedtls_ctr_drbg_init(&ctx->ctr_drbg);
 	mbedtls_entropy_init(&ctx->entropy);
+	mbedtls_x509_crt_init(&ctx->cacert);
 
 	if (mbedtls_ctr_drbg_seed(&ctx->ctr_drbg, mbedtls_entropy_func,
 				  &ctx->entropy, NULL, 0)) {
@@ -42,7 +43,6 @@ pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config)
 	} else {
 		bool cert_loaded = false;
 		if (config->ssl_crt) {
-			mbedtls_x509_crt_init(&ctx->cacert);
 			if (mbedtls_x509_crt_parse_file(&ctx->cacert,
 							config->ssl_crt) != 0) {
 				pgs_config_error(config,
