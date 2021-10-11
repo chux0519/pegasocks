@@ -25,8 +25,9 @@ static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 	pgs_timer_t *arg = data;
 	for (int i = 0; i < arg->ctx->sm->server_len; i++) {
 		pgs_metrics_task_ctx_t *t = get_metrics_g204_connect(
-			i, arg->ctx->base, arg->ctx->dns_base, arg->ctx->sm,
-			arg->ctx->logger, arg->ctx->ssl_ctx, arg->ctx->mtasks);
+			i, arg->ctx->config, arg->ctx->base, arg->ctx->dns_base,
+			arg->ctx->sm, arg->ctx->logger, arg->ctx->ssl_ctx,
+			arg->ctx->mtasks);
 		if (t) {
 			pgs_list_add(arg->ctx->mtasks, t->node);
 		}

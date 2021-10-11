@@ -511,8 +511,6 @@ static int init_udp_server_fd(const pgs_config_t *config, int *fd, int *port)
 	int err = 0;
 	struct sockaddr_in sin = { 0 };
 
-	memset(&sin, 0, sizeof(sin));
-
 	sin.sin_family = AF_INET;
 	err = inet_pton(AF_INET, config->local_address, &sin.sin_addr);
 	if (err <= 0) {

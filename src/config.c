@@ -128,6 +128,16 @@ pgs_config_t *pgs_config_parse(const char *json)
 		}
 	}
 
+	const char *android_protect_address = json_object_dotget_string(
+		root_obj, CONFIG_ANDROID_PROTECT_ADDRESS);
+	if (android_protect_address)
+		ptr->android_protect_address = android_protect_address;
+
+	double android_protect_port = json_object_dotget_number(
+		root_obj, CONFIG_ANDROID_PROTECT_PORT);
+	if (android_protect_port != 0)
+		ptr->android_protect_port = (int)android_protect_port;
+
 	servers_array = json_object_get_array(root_obj, CONFIG_SERVERS);
 	if (servers_array == NULL)
 		goto error;
@@ -269,6 +279,8 @@ pgs_config_t *pgs_config_new()
 	ptr->ssl_crt = NULL;
 	ptr->ssl_verify = true;
 	ptr->dns_servers = pgs_list_new();
+	ptr->android_protect_address = NULL;
+	ptr->android_protect_port = 0;
 	return ptr;
 }
 
