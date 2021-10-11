@@ -74,7 +74,7 @@ void pgs_ssl_ctx_free(pgs_ssl_ctx_t *ctx)
 // init bev with ssl context
 // return 0 for ok
 // return -1 for error
-int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev,
+int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev, int fd,
 				      struct event_base *base,
 				      pgs_ssl_ctx_t *ssl_ctx, const char *sni)
 {
@@ -87,7 +87,7 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev,
 		return -1;
 	}
 	*bev = bufferevent_openssl_socket_new(
-		base, -1, ssl, BUFFEREVENT_SSL_CONNECTING,
+		base, fd, ssl, BUFFEREVENT_SSL_CONNECTING,
 		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 #ifdef BUFFEREVENT_SSL_BATCH_WRITE
 	bufferevent_ssl_set_flags(*bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN |
