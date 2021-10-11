@@ -9,10 +9,17 @@
 #include <event2/util.h>
 
 #include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #ifdef USE_MBEDTLS
 #include <mbedtls/ssl.h>
 #endif
+
+/*
+ * init outbound fd
+ */
+static bool pgs_outbound_fd_init(int *fd);
 
 /*
  * bypass handlers
@@ -322,6 +329,7 @@ bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
 				      on_event_cb *event_cb,
 				      on_read_cb *read_cb, void *cb_ctx)
 {
+	int fd = -1;
 	ptr->config = config;
 
 	ptr->ctx =
@@ -334,7 +342,11 @@ bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
 	if (tconf->ssl.sni != NULL) {
 		sni = tconf->ssl.sni;
 	}
-	if (pgs_session_outbound_ssl_bev_init(&ptr->bev, -1, base, ssl_ctx,
+
+	if (!pgs_outbound_fd_init(&fd))
+		goto error;
+
+	if (pgs_session_outbound_ssl_bev_init(&ptr->bev, fd, base, ssl_ctx,
 					      sni))
 		goto error;
 
@@ -344,6 +356,8 @@ bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
 	return true;
 
 error:
+	if (fd != -1)
+		close(fd);
 	return false;
 }
 
@@ -355,10 +369,14 @@ bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
 				     on_event_cb *event_cb, on_read_cb *read_cb,
 				     void *cb_ctx)
 {
+	int fd = -1;
 	pgs_config_extra_v2ray_t *vconf =
 		(pgs_config_extra_v2ray_t *)config->extra;
 
 	ptr->ctx = pgs_outbound_ctx_v2ray_new(cmd, cmd_len, vconf->secure);
+
+	if (!pgs_outbound_fd_init(&fd))
+		goto error;
 
 	if (vconf->ssl.enabled) {
 		// ssl + vmess
@@ -366,13 +384,13 @@ bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
 		if (vconf->ssl.sni != NULL) {
 			sni = vconf->ssl.sni;
 		}
-		if (pgs_session_outbound_ssl_bev_init(&ptr->bev, -1, base,
+		if (pgs_session_outbound_ssl_bev_init(&ptr->bev, fd, base,
 						      ssl_ctx, sni))
 			goto error;
 	} else {
 		// raw vmess
 		ptr->bev = bufferevent_socket_new(
-			base, -1,
+			base, fd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	}
 
@@ -381,6 +399,8 @@ bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
 	return true;
 
 error:
+	if (fd != -1)
+		close(fd);
 	return false;
 }
 
@@ -391,6 +411,7 @@ bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
 				  on_event_cb *event_cb, on_read_cb *read_cb,
 				  void *cb_ctx)
 {
+	int fd = -1;
 	pgs_config_extra_ss_t *ssconf = (pgs_config_extra_ss_t *)config->extra;
 
 	ptr->ctx =
@@ -398,8 +419,11 @@ bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
 					strlen((const char *)config->password),
 					ssconf->method);
 
+	if (!pgs_outbound_fd_init(&fd))
+		goto error;
+
 	ptr->bev = bufferevent_socket_new(
-		base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+		base, fd, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 
 	assert(event_cb && read_cb && ptr->bev);
 	bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
@@ -407,6 +431,8 @@ bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
 	return true;
 
 error:
+	if (fd != -1)
+		close(fd);
 	return false;
 }
 
@@ -415,11 +441,17 @@ bool pgs_session_bypass_outbound_init(pgs_session_outbound_t *ptr,
 				      on_event_cb *event_cb,
 				      on_read_cb *read_cb, void *cb_ctx)
 {
+	int fd = -1;
+
 	if (event_cb == NULL || read_cb == NULL)
 		goto error;
 	ptr->ctx = NULL;
+
+	if (!pgs_outbound_fd_init(&fd))
+		goto error;
+
 	ptr->bev = bufferevent_socket_new(
-		base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+		base, fd, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
 	bufferevent_enable(ptr->bev, EV_READ);
 	ptr->ready = true;
@@ -427,6 +459,8 @@ bool pgs_session_bypass_outbound_init(pgs_session_outbound_t *ptr,
 
 	return true;
 error:
+	if (fd != -1)
+		close(fd);
 	return false;
 }
 
@@ -960,4 +994,17 @@ static void on_ss_remote_read(struct bufferevent *bev, void *ctx)
 
 error:
 	PGS_FREE_SESSION(session);
+}
+
+static bool pgs_outbound_fd_init(int *fd)
+{
+	*fd = socket(AF_INET, SOCK_STREAM, 0);
+
+	int flag = fcntl(*fd, F_GETFL, 0);
+	if (fcntl(*fd, F_SETFL, flag | O_NONBLOCK))
+		return false;
+
+	// TODO: if android and protect server is set, let's protect it, do a sync IO here
+
+	return true;
 }
