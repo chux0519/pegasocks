@@ -334,7 +334,8 @@ bool pgs_session_trojan_outbound_init(pgs_session_outbound_t *ptr,
 	if (tconf->ssl.sni != NULL) {
 		sni = tconf->ssl.sni;
 	}
-	if (pgs_session_outbound_ssl_bev_init(&ptr->bev, base, ssl_ctx, sni))
+	if (pgs_session_outbound_ssl_bev_init(&ptr->bev, -1, base, ssl_ctx,
+					      sni))
 		goto error;
 
 	assert(event_cb && read_cb && ptr->bev);
@@ -365,8 +366,8 @@ bool pgs_session_v2ray_outbound_init(pgs_session_outbound_t *ptr,
 		if (vconf->ssl.sni != NULL) {
 			sni = vconf->ssl.sni;
 		}
-		if (pgs_session_outbound_ssl_bev_init(&ptr->bev, base, ssl_ctx,
-						      sni))
+		if (pgs_session_outbound_ssl_bev_init(&ptr->bev, -1, base,
+						      ssl_ctx, sni))
 			goto error;
 	} else {
 		// raw vmess
