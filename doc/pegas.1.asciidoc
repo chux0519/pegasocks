@@ -84,6 +84,15 @@ The configuration file of pegasocks is in json format, the outermost fields are 
 |boolean
 |If set to false, it will skip ssl verification, default to true.
 
+|*android.protect_address
+|string
+|Protect server address(Android only).
+
+|*android.protect_port
+|int
+|Protect server port(Android only, pass fd in, do protection and return the fd out, return -1 if failed).
+
+
 |===
 
 *SERVER*
