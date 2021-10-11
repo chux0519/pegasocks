@@ -19,7 +19,8 @@
 /*
  * init outbound fd
  */
-static bool pgs_outbound_fd_init(int *fd, const pgs_config_t *gconfig);
+static bool pgs_outbound_fd_init(int *fd, pgs_logger_t *logger,
+				 const pgs_config_t *gconfig);
 
 /*
  * bypass handlers
@@ -322,10 +323,11 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 }
 
 bool pgs_session_trojan_outbound_init(
-	pgs_session_outbound_t *ptr, const pgs_config_t *gconfig,
-	const pgs_server_config_t *config, const uint8_t *cmd, size_t cmd_len,
-	struct event_base *base, pgs_ssl_ctx_t *ssl_ctx, on_event_cb *event_cb,
-	on_read_cb *read_cb, void *cb_ctx)
+	pgs_session_outbound_t *ptr, pgs_logger_t *logger,
+	const pgs_config_t *gconfig, const pgs_server_config_t *config,
+	const uint8_t *cmd, size_t cmd_len, struct event_base *base,
+	pgs_ssl_ctx_t *ssl_ctx, on_event_cb *event_cb, on_read_cb *read_cb,
+	void *cb_ctx)
 {
 	int fd = -1;
 	ptr->config = config;
@@ -341,7 +343,7 @@ bool pgs_session_trojan_outbound_init(
 		sni = tconf->ssl.sni;
 	}
 
-	if (!pgs_outbound_fd_init(&fd, gconfig))
+	if (!pgs_outbound_fd_init(&fd, logger, gconfig))
 		goto error;
 
 	if (pgs_session_outbound_ssl_bev_init(&ptr->bev, fd, base, ssl_ctx,
@@ -360,10 +362,11 @@ error:
 }
 
 bool pgs_session_v2ray_outbound_init(
-	pgs_session_outbound_t *ptr, const pgs_config_t *gconfig,
-	const pgs_server_config_t *config, const uint8_t *cmd, size_t cmd_len,
-	struct event_base *base, pgs_ssl_ctx_t *ssl_ctx, on_event_cb *event_cb,
-	on_read_cb *read_cb, void *cb_ctx)
+	pgs_session_outbound_t *ptr, pgs_logger_t *logger,
+	const pgs_config_t *gconfig, const pgs_server_config_t *config,
+	const uint8_t *cmd, size_t cmd_len, struct event_base *base,
+	pgs_ssl_ctx_t *ssl_ctx, on_event_cb *event_cb, on_read_cb *read_cb,
+	void *cb_ctx)
 {
 	int fd = -1;
 	pgs_config_extra_v2ray_t *vconf =
@@ -371,7 +374,7 @@ bool pgs_session_v2ray_outbound_init(
 
 	ptr->ctx = pgs_outbound_ctx_v2ray_new(cmd, cmd_len, vconf->secure);
 
-	if (!pgs_outbound_fd_init(&fd, gconfig))
+	if (!pgs_outbound_fd_init(&fd, logger, gconfig))
 		goto error;
 
 	if (vconf->ssl.enabled) {
@@ -400,13 +403,11 @@ error:
 	return false;
 }
 
-bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
-				  const pgs_config_t *gconfig,
-				  const pgs_server_config_t *config,
-				  const uint8_t *cmd, size_t cmd_len,
-				  struct event_base *base,
-				  on_event_cb *event_cb, on_read_cb *read_cb,
-				  void *cb_ctx)
+bool pgs_session_ss_outbound_init(
+	pgs_session_outbound_t *ptr, pgs_logger_t *logger,
+	const pgs_config_t *gconfig, const pgs_server_config_t *config,
+	const uint8_t *cmd, size_t cmd_len, struct event_base *base,
+	on_event_cb *event_cb, on_read_cb *read_cb, void *cb_ctx)
 {
 	int fd = -1;
 	pgs_config_extra_ss_t *ssconf = (pgs_config_extra_ss_t *)config->extra;
@@ -416,7 +417,7 @@ bool pgs_session_ss_outbound_init(pgs_session_outbound_t *ptr,
 					strlen((const char *)config->password),
 					ssconf->method);
 
-	if (!pgs_outbound_fd_init(&fd, gconfig))
+	if (!pgs_outbound_fd_init(&fd, logger, gconfig))
 		goto error;
 
 	ptr->bev = bufferevent_socket_new(
@@ -434,6 +435,7 @@ error:
 }
 
 bool pgs_session_bypass_outbound_init(pgs_session_outbound_t *ptr,
+				      pgs_logger_t *logger,
 				      const pgs_config_t *gconfig,
 				      struct event_base *base,
 				      on_event_cb *event_cb,
@@ -445,7 +447,7 @@ bool pgs_session_bypass_outbound_init(pgs_session_outbound_t *ptr,
 		goto error;
 	ptr->ctx = NULL;
 
-	if (!pgs_outbound_fd_init(&fd, gconfig))
+	if (!pgs_outbound_fd_init(&fd, logger, gconfig))
 		goto error;
 
 	ptr->bev = bufferevent_socket_new(
@@ -477,6 +479,7 @@ pgs_session_outbound_t *pgs_session_outbound_new()
 }
 
 bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
+			       pgs_logger_t *logger,
 			       const pgs_config_t *gconfig,
 			       const pgs_server_config_t *config,
 			       const uint8_t *cmd, size_t cmd_len,
@@ -498,18 +501,21 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 		bool ok = false;
 		if (IS_TROJAN_SERVER(config->server_type)) {
 			ok = pgs_session_trojan_outbound_init(
-				ptr, gconfig, config, cmd, cmd_len, local->base,
-				local->ssl_ctx, on_trojan_remote_event,
-				on_trojan_remote_read, cb_ctx);
+				ptr, logger, gconfig, config, cmd, cmd_len,
+				local->base, local->ssl_ctx,
+				on_trojan_remote_event, on_trojan_remote_read,
+				cb_ctx);
 		} else if (IS_V2RAY_SERVER(config->server_type)) {
 			ok = pgs_session_v2ray_outbound_init(
-				ptr, gconfig, config, cmd, cmd_len, local->base,
-				local->ssl_ctx, on_v2ray_remote_event,
-				on_v2ray_remote_read, cb_ctx);
+				ptr, logger, gconfig, config, cmd, cmd_len,
+				local->base, local->ssl_ctx,
+				on_v2ray_remote_event, on_v2ray_remote_read,
+				cb_ctx);
 		} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
 			ok = pgs_session_ss_outbound_init(
-				ptr, gconfig, config, cmd, cmd_len, local->base,
-				on_ss_remote_event, on_ss_remote_read, cb_ctx);
+				ptr, logger, gconfig, config, cmd, cmd_len,
+				local->base, on_ss_remote_event,
+				on_ss_remote_read, cb_ctx);
 		}
 		if (!ok) {
 			pgs_logger_error(local->logger,
@@ -532,7 +538,7 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 		if (is_udp) {
 			// do nothing, will create udp relay later
 		} else {
-			pgs_session_bypass_outbound_init(ptr, gconfig,
+			pgs_session_bypass_outbound_init(ptr, logger, gconfig,
 							 local->base,
 							 on_bypass_remote_event,
 							 on_bypass_remote_read,
@@ -995,14 +1001,15 @@ error:
 	PGS_FREE_SESSION(session);
 }
 
-static bool pgs_outbound_fd_init(int *fd, const pgs_config_t *gconfig)
+static bool pgs_outbound_fd_init(int *fd, pgs_logger_t *logger,
+				 const pgs_config_t *gconfig)
 {
 	*fd = socket(AF_INET, SOCK_STREAM, 0);
 	int flag = fcntl(*fd, F_GETFL, 0);
 	if (fcntl(*fd, F_SETFL, flag | O_NONBLOCK))
 		return false;
 
-	//#ifdef __ANDROID__
+#ifdef __ANDROID__
 	if (gconfig->android_protect_address && gconfig->android_protect_port) {
 		int sock;
 		struct sockaddr_in addr = { 0 };
@@ -1028,8 +1035,8 @@ static bool pgs_outbound_fd_init(int *fd, const pgs_config_t *gconfig)
 
 		if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) ==
 		    -1) {
-			pgs_config_error(
-				gconfig,
+			pgs_logger_error(
+				logger,
 				"[ANDROID] Failed to connect to protect server");
 			close(sock);
 			return false;
@@ -1042,8 +1049,8 @@ static bool pgs_outbound_fd_init(int *fd, const pgs_config_t *gconfig)
 		buf[3] = *fd & 0xFF;
 		int n = write(sock, buf, 4);
 		if (n != 4) {
-			pgs_config_error(
-				gconfig,
+			pgs_logger_error(
+				logger,
 				"[ANDROID] Failed to write to protect server");
 			close(sock);
 			return false;
@@ -1051,8 +1058,8 @@ static bool pgs_outbound_fd_init(int *fd, const pgs_config_t *gconfig)
 
 		n = read(sock, buf, 4);
 		if (n != 4) {
-			pgs_config_error(
-				gconfig,
+			pgs_logger_error(
+				logger,
 				"[ANDROID] Failed to read from protect server");
 			close(sock);
 			return false;
@@ -1061,12 +1068,12 @@ static bool pgs_outbound_fd_init(int *fd, const pgs_config_t *gconfig)
 
 		int ret = buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3];
 		if (ret != *fd) {
-			pgs_config_error(gconfig,
+			pgs_logger_error(logger,
 					 "[ANDROID] Failed to protect fd");
 			return false;
 		}
 	}
-	//#endif
+#endif
 
 	return true;
 }
