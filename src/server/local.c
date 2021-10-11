@@ -37,9 +37,6 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 	// new session
 	pgs_session_t *session = pgs_session_new(fd, local);
 
-	// cache this
-	pgs_list_add(local->sessions, session->node);
-
 	// start session
 	pgs_session_start(session);
 }

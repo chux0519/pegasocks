@@ -28,9 +28,6 @@ static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 			i, arg->ctx->config, arg->ctx->base, arg->ctx->dns_base,
 			arg->ctx->sm, arg->ctx->logger, arg->ctx->ssl_ctx,
 			arg->ctx->mtasks);
-		if (t) {
-			pgs_list_add(arg->ctx->mtasks, t->node);
-		}
 	}
 	arg->tv.tv_sec = arg->ctx->config->ping_interval;
 	arg->tv.tv_usec = 0;

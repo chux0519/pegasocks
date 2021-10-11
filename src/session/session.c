@@ -41,6 +41,7 @@ pgs_session_t *pgs_session_new(int fd, pgs_local_server_t *local_server)
 	ptr->local_server = local_server;
 
 	ptr->node = pgs_list_node_new(ptr);
+	pgs_list_add(local_server->sessions, ptr->node);
 
 	return ptr;
 }
