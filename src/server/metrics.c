@@ -132,23 +132,25 @@ get_metrics_g204_connect(int idx, const pgs_config_t *gconfig,
 
 	if (IS_TROJAN_SERVER(config->server_type)) {
 		if (!pgs_session_trojan_outbound_init(
-			    ptr, gconfig, config, cmd, cmd_len, base, ssl_ctx,
-			    on_trojan_g204_event, on_trojan_g204_read, mctx)) {
+			    ptr, logger, gconfig, config, cmd, cmd_len, base,
+			    ssl_ctx, on_trojan_g204_event, on_trojan_g204_read,
+			    mctx)) {
 			pgs_logger_error(logger,
 					 "Failed to init trojan outbound");
 			goto error;
 		}
 	} else if (IS_V2RAY_SERVER(config->server_type)) {
 		if (!pgs_session_v2ray_outbound_init(
-			    ptr, gconfig, config, cmd, cmd_len, base, ssl_ctx,
-			    on_v2ray_g204_event, on_v2ray_g204_read, mctx)) {
+			    ptr, logger, gconfig, config, cmd, cmd_len, base,
+			    ssl_ctx, on_v2ray_g204_event, on_v2ray_g204_read,
+			    mctx)) {
 			pgs_logger_error(logger,
 					 "Failed to init v2ray outbound");
 			goto error;
 		}
 	} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
 		if (!pgs_session_ss_outbound_init(
-			    ptr, gconfig, config, cmd, cmd_len, base,
+			    ptr, logger, gconfig, config, cmd, cmd_len, base,
 			    on_ss_g204_event, on_ss_g204_read, mctx)) {
 			pgs_logger_error(logger,
 					 "Failed to init shadowsocks outbound");

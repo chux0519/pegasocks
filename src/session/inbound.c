@@ -415,6 +415,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			session->outbound = pgs_session_outbound_new();
 			if (!pgs_session_outbound_init(
 				    session->outbound, false,
+				    session->local_server->logger,
 				    session->local_server->config, config, cmd,
 				    cmdlen, session->local_server, session))
 				goto error;
@@ -441,6 +442,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 			session->outbound = pgs_session_outbound_new();
 			if (!pgs_session_outbound_init(
 				    session->outbound, true,
+				    session->local_server->logger,
 				    session->local_server->config, config,
 				    rdata, cmdlen, session->local_server,
 				    session))
