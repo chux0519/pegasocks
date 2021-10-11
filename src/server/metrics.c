@@ -463,6 +463,8 @@ pgs_metrics_task_ctx_new(int idx, struct event_base *base,
 
 	ptr->node = pgs_list_node_new(ptr);
 	ptr->mtasks = tasks;
+	pgs_list_add(ptr->mtasks, ptr->node);
+
 	gettimeofday(&ptr->start_at, NULL);
 	return ptr;
 }
