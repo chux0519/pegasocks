@@ -2,6 +2,7 @@
 #define _PGS_UTILS_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 // evdns helper
 #define PGS_DNS_INIT(base, dns_base_ptr, config, logger)                        \
@@ -31,6 +32,18 @@
 		evdns_base_set_option(*(dns_base_ptr),                          \
 				      "probe-backoff-factor:", "1");            \
 	} while (0)
+
+#define PGS_DEFAULT_BUFSIZE 1 * 1024
+
+// ======================== buffers for codec
+typedef struct pgs_buffer_s {
+	uint8_t *buffer;
+	size_t cap;
+} pgs_buffer_t;
+
+pgs_buffer_t *pgs_buffer_new();
+void pgs_buffer_free(pgs_buffer_t *);
+void pgs_buffer_ensure(pgs_buffer_t *, size_t);
 
 // ======================== list for sessions and outbound metrics requests
 typedef struct pgs_list_node_s {
