@@ -2,6 +2,39 @@
 
 #include <stdlib.h>
 
+// ===================== buffer
+pgs_buffer_t *pgs_buffer_new()
+{
+	pgs_buffer_t *ptr = malloc(sizeof(pgs_buffer_t));
+	ptr->buffer = malloc(PGS_DEFAULT_BUFSIZE);
+	ptr->cap = PGS_DEFAULT_BUFSIZE;
+	return ptr;
+}
+
+void pgs_buffer_free(pgs_buffer_t *ptr)
+{
+	if (ptr) {
+		if (ptr->buffer)
+			free(ptr->buffer);
+		free(ptr);
+	}
+}
+
+void pgs_buffer_ensure(pgs_buffer_t *ptr, size_t n)
+{
+	if (ptr->cap >= n)
+		return;
+	int times = 1 << 1;
+
+	while (times * ptr->cap < n) {
+		times <<= 1;
+	}
+	ptr->cap = times * ptr->cap;
+	ptr->buffer = realloc(ptr->buffer, ptr->cap);
+}
+
+// ====================== list
+
 pgs_list_node_t *pgs_list_node_new(void *val)
 {
 	pgs_list_node_t *ptr = malloc(sizeof(pgs_list_node_t));

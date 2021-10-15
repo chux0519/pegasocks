@@ -162,6 +162,11 @@ pgs_outbound_ctx_v2ray_t *pgs_outbound_ctx_v2ray_new(const uint8_t *cmd,
 	ptr->cmdlen = cmdlen;
 	ptr->cipher = cipher;
 
+	ptr->lrbuf = pgs_buffer_new();
+	ptr->lwbuf = pgs_buffer_new();
+	ptr->rrbuf = pgs_buffer_new();
+	ptr->rwbuf = pgs_buffer_new();
+
 	return ptr;
 }
 
@@ -179,6 +184,14 @@ void pgs_outbound_ctx_v2ray_free(pgs_outbound_ctx_v2ray_t *ptr)
 		free(ptr->data_dec_iv);
 	if (ptr->data_dec_key)
 		free(ptr->data_dec_key);
+	if (ptr->lrbuf)
+		pgs_buffer_free(ptr->lrbuf);
+	if (ptr->lwbuf)
+		pgs_buffer_free(ptr->lwbuf);
+	if (ptr->rrbuf)
+		pgs_buffer_free(ptr->rrbuf);
+	if (ptr->rwbuf)
+		pgs_buffer_free(ptr->rwbuf);
 
 	ptr->encryptor = NULL;
 	ptr->decryptor = NULL;

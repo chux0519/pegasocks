@@ -6,6 +6,7 @@
 #include "config.h"
 #include "crypto.h"
 #include "ssl.h"
+#include "utils.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -46,10 +47,11 @@ typedef struct pgs_outbound_ctx_v2ray_s {
 	uint8_t riv[AES_128_CFB_IV_LEN];
 	uint8_t rkey[AES_128_CFB_KEY_LEN];
 
-	uint8_t local_rbuf[BUFSIZE_16K];
-	uint8_t local_wbuf[BUFSIZE_16K];
-	uint8_t remote_rbuf[BUFSIZE_16K];
-	uint8_t remote_wbuf[BUFSIZE_16K];
+	pgs_buffer_t *lrbuf;
+	pgs_buffer_t *lwbuf;
+	pgs_buffer_t *rrbuf;
+	pgs_buffer_t *rwbuf;
+
 	uint8_t target_addr[BUFSIZE_512]; /*atype(1) | addr | port(2)*/
 
 	// for request header
