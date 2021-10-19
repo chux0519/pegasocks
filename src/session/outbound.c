@@ -213,8 +213,8 @@ pgs_outbound_ctx_ss_t *pgs_outbound_ctx_ss_new(const uint8_t *cmd,
 					       pgs_cryptor_type_t cipher)
 {
 	pgs_outbound_ctx_ss_t *ptr = malloc(sizeof(pgs_outbound_ctx_ss_t));
-	ptr->rbuf = malloc(BUFSIZE_16K);
-	ptr->wbuf = malloc(BUFSIZE_16K);
+	ptr->rbuf = pgs_buffer_new();
+	ptr->wbuf = pgs_buffer_new();
 
 	pgs_cryptor_type_info(cipher, &ptr->key_len, &ptr->iv_len,
 			      &ptr->tag_len);
@@ -255,9 +255,9 @@ pgs_outbound_ctx_ss_t *pgs_outbound_ctx_ss_new(const uint8_t *cmd,
 void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
 {
 	if (ptr->wbuf)
-		free(ptr->wbuf);
+		pgs_buffer_free(ptr->wbuf);
 	if (ptr->rbuf)
-		free(ptr->rbuf);
+		pgs_buffer_free(ptr->rbuf);
 	if (ptr->encryptor)
 		pgs_cryptor_free(ptr->encryptor);
 	if (ptr->decryptor)

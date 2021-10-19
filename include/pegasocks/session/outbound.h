@@ -84,9 +84,9 @@ typedef struct pgs_outbound_ctx_v2ray_s {
 } pgs_outbound_ctx_v2ray_t;
 
 typedef struct pgs_outbound_ctx_ss_s {
-	/* 16K buf */
-	uint8_t *rbuf;
-	uint8_t *wbuf;
+	pgs_buffer_t *rbuf;
+	pgs_buffer_t *wbuf;
+
 	const uint8_t *cmd;
 	size_t cmd_len;
 

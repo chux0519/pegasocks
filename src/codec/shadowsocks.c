@@ -98,12 +98,14 @@ static bool shadowsocks_write_local_aes(pgs_session_t *session,
 	assert(ssctx->decryptor != NULL);
 
 	size_t mlen = len - offset;
+
+	pgs_buffer_ensure(ssctx->rbuf, mlen);
 	bool ok = pgs_cryptor_decrypt(ssctx->decryptor, msg + offset, mlen,
-				      NULL, ssctx->rbuf, &decode_len);
+				      NULL, ssctx->rbuf->buffer, &decode_len);
 	if (!ok || decode_len != mlen) {
 		return false;
 	}
-	evbuffer_add(inboundw, ssctx->rbuf, mlen);
+	evbuffer_add(inboundw, ssctx->rbuf->buffer, mlen);
 	*olen = mlen;
 	*clen = len;
 	return true;
@@ -176,15 +178,18 @@ static bool shadowsocks_write_local_aead(pgs_session_t *session,
 						"need more data for payload");
 					return true;
 				}
+
+				pgs_buffer_ensure(ssctx->rbuf, ssctx->plen);
 				pgs_cryptor_decrypt(ssctx->decryptor,
 						    msg + *clen, ssctx->plen,
 						    msg + *clen + ssctx->plen,
-						    ssctx->rbuf, &decode_len);
+						    ssctx->rbuf->buffer,
+						    &decode_len);
 				pgs_ss_increase_cryptor_iv(ssctx, PGS_DECRYPT);
 				if (decode_len != ssctx->plen) {
 					return false;
 				}
-				evbuffer_add(inboundw, ssctx->rbuf,
+				evbuffer_add(inboundw, ssctx->rbuf->buffer,
 					     ssctx->plen);
 				*olen += ssctx->plen;
 				*clen += (ssctx->plen + ssctx->tag_len);
@@ -233,7 +238,9 @@ static bool shadowsocks_write_remote_aes(pgs_session_t *session,
 		const uint8_t *iv = ssctx->enc_iv;
 		size_t iv_len = ssctx->iv_len;
 
-		memcpy(ssctx->wbuf, iv, iv_len);
+		pgs_buffer_ensure(ssctx->wbuf, iv_len);
+		memcpy(ssctx->wbuf->buffer, iv, iv_len);
+
 		ssctx->iv_sent = true;
 
 		size_t addr_len = ssctx->cmd_len - 3;
@@ -246,9 +253,10 @@ static bool shadowsocks_write_remote_aes(pgs_session_t *session,
 		memcpy(payload, ssctx->cmd + 3, addr_len);
 		memcpy(payload + addr_len, msg, len);
 
+		pgs_buffer_ensure(ssctx->wbuf, chunk_len + iv_len);
 		bool ok = pgs_cryptor_encrypt(ssctx->encryptor, payload,
 					      chunk_len, NULL,
-					      ssctx->wbuf + iv_len,
+					      ssctx->wbuf->buffer + iv_len,
 					      &ciphertext_len);
 		free(payload);
 
@@ -260,8 +268,10 @@ static bool shadowsocks_write_remote_aes(pgs_session_t *session,
 
 		*olen = iv_len + chunk_len;
 	} else {
+		pgs_buffer_ensure(ssctx->wbuf, len);
 		bool ok = pgs_cryptor_encrypt(ssctx->encryptor, msg, len, NULL,
-					      ssctx->wbuf, &ciphertext_len);
+					      ssctx->wbuf->buffer,
+					      &ciphertext_len);
 		if (!ok || ciphertext_len != len) {
 			pgs_session_error(session,
 					  "shadowsocks encrypt failed");
@@ -269,7 +279,7 @@ static bool shadowsocks_write_remote_aes(pgs_session_t *session,
 		}
 		*olen = len;
 	}
-	evbuffer_add(outboundw, ssctx->wbuf, *olen);
+	evbuffer_add(outboundw, ssctx->wbuf->buffer, *olen);
 	return true;
 }
 
@@ -293,7 +303,9 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 	if (!ssctx->iv_sent) {
 		const uint8_t *salt = ssctx->enc_salt;
 		size_t salt_len = ssctx->key_len;
-		memcpy(ssctx->wbuf, salt, salt_len);
+
+		pgs_buffer_ensure(ssctx->wbuf, salt_len);
+		memcpy(ssctx->wbuf->buffer, salt, salt_len);
 
 		offset += salt_len;
 		payload_len = len + addr_len;
@@ -307,10 +319,11 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 	prefix[0] = payload_len >> 8;
 	prefix[1] = payload_len;
 
+	pgs_buffer_ensure(ssctx->wbuf, offset + 2 + ssctx->tag_len);
 	size_t ciphertext_len;
 	pgs_cryptor_encrypt(ssctx->encryptor, prefix, 2,
-			    ssctx->wbuf + offset + 2 /* tag */,
-			    ssctx->wbuf + offset, &ciphertext_len);
+			    ssctx->wbuf->buffer + offset + 2 /* tag */,
+			    ssctx->wbuf->buffer + offset, &ciphertext_len);
 	pgs_ss_increase_cryptor_iv(ssctx, PGS_ENCRYPT);
 
 	if (ciphertext_len != 2) {
@@ -327,10 +340,12 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 		memcpy(payload, ssctx->cmd + 3, addr_len);
 		memcpy(payload + addr_len, msg, len);
 
+		pgs_buffer_ensure(ssctx->wbuf,
+				  offset + payload_len + ssctx->tag_len);
 		bool ok = pgs_cryptor_encrypt(
 			ssctx->encryptor, payload, payload_len,
-			ssctx->wbuf + offset + payload_len /* tag */,
-			ssctx->wbuf + offset, &ciphertext_len);
+			ssctx->wbuf->buffer + offset + payload_len /* tag */,
+			ssctx->wbuf->buffer + offset, &ciphertext_len);
 		pgs_ss_increase_cryptor_iv(ssctx, PGS_ENCRYPT);
 		free(payload);
 		ssctx->iv_sent = true;
@@ -339,10 +354,11 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 			return false;
 		}
 	} else {
+		pgs_buffer_ensure(ssctx->wbuf, offset + len + ssctx->tag_len);
 		bool ok = pgs_cryptor_encrypt(
 			ssctx->encryptor, msg, len,
-			ssctx->wbuf + offset + len /* tag */,
-			ssctx->wbuf + offset, &ciphertext_len);
+			ssctx->wbuf->buffer + offset + len /* tag */,
+			ssctx->wbuf->buffer + offset, &ciphertext_len);
 		pgs_ss_increase_cryptor_iv(ssctx, PGS_ENCRYPT);
 
 		if (!ok || ciphertext_len != payload_len) {
@@ -351,7 +367,7 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 	}
 
 	*olen = offset + payload_len + ssctx->tag_len;
-	evbuffer_add(outboundw, ssctx->wbuf, *olen);
+	evbuffer_add(outboundw, ssctx->wbuf->buffer, *olen);
 
 	return true;
 }
