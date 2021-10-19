@@ -324,6 +324,10 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 			pgs_outbound_ctx_v2ray_free(
 				(pgs_outbound_ctx_v2ray_t *)ptr->ctx);
 		}
+		if (IS_SHADOWSOCKS_SERVER(ptr->config->server_type)) {
+			pgs_outbound_ctx_ss_free(
+				(pgs_outbound_ctx_ss_t *)ptr->ctx);
+		}
 	}
 	if (ptr->dest)
 		free(ptr->dest);
