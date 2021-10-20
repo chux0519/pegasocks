@@ -60,7 +60,7 @@ pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config)
 			}
 		}
 		SSL_CTX_set_mode(ptr->_, SSL_MODE_AUTO_RETRY);
-		SSL_CTX_set_session_cache_mode(ptr->_, SSL_SESS_CACHE_CLIENT);
+		SSL_CTX_set_session_cache_mode(ptr->_, SSL_SESS_CACHE_OFF);
 	}
 	return ptr;
 }
