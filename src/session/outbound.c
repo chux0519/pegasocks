@@ -695,6 +695,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 		size_t olen;
 		bool ok = trojan_write_local(session, data, data_len, &olen);
 		evbuffer_drain(input, data_len);
+		on_session_metrics_recv(session, olen);
 		if (!ok)
 			goto error;
 		return;
