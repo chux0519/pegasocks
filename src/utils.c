@@ -104,3 +104,15 @@ void pgs_list_del(pgs_list_t *ptr, pgs_list_node_t *node)
 
 	--ptr->len;
 }
+
+void pgs_list_del_val(pgs_list_t *ptr, void *val)
+{
+	pgs_list_node_t *cur = NULL, *next = NULL;
+	pgs_list_foreach(ptr, cur, next)
+	{
+		if (cur->val == val)
+			break;
+	}
+	if (cur != NULL)
+		pgs_list_del(ptr, cur);
+}

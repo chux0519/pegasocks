@@ -17,6 +17,27 @@
 #define IS_V2RAY_SERVER(type) (strcasecmp((type), SERVER_TYPE_V2RAY) == 0)
 #define IS_SHADOWSOCKS_SERVER(type)                                            \
 	(strcasecmp((type), SERVER_TYPE_SHADOWSOCKS) == 0)
+#define GET_TROJAN_SNI(sconf, sni)                                             \
+	do {                                                                   \
+		sni = (sconf)->server_address;                                 \
+		pgs_config_extra_trojan_t *tconf =                             \
+			(pgs_config_extra_trojan_t *)(sconf)->extra;           \
+		if (tconf->ssl.sni != NULL) {                                  \
+			sni = tconf->ssl.sni;                                  \
+		}                                                              \
+	} while (0)
+
+#define GET_V2RAY_SNI(sconf, sni)                                              \
+	do {                                                                   \
+		pgs_config_extra_v2ray_t *vconf =                              \
+			(pgs_config_extra_v2ray_t *)(sconf)->extra;            \
+		sni = (sconf)->server_address;                                 \
+		if (vconf->ssl.enabled) {                                      \
+			if (vconf->ssl.sni != NULL) {                          \
+				sni = vconf->ssl.sni;                          \
+			}                                                      \
+		}                                                              \
+	} while (0)
 
 // root config fields
 #define CONFIG_LOCAL_ADDRESS "local_address"

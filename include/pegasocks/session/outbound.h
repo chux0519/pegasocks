@@ -14,6 +14,12 @@
 #include <event2/event.h>
 #include <event2/bufferevent.h>
 
+#ifdef USE_MBEDTLS
+#include <mbedtls/ssl.h>
+#else
+#include <openssl/ssl.h>
+#endif
+
 #define PGS_OUTBOUND_SET_READ_TIMEOUT(outbound, sec)                           \
 	do {                                                                   \
 		struct timeval tv;                                             \
@@ -177,5 +183,41 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 			       const pgs_server_config_t *config,
 			       const uint8_t *cmd, size_t cmd_len,
 			       pgs_local_server_t *local, void *cb_ctx);
+
+static inline bool
+pgs_session_outbound_is_ssl(const pgs_session_outbound_t *ptr)
+{
+	bool is_be_ssl = false;
+	const pgs_server_config_t *config = ptr->config;
+
+	if (IS_V2RAY_SERVER(config->server_type)) {
+		pgs_config_extra_v2ray_t *vconf =
+			(pgs_config_extra_v2ray_t *)config->extra;
+		if (vconf->ssl.enabled) {
+			is_be_ssl = true;
+		}
+	}
+	if (IS_TROJAN_SERVER(config->server_type)) {
+		is_be_ssl = true;
+	}
+	return is_be_ssl;
+}
+
+static inline bool
+pgs_session_outbound_is_ssl_reused(const pgs_session_outbound_t *ptr)
+{
+	if (!pgs_session_outbound_is_ssl(ptr))
+		return false;
+	bool reused = false;
+
+#ifdef USE_MBEDTLS
+	reused = false;
+#else
+	SSL *ssl = bufferevent_openssl_get_ssl(ptr->bev);
+	reused = SSL_session_reused(ssl);
+#endif
+
+	return reused;
+}
 
 #endif
