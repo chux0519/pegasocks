@@ -12,10 +12,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#ifdef USE_MBEDTLS
-#include <mbedtls/ssl.h>
-#endif
-
 /*
  * init outbound fd
  */
@@ -296,7 +292,6 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 		if (IS_TROJAN_SERVER(config->server_type)) {
 			is_be_ssl = true;
 		}
-
 		int fd = bufferevent_getfd(ptr->bev);
 
 		if (is_be_ssl) {
@@ -353,12 +348,8 @@ bool pgs_session_trojan_outbound_init(
 		pgs_outbound_ctx_trojan_new(config->password, 56, cmd, cmd_len);
 
 	// sni
-	const char *sni = config->server_address;
-	pgs_config_extra_trojan_t *tconf =
-		(pgs_config_extra_trojan_t *)config->extra;
-	if (tconf->ssl.sni != NULL) {
-		sni = tconf->ssl.sni;
-	}
+	const char *sni = NULL;
+	GET_TROJAN_SNI(config, sni);
 
 	if (!pgs_outbound_fd_init(&fd, logger, gconfig))
 		goto error;
@@ -396,10 +387,8 @@ bool pgs_session_v2ray_outbound_init(
 
 	if (vconf->ssl.enabled) {
 		// ssl + vmess
-		const char *sni = config->server_address;
-		if (vconf->ssl.sni != NULL) {
-			sni = vconf->ssl.sni;
-		}
+		const char *sni = NULL;
+		GET_V2RAY_SNI(config, sni);
 		if (pgs_session_outbound_ssl_bev_init(&ptr->bev, fd, base,
 						      ssl_ctx, sni))
 			goto error;

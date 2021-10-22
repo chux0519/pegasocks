@@ -66,10 +66,16 @@ void pgs_session_free(pgs_session_t *session)
 		PARSE_SESSION_TIMEVAL(tm_end_str, session->metrics->end);
 		if (session->inbound &&
 		    session->inbound->state != INBOUND_UDP_RELAY) {
+			bool is_ssl_reused = pgs_session_outbound_is_ssl_reused(
+				session->outbound);
+			char *prefix = "";
+			if (is_ssl_reused) {
+				prefix = "[REUSED]";
+			}
 			pgs_session_info(
 				session,
-				"connection to %s:%d closed, start: %s, end: %s, send: %d, recv: %d",
-				session->outbound->dest,
+				"%sconnection to %s:%d closed, start: %s, end: %s, send: %d, recv: %d",
+				prefix, session->outbound->dest,
 				session->outbound->port, tm_start_str,
 				tm_end_str, session->metrics->send,
 				session->metrics->recv);
@@ -78,6 +84,7 @@ void pgs_session_free(pgs_session_t *session)
 			pgs_session_inbound_free(session->inbound);
 
 		session->inbound = NULL;
+
 		pgs_session_outbound_free(session->outbound);
 	}
 	if (session->inbound)

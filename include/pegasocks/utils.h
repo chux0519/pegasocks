@@ -69,6 +69,7 @@ void pgs_list_free(pgs_list_t *ptr);
 pgs_list_node_t *pgs_list_add(pgs_list_t *ptr, pgs_list_node_t *node);
 
 void pgs_list_del(pgs_list_t *ptr, pgs_list_node_t *node);
+void pgs_list_del_val(pgs_list_t *ptr, void *val);
 
 #define pgs_list_foreach(list, cur, _next)                                     \
 	for ((cur) = (list)->head, (_next) = (cur) ? ((cur)->next) : (NULL);   \
