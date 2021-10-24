@@ -33,12 +33,16 @@ pgs_control_server_start(int fd, struct event_base *base,
 	ptr->sm = sm;
 	ptr->logger = logger;
 	ptr->config = config;
+	ptr->ctx = ctx;
+
 	ptr->listener =
 		evconnlistener_new(base, accept_conn_cb, ptr,
 				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
 				   -1, fd);
 	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
-	ptr->ctx = ctx;
+
+	ptr->clients = pgs_list_new();
+	ptr->clients->free = (void *)bufferevent_free;
 
 	if (config->control_port) {
 		pgs_logger_info(logger, "Controller Listening at: %s:%d",
@@ -61,6 +65,9 @@ void pgs_control_server_ctx_destroy(pgs_control_server_ctx_t *ptr)
 {
 	if (ptr->listener)
 		evconnlistener_free(ptr->listener);
+
+	if (ptr->clients)
+		pgs_list_free(ptr->clients);
 
 	if (ptr)
 		free(ptr);
@@ -95,6 +102,8 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 							 BEV_OPT_CLOSE_ON_FREE);
 	bufferevent_setcb(bev, on_control_read, NULL, on_control_event, ctx);
 	bufferevent_enable(bev, EV_READ);
+
+	pgs_list_add(control_ctx->clients, pgs_list_node_new(bev));
 }
 
 static void on_control_read(struct bufferevent *bev, void *ctx)

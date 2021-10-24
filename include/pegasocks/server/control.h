@@ -6,11 +6,13 @@
 #include <event2/bufferevent.h>
 
 #include "manager.h"
+#include "utils.h"
 
 typedef struct pgs_control_server_ctx_s pgs_control_server_ctx_t;
 
 struct pgs_control_server_ctx_s {
 	struct evconnlistener *listener;
+	pgs_list_t *clients;
 
 	// shared with helper thread
 	struct event_base *base;
