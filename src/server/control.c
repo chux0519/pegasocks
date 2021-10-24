@@ -1,6 +1,7 @@
 #include "server/control.h"
-
+#include "server/helper.h"
 #include "server/manager.h"
+
 #include <ctype.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -22,11 +23,10 @@ static bool starts_with(const char *pre, const char *str)
 	return strncasecmp(pre, str, strlen(pre)) == 0;
 }
 
-pgs_control_server_ctx_t *pgs_control_server_start(int fd,
-						   struct event_base *base,
-						   pgs_server_manager_t *sm,
-						   pgs_logger_t *logger,
-						   const pgs_config_t *config)
+pgs_control_server_ctx_t *
+pgs_control_server_start(int fd, struct event_base *base,
+			 pgs_server_manager_t *sm, pgs_logger_t *logger,
+			 const pgs_config_t *config, void *ctx)
 {
 	pgs_control_server_ctx_t *ptr = pgs_control_server_ctx_new();
 	ptr->base = base;
@@ -38,6 +38,8 @@ pgs_control_server_ctx_t *pgs_control_server_start(int fd,
 				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
 				   -1, fd);
 	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
+	ptr->ctx = ctx;
+
 	if (config->control_port) {
 		pgs_logger_info(logger, "Controller Listening at: %s:%d",
 				config->local_address, config->control_port);
@@ -75,7 +77,6 @@ static void accept_error_cb(struct evconnlistener *listener, void *ctx)
 			 "Shutting down \n",
 			 err, evutil_socket_error_to_string(err));
 
-	event_base_loopexit(control_ctx->base, NULL);
 	pgs_control_server_ctx_destroy(control_ctx);
 }
 
@@ -109,7 +110,9 @@ static void on_control_read(struct bufferevent *bev, void *ctx)
 	// Support commands are
 	// PING | GET SERVERS | SET SERVER $idx
 	if (starts_with("PING", (const char *)rdata)) {
-		evbuffer_add(output, "PONG\n", 5);
+		pgs_helper_thread_t *helper = control_ctx->ctx;
+		pgs_helper_ping_remote(helper);
+		evbuffer_add(output, "OK\n", 3);
 	} else if (starts_with("GET SERVERS", (const char *)rdata)) {
 		pgs_server_config_t *servers = control_ctx->config->servers;
 		pgs_server_stats_t *stats = control_ctx->sm->server_stats;

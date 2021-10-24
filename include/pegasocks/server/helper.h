@@ -6,19 +6,24 @@
 #include <stdint.h>
 
 #include "manager.h"
-#include "control.h"
 #include "ssl.h"
 #include "utils.h"
 
 typedef void(pgs_timer_cb_t)(evutil_socket_t fd, short event, void *data);
+
+typedef struct pgs_timer_s {
+	struct event *ev;
+	struct timeval tv;
+	void *ctx;
+} pgs_timer_t;
 
 typedef struct pgs_helper_thread_s {
 	uint32_t tid;
 	struct event_base *base;
 	struct evdns_base *dns_base;
 
-	int cfd;
-	pgs_control_server_ctx_t *control_server;
+	pgs_timer_t *log_timer;
+	pgs_timer_t *ping_timer;
 
 	struct event *ev_term;
 
@@ -30,12 +35,6 @@ typedef struct pgs_helper_thread_s {
 	const pgs_config_t *config;
 	pgs_ssl_ctx_t *ssl_ctx;
 } pgs_helper_thread_t;
-
-typedef struct pgs_timer_s {
-	struct event *ev;
-	struct timeval tv;
-	pgs_helper_thread_t *ctx;
-} pgs_timer_t;
 
 typedef struct pgs_helper_thread_ctx_s {
 	int cfd;
@@ -57,6 +56,9 @@ void *pgs_helper_thread_start(void *data);
 
 pgs_timer_t *pgs_timer_init(int interval, pgs_timer_cb_t,
 			    pgs_helper_thread_t *ptr);
+
+/* this will ping remote servers and reinit ping timer */
+void pgs_helper_ping_remote(pgs_helper_thread_t *);
 
 void pgs_timer_destroy(pgs_timer_t *);
 

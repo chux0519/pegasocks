@@ -10,10 +10,11 @@
 static void pgs_timer_cb(evutil_socket_t fd, short event, void *data)
 {
 	pgs_timer_t *arg = data;
-	assert(arg->ctx->logger != NULL);
-	assert(arg->ctx->config != NULL);
-	assert(arg->ctx->config->log_file != NULL);
-	pgs_logger_tryrecv(arg->ctx->logger, arg->ctx->config->log_file);
+	pgs_helper_thread_t *ctx = arg->ctx;
+	assert(ctx->logger != NULL);
+	assert(ctx->config != NULL);
+	assert(ctx->config->log_file != NULL);
+	pgs_logger_tryrecv(ctx->logger, ctx->config->log_file);
 	arg->tv.tv_sec = 1;
 	arg->tv.tv_usec = 0;
 	evtimer_add(arg->ev, &arg->tv);
@@ -23,13 +24,13 @@ static void pgs_timer_cb(evutil_socket_t fd, short event, void *data)
 static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 {
 	pgs_timer_t *arg = data;
-	for (int i = 0; i < arg->ctx->sm->server_len; i++) {
+	pgs_helper_thread_t *ctx = arg->ctx;
+	for (int i = 0; i < ctx->sm->server_len; i++) {
 		pgs_metrics_task_ctx_t *t = get_metrics_g204_connect(
-			i, arg->ctx->config, arg->ctx->base, arg->ctx->dns_base,
-			arg->ctx->sm, arg->ctx->logger, arg->ctx->ssl_ctx,
-			arg->ctx->mtasks);
+			i, ctx->config, ctx->base, ctx->dns_base, ctx->sm,
+			ctx->logger, ctx->ssl_ctx, ctx->mtasks);
 	}
-	arg->tv.tv_sec = arg->ctx->config->ping_interval;
+	arg->tv.tv_sec = ctx->config->ping_interval;
 	arg->tv.tv_usec = 0;
 	evtimer_add(arg->ev, &arg->tv);
 
@@ -77,8 +78,11 @@ pgs_helper_thread_t *pgs_helper_thread_new(int cfd, pgs_config_t *config,
 
 	event_config_free(cfg);
 
-	ptr->control_server =
-		pgs_control_server_start(cfd, ptr->base, sm, logger, config);
+	// timer for logger
+	ptr->log_timer = pgs_timer_init(1, pgs_timer_cb, ptr);
+
+	// timer for connect and g204, interval can be setted by config
+	ptr->ping_timer = pgs_timer_init(1, pgs_metrics_timer_cb, ptr);
 
 	ptr->ev_term = evuser_new(ptr->base, pgs_helper_term, ptr->base);
 
@@ -86,7 +90,6 @@ pgs_helper_thread_t *pgs_helper_thread_new(int cfd, pgs_config_t *config,
 	ptr->mtasks->free = (void *)pgs_metrics_task_ctx_free;
 
 	ptr->tid = (uint32_t)pthread_self();
-	ptr->cfd = cfd;
 	ptr->config = config;
 	ptr->logger = logger;
 	ptr->sm = sm;
@@ -103,13 +106,26 @@ void pgs_helper_thread_free(pgs_helper_thread_t *ptr)
 	if (ptr->mtasks) {
 		pgs_list_free(ptr->mtasks);
 	}
-	if (ptr->control_server)
-		pgs_control_server_ctx_destroy(ptr->control_server);
+	if (ptr->ping_timer)
+		pgs_timer_destroy(ptr->ping_timer);
+	if (ptr->log_timer) {
+		// drain logs first
+		pgs_logger_tryrecv(ptr->logger, ptr->config->log_file);
+		pgs_timer_destroy(ptr->log_timer);
+	}
 	if (ptr->dns_base)
 		evdns_base_free(ptr->dns_base, 0);
 	if (ptr->base)
 		event_base_free(ptr->base);
 	free(ptr);
+}
+
+void pgs_helper_ping_remote(pgs_helper_thread_t *helper)
+{
+	if (helper->ping_timer) {
+		pgs_timer_destroy(helper->ping_timer);
+	}
+	helper->ping_timer = pgs_timer_init(0, pgs_metrics_timer_cb, helper);
 }
 
 void *pgs_helper_thread_start(void *data)
@@ -121,20 +137,13 @@ void *pgs_helper_thread_start(void *data)
 
 	*ctx->helper_ref = helper;
 
-	// timer for logger
-	pgs_timer_t *t1 = pgs_timer_init(1, pgs_timer_cb, helper);
-
-	// timer for connect and g204, interval can be setted by config
-	pgs_timer_t *t2 = pgs_timer_init(1, pgs_metrics_timer_cb, helper);
+	pgs_control_server_ctx_t *control_server =
+		pgs_control_server_start(ctx->cfd, helper->base, ctx->sm,
+					 ctx->logger, ctx->config, helper);
 
 	event_base_dispatch(helper->base);
 
-	pgs_timer_destroy(t2);
-
-	pgs_timer_destroy(t1);
-
-	// drain logs
-	pgs_logger_tryrecv(helper->logger, helper->config->log_file);
+	pgs_control_server_ctx_destroy(control_server);
 
 	pgs_helper_thread_free(helper);
 
