@@ -12,11 +12,34 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+typedef struct pgs_outbound_init_param_s {
+	bool proxy;
+	bool is_udp;
+
+	pgs_logger_t *logger;
+	pgs_local_server_t *local;
+	pgs_session_outbound_t *outbound;
+
+	const pgs_config_t *gconfig;
+	const pgs_server_config_t *config;
+
+	const uint8_t *cmd;
+	size_t cmd_len;
+
+	/* for remote read callback (pgs_session_t*) */
+	void *cb_ctx;
+} pgs_outbound_init_param_t;
+
 /*
  * init outbound fd
  */
 static bool pgs_outbound_fd_init(int *fd, pgs_logger_t *logger,
 				 const pgs_config_t *gconfig);
+
+/* dns callback */
+static void outbound_dns_cb(int result, char type, int count, int ttl,
+			    void *addrs, void *arg);
+static bool do_outbound_init(pgs_outbound_init_param_t *param);
 
 /*
  * bypass handlers
@@ -46,14 +69,14 @@ static void on_ss_remote_event(struct bufferevent *bev, short events,
 			       void *ctx);
 static void on_ss_remote_read(struct bufferevent *bev, void *ctx);
 
-void socks5_dest_addr_parse(const uint8_t *cmd, size_t cmd_len, pgs_acl_t *acl,
-			    bool *proxy, char **dest_ptr, int *port)
+void socks5_dest_addr_parse(const uint8_t *cmd, size_t cmd_len, uint8_t *atype,
+			    char **dest_ptr, int *port)
 {
-	int atype = cmd[3];
+	*atype = cmd[3];
 	int offset = 4;
 	char *dest = NULL;
 
-	switch (atype) {
+	switch (*atype) {
 	case SOCKS5_CMD_IPV4: {
 		assert(cmd_len > 8);
 		dest = (char *)malloc(sizeof(char) * 32);
@@ -90,21 +113,9 @@ void socks5_dest_addr_parse(const uint8_t *cmd, size_t cmd_len, pgs_acl_t *acl,
 	default:
 		break;
 	}
+	/* should free this */
 	*dest_ptr = dest;
 	*port = (cmd[offset] << 8) | cmd[offset + 1];
-#ifdef WITH_ACL
-	if (acl != NULL) {
-		bool match = pgs_acl_match_host(acl, dest);
-		if (!match && atype == SOCKS5_CMD_HOSTNAME) {
-			// TODO: reolve the DNS and match the ip again
-		}
-		if (pgs_acl_get_mode(acl) == PROXY_ALL_BYPASS_LIST) {
-			*proxy = !match;
-		} else if (pgs_acl_get_mode(acl) == BYPASS_ALL_PROXY_LIST) {
-			*proxy = match;
-		}
-	}
-#endif
 }
 
 // trojan session context
@@ -493,76 +504,38 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 {
 	ptr->config = config;
 
-	bool proxy = true;
 	// CHECK if all zeros for UDP
-	socks5_dest_addr_parse(cmd, cmd_len, local->acl, &proxy, &ptr->dest,
-			       &ptr->port);
+	uint8_t atype = 0;
+	socks5_dest_addr_parse(cmd, cmd_len, &atype, &ptr->dest, &ptr->port);
 
-	if (ptr->dest == NULL) {
-		pgs_logger_error(local->logger, "socks5_dest_addr_parse");
-		goto error;
-	}
+	bool proxy = true;
 
-	if (proxy || is_udp) {
-		bool ok = false;
-		if (IS_TROJAN_SERVER(config->server_type)) {
-			ok = pgs_session_trojan_outbound_init(
-				ptr, logger, gconfig, config, cmd, cmd_len,
-				local->base, local->ssl_ctx,
-				on_trojan_remote_event, on_trojan_remote_read,
-				cb_ctx);
-		} else if (IS_V2RAY_SERVER(config->server_type)) {
-			ok = pgs_session_v2ray_outbound_init(
-				ptr, logger, gconfig, config, cmd, cmd_len,
-				local->base, local->ssl_ctx,
-				on_v2ray_remote_event, on_v2ray_remote_read,
-				cb_ctx);
-		} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
-			ok = pgs_session_ss_outbound_init(
-				ptr, logger, gconfig, config, cmd, cmd_len,
-				local->base, on_ss_remote_event,
-				on_ss_remote_read, cb_ctx);
+	pgs_outbound_init_param_t param = { proxy,   is_udp,  logger, local,
+					    ptr,     gconfig, config, cmd,
+					    cmd_len, cb_ctx };
+
+#ifdef WITH_ACL
+	if (local->acl != NULL) {
+		bool match = pgs_acl_match_host(local->acl, ptr->dest);
+		if (!match && atype == SOCKS5_CMD_HOSTNAME) {
+			pgs_outbound_init_param_t *p =
+				malloc(sizeof(pgs_outbound_init_param_t));
+			*p = param;
+
+			evdns_base_resolve_ipv4(local->dns_base, ptr->dest, 0,
+						outbound_dns_cb, p);
+			return true;
 		}
-		if (!ok) {
-			pgs_logger_error(local->logger,
-					 "Failed to init outbound");
-			goto error;
-		}
-
-		bufferevent_enable(ptr->bev, EV_READ);
-
-		PGS_OUTBOUND_SET_READ_TIMEOUT(ptr, gconfig->timeout);
-		bufferevent_socket_connect_hostname(ptr->bev, local->dns_base,
-						    AF_INET,
-						    config->server_address,
-						    config->server_port);
-
-		pgs_logger_debug(local->logger, "connect: %s:%d",
-				 config->server_address, config->server_port);
-	}
-	if (!proxy || is_udp) {
-		if (is_udp) {
-			// do nothing, will create udp relay later
-		} else {
-			pgs_session_bypass_outbound_init(ptr, logger, gconfig,
-							 local->base,
-							 on_bypass_remote_event,
-							 on_bypass_remote_read,
-							 cb_ctx);
-
-			pgs_logger_info(local->logger, "bypass: %s:%d",
-					ptr->dest, ptr->port);
-
-			PGS_OUTBOUND_SET_READ_TIMEOUT(ptr, gconfig->timeout);
-			bufferevent_socket_connect_hostname(ptr->bev,
-							    local->dns_base,
-							    AF_INET, ptr->dest,
-							    ptr->port);
+		if (pgs_acl_get_mode(local->acl) == PROXY_ALL_BYPASS_LIST) {
+			proxy = !match;
+		} else if (pgs_acl_get_mode(local->acl) ==
+			   BYPASS_ALL_PROXY_LIST) {
+			proxy = match;
 		}
 	}
+#endif
 
-	return true;
-
+	return do_outbound_init(&param);
 error:
 	return false;
 }
@@ -1082,5 +1055,142 @@ static bool pgs_outbound_fd_init(int *fd, pgs_logger_t *logger,
 	}
 #endif
 
+	return true;
+}
+
+static void outbound_dns_cb(int result, char type, int count, int ttl,
+			    void *addrs, void *arg)
+{
+	pgs_outbound_init_param_t *ctx = arg;
+	int i;
+
+	if (type == DNS_CNAME) {
+		pgs_logger_debug(ctx->logger, "%s: %s (CNAME)\n",
+				 ctx->outbound->dest, (char *)addrs);
+	}
+
+	char *dest = NULL;
+	bool match;
+
+	for (i = 0; i < count; ++i) {
+		if (type == DNS_IPv4_A) {
+			if (dest == NULL) {
+				dest = (char *)malloc(sizeof(char) * 32);
+			}
+			uint32_t addr = ((uint32_t *)addrs)[i];
+			uint32_t ip = ntohl(addr);
+			sprintf(dest, "%d.%d.%d.%d",
+				(int)(uint8_t)((ip >> 24) & 0xff),
+				(int)(uint8_t)((ip >> 16) & 0xff),
+				(int)(uint8_t)((ip >> 8) & 0xff),
+				(int)(uint8_t)((ip)&0xff));
+
+			pgs_logger_debug(ctx->logger, "%s: %s",
+					 ctx->outbound->dest, dest);
+
+			match = pgs_acl_match_host(ctx->local->acl, dest);
+			if (pgs_acl_get_mode(ctx->local->acl) ==
+			    PROXY_ALL_BYPASS_LIST) {
+				ctx->proxy = !match;
+			} else if (pgs_acl_get_mode(ctx->local->acl) ==
+				   BYPASS_ALL_PROXY_LIST) {
+				ctx->proxy = match;
+			}
+			if (!ctx->proxy) {
+				if (ctx->outbound->dest != NULL) {
+					free(ctx->outbound->dest);
+					ctx->outbound->dest = (char *)malloc(
+						sizeof(char) * 32);
+					memcpy(ctx->outbound->dest, dest, 32);
+				}
+				break;
+			}
+		} else if (type == DNS_PTR) {
+			pgs_logger_debug(ctx->logger, "%s: %s",
+					 ctx->outbound->dest,
+					 ((char **)addrs)[i]);
+		}
+	}
+	if (!count) {
+		pgs_logger_error(ctx->logger, "%s: No answer (%d)",
+				 ctx->outbound->dest, result);
+	}
+
+	if (dest != NULL) {
+		free(dest);
+	}
+
+	pgs_logger_debug(ctx->logger, "do_outbound_init, proxy: %d",
+			 ctx->proxy);
+	do_outbound_init(ctx);
+	free(ctx);
+}
+
+static bool do_outbound_init(pgs_outbound_init_param_t *param)
+{
+	if (param->outbound->dest == NULL) {
+		pgs_logger_error(param->local->logger,
+				 "socks5_dest_addr_parse");
+		return false;
+	}
+
+	if (param->proxy || param->is_udp) {
+		bool ok = false;
+		if (IS_TROJAN_SERVER(param->config->server_type)) {
+			ok = pgs_session_trojan_outbound_init(
+				param->outbound, param->logger, param->gconfig,
+				param->config, param->cmd, param->cmd_len,
+				param->local->base, param->local->ssl_ctx,
+				on_trojan_remote_event, on_trojan_remote_read,
+				param->cb_ctx);
+		} else if (IS_V2RAY_SERVER(param->config->server_type)) {
+			ok = pgs_session_v2ray_outbound_init(
+				param->outbound, param->logger, param->gconfig,
+				param->config, param->cmd, param->cmd_len,
+				param->local->base, param->local->ssl_ctx,
+				on_v2ray_remote_event, on_v2ray_remote_read,
+				param->cb_ctx);
+		} else if (IS_SHADOWSOCKS_SERVER(param->config->server_type)) {
+			ok = pgs_session_ss_outbound_init(
+				param->outbound, param->logger, param->gconfig,
+				param->config, param->cmd, param->cmd_len,
+				param->local->base, on_ss_remote_event,
+				on_ss_remote_read, param->cb_ctx);
+		}
+		if (!ok) {
+			pgs_logger_error(param->local->logger,
+					 "Failed to init outbound");
+			return false;
+		}
+
+		bufferevent_enable(param->outbound->bev, EV_READ);
+
+		PGS_OUTBOUND_SET_READ_TIMEOUT(param->outbound,
+					      param->gconfig->timeout);
+		bufferevent_socket_connect_hostname(
+			param->outbound->bev, param->local->dns_base, AF_INET,
+			param->config->server_address,
+			param->config->server_port);
+
+		pgs_logger_debug(param->local->logger, "connect: %s:%d",
+				 param->config->server_address,
+				 param->config->server_port);
+	}
+	if (!param->proxy) {
+		assert(!param->is_udp);
+		pgs_session_bypass_outbound_init(
+			param->outbound, param->logger, param->gconfig,
+			param->local->base, on_bypass_remote_event,
+			on_bypass_remote_read, param->cb_ctx);
+
+		pgs_logger_info(param->local->logger, "bypass: %s:%d",
+				param->outbound->dest, param->outbound->port);
+
+		PGS_OUTBOUND_SET_READ_TIMEOUT(param->outbound,
+					      param->gconfig->timeout);
+		bufferevent_socket_connect_hostname(
+			param->outbound->bev, param->local->dns_base, AF_INET,
+			param->outbound->dest, param->outbound->port);
+	}
 	return true;
 }

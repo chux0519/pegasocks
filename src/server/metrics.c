@@ -122,9 +122,9 @@ get_metrics_g204_connect(int idx, const pgs_config_t *gconfig,
 	mctx->outbound = ptr;
 	ptr->config = config;
 
-	bool proxy = true;
-	socks5_dest_addr_parse(cmd, cmd_len, NULL, &proxy, &ptr->dest,
-			       &ptr->port);
+	uint8_t atype = 0;
+	socks5_dest_addr_parse(cmd, cmd_len, &atype, &ptr->dest, &ptr->port);
+
 	if (ptr->dest == NULL) {
 		pgs_logger_error(logger, "socks5_dest_addr_parse");
 		goto error;
