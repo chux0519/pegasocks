@@ -589,12 +589,26 @@ static void on_udp_read(int fd, short event, void *ctx)
 			pgs_session_error(session, "invalid udp datagram");
 			goto error;
 		}
+
+		uint8_t atype = buf[3];
+		socks5_dest_addr_parse(buf, len, &atype, &dest, &port);
+
 		bool proxy = true;
-
-		int atype = buf[3];
-
-		socks5_dest_addr_parse(buf, len, session->local_server->acl,
-				       &proxy, &dest, &port);
+#ifdef WITH_ACL
+		pgs_acl_t *acl = session->local_server->acl;
+		if (acl != NULL) {
+			bool match = pgs_acl_match_host(acl, dest);
+			if (!match && atype == SOCKS5_CMD_HOSTNAME) {
+				// TODO: reolve the DNS and match the ip again
+			}
+			if (pgs_acl_get_mode(acl) == PROXY_ALL_BYPASS_LIST) {
+				proxy = !match;
+			} else if (pgs_acl_get_mode(acl) ==
+				   BYPASS_ALL_PROXY_LIST) {
+				proxy = match;
+			}
+		}
+#endif
 
 		if (proxy || atype == SOCKS5_CMD_HOSTNAME) {
 			if (!session->outbound->ready) {

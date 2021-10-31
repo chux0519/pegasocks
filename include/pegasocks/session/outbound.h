@@ -121,8 +121,8 @@ typedef struct pgs_outbound_ctx_ss_s {
 	pgs_cryptor_type_t cipher;
 } pgs_outbound_ctx_ss_t;
 
-void socks5_dest_addr_parse(const uint8_t *cmd, size_t cmd_len, pgs_acl_t *acl,
-			    bool *proxy, char **dest_ptr, int *port);
+void socks5_dest_addr_parse(const uint8_t *cmd, size_t cmd_len, uint8_t *atype,
+			    char **dest_ptr, int *port);
 
 // trojan session context
 pgs_outbound_ctx_trojan_t *
@@ -206,7 +206,7 @@ pgs_session_outbound_is_ssl(const pgs_session_outbound_t *ptr)
 static inline bool
 pgs_session_outbound_is_ssl_reused(const pgs_session_outbound_t *ptr)
 {
-	if (!pgs_session_outbound_is_ssl(ptr))
+	if (!pgs_session_outbound_is_ssl(ptr) || ptr->bypass)
 		return false;
 	bool reused = false;
 
