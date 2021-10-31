@@ -90,6 +90,7 @@ void on_bypass_local_read(struct bufferevent *bev, void *ctx)
 	if (len > 0) {
 		evbuffer_add(outboundw, msg, len);
 		evbuffer_drain(inboundr, len);
+		on_session_metrics_send(session, len);
 	}
 	return;
 

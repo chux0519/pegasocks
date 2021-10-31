@@ -574,6 +574,7 @@ static void on_bypass_remote_read(struct bufferevent *bev, void *ctx)
 		struct evbuffer *inboundw = bufferevent_get_output(inbev);
 		evbuffer_add(inboundw, data, data_len);
 		evbuffer_drain(input, data_len);
+		on_session_metrics_recv(session, data_len);
 	}
 
 	return;
