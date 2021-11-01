@@ -709,11 +709,6 @@ static void udp_dns_cb(int result, char type, int count, int ttl, void *addrs,
 	pgs_udp_read_param_t *ctx = arg;
 	int i;
 
-	if (type == DNS_CNAME) {
-		pgs_session_debug(ctx->session, "%s: %s (CNAME)\n", ctx->dest,
-				  (char *)addrs);
-	}
-
 	char *dest = NULL;
 	bool match;
 
