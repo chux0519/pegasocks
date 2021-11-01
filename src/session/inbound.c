@@ -10,6 +10,19 @@
 #include <fcntl.h>
 #include <stdlib.h>
 
+typedef struct pgs_udp_read_param_s {
+	bool proxy;
+	uint8_t atype;
+	char *dest;
+	int port;
+
+	uint8_t *buf;
+	ssize_t len;
+	pgs_session_t *session;
+
+	const pgs_server_config_t *config;
+} pgs_udp_read_param_t;
+
 /*
  * local handlers
  */
@@ -21,8 +34,10 @@ static void on_local_read(struct bufferevent *bev, void *ctx);
   */
 static int start_udp_server(const pgs_server_config_t *sconfig,
 			    pgs_session_t *session, int *port);
-
 static void on_udp_read(int fd, short event, void *ctx);
+static void do_udp_read(pgs_udp_read_param_t *param);
+static void udp_dns_cb(int result, char type, int count, int ttl, void *addrs,
+		       void *arg);
 
 // functions
 
@@ -38,6 +53,10 @@ pgs_session_inbound_t *pgs_session_inbound_new(struct bufferevent *bev)
 	ptr->udp_server_ev = NULL;
 	ptr->udp_rbuf = NULL;
 	ptr->rbuf_pos = 0;
+
+	ptr->udp_bypass_sessions = pgs_list_new();
+	ptr->udp_bypass_sessions->free = (void *)pgs_udp_relay_free;
+
 	return ptr;
 }
 
@@ -70,6 +89,8 @@ void pgs_session_inbound_free(pgs_session_inbound_t *ptr)
 		free(ptr->udp_rbuf);
 		ptr->udp_rbuf = NULL;
 	}
+	if (ptr->udp_bypass_sessions != NULL)
+		pgs_list_free(ptr->udp_bypass_sessions);
 	free(ptr);
 }
 
@@ -287,10 +308,10 @@ void on_remote_udp_read(int fd, short event, void *ctx)
 	uint8_t *udp_packet = NULL;
 
 	if (event & EV_TIMEOUT) {
-		goto error;
+		goto done;
 	}
 	if (relay->session_ptr == NULL) {
-		goto error;
+		goto done;
 	}
 
 	pgs_session_t *session = (pgs_session_t *)(*relay->session_ptr);
@@ -323,18 +344,13 @@ void on_remote_udp_read(int fd, short event, void *ctx)
 				n);
 		}
 	}
+	// fall through to done, now we clean the relay
+done:
 	if (udp_packet != NULL) {
 		free(udp_packet);
 		udp_packet = NULL;
 	}
-	return;
-
-error:
-	if (udp_packet != NULL) {
-		free(udp_packet);
-		udp_packet = NULL;
-	}
-	pgs_udp_relay_free(relay);
+	pgs_list_del_val(session->inbound->udp_bypass_sessions, relay);
 	return;
 }
 
@@ -595,12 +611,20 @@ static void on_udp_read(int fd, short event, void *ctx)
 		socks5_dest_addr_parse(buf, len, &atype, &dest, &port);
 
 		bool proxy = true;
+		pgs_udp_read_param_t param = { proxy, atype, dest,    port,
+					       buf,   len,   session, config };
 #ifdef WITH_ACL
 		pgs_acl_t *acl = session->local_server->acl;
 		if (acl != NULL) {
 			bool match = pgs_acl_match_host(acl, dest);
 			if (!match && atype == SOCKS5_CMD_HOSTNAME) {
-				// TODO: reolve the DNS and match the ip again
+				pgs_udp_read_param_t *p =
+					malloc(sizeof(pgs_udp_read_param_t));
+				*p = param;
+				evdns_base_resolve_ipv4(
+					session->local_server->dns_base, dest,
+					0, udp_dns_cb, p);
+				return;
 			}
 			if (pgs_acl_get_mode(acl) == PROXY_ALL_BYPASS_LIST) {
 				proxy = !match;
@@ -610,46 +634,7 @@ static void on_udp_read(int fd, short event, void *ctx)
 			}
 		}
 #endif
-
-		if (proxy || atype == SOCKS5_CMD_HOSTNAME) {
-			if (!session->outbound->ready) {
-				session->inbound->rbuf_pos = len;
-				// should be called once ready
-				// notice, this will lost data if client send more than one udp packet before the remote is ready
-				return;
-			}
-			if (IS_TROJAN_SERVER(config->server_type)) {
-				on_udp_read_trojan(buf, len, session);
-			} else if (IS_V2RAY_SERVER(config->server_type)) {
-				on_udp_read_v2ray(buf, len, session);
-			} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
-				// TODO: udp relay to ss remote
-			} else {
-				pgs_session_error(
-					session,
-					"failed to handle udp packet: server type(%s) not supported",
-					config->server_type);
-			}
-		} else {
-			// udp_relay will do GC once it's done
-			pgs_udp_relay_t *udp_relay = pgs_udp_relay_new();
-			if (udp_relay) {
-				int host_len = pgs_get_addr_len(buf + 3);
-				pgs_udp_relay_set_header(udp_relay, buf,
-							 host_len + 4 + 2);
-
-				int offset = 3 + host_len + 2;
-				// add host_len as param
-				int n = pgs_udp_relay_trigger(
-					udp_relay, dest, port, buf + offset,
-					len - offset,
-					session->local_server->base,
-					on_remote_udp_read, session);
-				pgs_session_info(session,
-						 "udp bypass: %s:%d, sent: %d",
-						 dest, port, n);
-			}
-		}
+		do_udp_read(&param);
 	}
 	if (dest != NULL) {
 		free(dest);
@@ -661,4 +646,126 @@ error:
 		free(dest);
 	}
 	PGS_FREE_SESSION(session);
+}
+
+static void do_udp_read(pgs_udp_read_param_t *param)
+{
+	if (param->proxy) {
+		if (!param->session->outbound->ready) {
+			param->session->inbound->rbuf_pos = param->len;
+			// should be called once ready
+			// notice, this will lost data if client send more than one udp packet before the remote is ready
+			return;
+		}
+		if (IS_TROJAN_SERVER(param->config->server_type)) {
+			on_udp_read_trojan(param->buf, param->len,
+					   param->session);
+		} else if (IS_V2RAY_SERVER(param->config->server_type)) {
+			on_udp_read_v2ray(param->buf, param->len,
+					  param->session);
+		} else if (IS_SHADOWSOCKS_SERVER(param->config->server_type)) {
+			// TODO: udp relay to ss remote
+		} else {
+			pgs_session_error(
+				param->session,
+				"failed to handle udp packet: server type(%s) not supported",
+				param->config->server_type);
+		}
+	} else {
+		// for each bypass packet, create an one-time udp relay
+		// will free this once recvieved data or session is destroyed
+		pgs_udp_relay_t *udp_relay = pgs_udp_relay_new();
+		pgs_list_add(param->session->inbound->udp_bypass_sessions,
+			     pgs_list_node_new(udp_relay));
+
+		if (udp_relay) {
+			int host_len = pgs_get_addr_len(param->buf + 3);
+			pgs_udp_relay_set_header(udp_relay, param->buf,
+						 host_len + 4 + 2);
+
+			int offset = 3 + host_len + 2;
+			// add host_len as param
+			int n = pgs_udp_relay_trigger(
+				udp_relay, param->dest, param->port,
+				param->buf + offset, param->len - offset,
+				param->session->local_server->base,
+				on_remote_udp_read, param->session);
+			pgs_session_info(param->session,
+					 "udp bypass: %s:%d, sent: %d",
+					 param->dest, param->port, n);
+		}
+	}
+}
+
+static void udp_dns_cb(int result, char type, int count, int ttl, void *addrs,
+		       void *arg)
+{
+	pgs_udp_read_param_t *ctx = arg;
+	int i;
+
+	if (type == DNS_CNAME) {
+		pgs_session_debug(ctx->session, "%s: %s (CNAME)\n", ctx->dest,
+				  (char *)addrs);
+	}
+
+	char *dest = NULL;
+	bool match;
+
+	for (i = 0; i < count; ++i) {
+		if (type == DNS_IPv4_A) {
+			if (dest == NULL) {
+				dest = (char *)malloc(sizeof(char) * 32);
+			}
+			uint32_t addr = ((uint32_t *)addrs)[i];
+			uint32_t ip = ntohl(addr);
+			sprintf(dest, "%d.%d.%d.%d",
+				(int)(uint8_t)((ip >> 24) & 0xff),
+				(int)(uint8_t)((ip >> 16) & 0xff),
+				(int)(uint8_t)((ip >> 8) & 0xff),
+				(int)(uint8_t)((ip)&0xff));
+
+			pgs_session_debug(ctx->session, "%s: %s", ctx->dest,
+					  dest);
+
+			match = pgs_acl_match_host(
+				ctx->session->local_server->acl, dest);
+			if (pgs_acl_get_mode(ctx->session->local_server->acl) ==
+			    PROXY_ALL_BYPASS_LIST) {
+				ctx->proxy = !match;
+			} else if (pgs_acl_get_mode(
+					   ctx->session->local_server->acl) ==
+				   BYPASS_ALL_PROXY_LIST) {
+				ctx->proxy = match;
+			}
+			if (!ctx->proxy) {
+				if (ctx->dest != NULL) {
+					free(ctx->dest);
+					ctx->dest = (char *)malloc(
+						sizeof(char) * 32);
+					memcpy(ctx->dest, dest, 32);
+				}
+				break;
+			}
+		} else if (type == DNS_PTR) {
+			pgs_session_debug(ctx->session, "%s: %s", ctx->dest,
+					  ((char **)addrs)[i]);
+		}
+	}
+	if (!count) {
+		pgs_session_error(ctx->session, "%s: No answer (%d)", ctx->dest,
+				  result);
+	}
+
+	if (dest != NULL) {
+		free(dest);
+	}
+
+	pgs_session_debug(ctx->session, "do_udp_read, proxy: %d, dest: %s",
+			  ctx->proxy, ctx->dest);
+
+	do_udp_read(ctx);
+
+	if (ctx->dest != NULL)
+		free(ctx->dest);
+	free(ctx);
 }
