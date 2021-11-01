@@ -1,6 +1,8 @@
 #ifndef _PGS_SESSION_INBOUND_H
 #define _PGS_SESSION_INBOUND_H
 
+#include "utils.h"
+
 #include <netinet/in.h>
 
 typedef enum {
@@ -23,6 +25,9 @@ typedef struct pgs_session_inbound_s {
 	struct event *udp_server_ev;
 	uint8_t *udp_rbuf;
 	int rbuf_pos;
+
+	// bypass udp sessions
+	pgs_list_t *udp_bypass_sessions;
 } pgs_session_inbound_t;
 
 pgs_session_inbound_t *pgs_session_inbound_new(struct bufferevent *bev);

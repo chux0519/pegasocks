@@ -59,6 +59,7 @@ static int pgs_udp_relay_trigger(pgs_udp_relay_t *ptr, const char *host,
 	fcntl(ptr->udp_fd, F_SETFL, flag | O_NONBLOCK);
 
 	*ptr->session_ptr = session;
+
 	ptr->udp_client_ev = event_new(base, ptr->udp_fd, EV_READ | EV_TIMEOUT,
 				       read_cb, ptr);
 
@@ -88,12 +89,8 @@ static void pgs_udp_relay_free(pgs_udp_relay_t *ptr)
 		free(ptr->packet_header);
 	if (ptr->session_ptr)
 		free(ptr->session_ptr);
-
-	ptr->session_ptr = NULL;
-	ptr->packet_header = NULL;
-	ptr->udp_fd = 0;
-	ptr->udp_rbuf = NULL;
-	ptr->udp_client_ev = NULL;
+	if (ptr != NULL)
+		free(ptr);
 }
 
 #endif
