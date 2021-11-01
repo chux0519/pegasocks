@@ -1066,11 +1066,6 @@ static void outbound_dns_cb(int result, char type, int count, int ttl,
 		goto done;
 	}
 
-	if (type == DNS_CNAME) {
-		pgs_logger_debug(ctx->logger, "%s: %s (CNAME)\n",
-				 ctx->outbound->dest, (char *)addrs);
-	}
-
 	char *dest = NULL;
 
 	for (i = 0; i < count; ++i) {
