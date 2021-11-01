@@ -252,6 +252,8 @@ error:
 
 void pgs_acl_rule_free(pgs_acl_rule_t *ptr)
 {
+	if (ptr->pattern)
+		pcre_free(ptr->pattern);
 	free(ptr->raw);
 	free(ptr);
 	ptr = NULL;
