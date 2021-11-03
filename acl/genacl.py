@@ -12,6 +12,7 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+GFW_TRANSLATED_URL = "https://raw.githubusercontent.com/NateScarlet/gfwlist.acl/master/gfwlist.acl.json"
 CHINA_IP_LIST_URL = "https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt"
 CUSTOM_BYPASS = [
     "127.0.0.1",
@@ -20,11 +21,23 @@ CUSTOM_BYPASS = [
     "192.168.0.0/16",
     "fd00::/8",
 ]
+CUSTOM_PROXY = [
+
+]
+
 
 def fetch_url_content(url):
     logger.info("FETCHING {}".format(url))
     r = request.urlopen(url)
     return r.read()
+
+
+def write_gfw_list(fp):
+    gfw_json = fetch_url_content(GFW_TRANSLATED_URL)
+    gfw_obj = json.loads(gfw_json)
+    for line in gfw_obj["blacklist"]:
+        fp.write(line.encode("utf-8"))
+        fp.write(b"\n")
 
 
 def write_china_ip(fp):
@@ -48,6 +61,8 @@ with open(output_file_path, 'wb') as fp:
     fp.write(b"\n")
 
     fp.write(b"[proxy_all]\n")
+    fp.write(b"\n[proxy_list]\n")
+    write_gfw_list(fp)
     fp.write(b"\n[bypass_list]\n")
     write_china_ip(fp)
 
@@ -55,6 +70,13 @@ with open(output_file_path, 'wb') as fp:
         logger.info("CUSTOM_BYPASS {} lines".format(len(CUSTOM_BYPASS)))
         fp.write(b"\n[bypass_list]\n")
         for a in CUSTOM_BYPASS:
+            fp.write(a.encode("utf-8"))
+            fp.write(b"\n")
+
+    if len(CUSTOM_PROXY) > 0:
+        logger.info("CUSTOM_PROXY {} lines".format(len(CUSTOM_PROXY)))
+        fp.write(b"\n[proxy_list]\n")
+        for a in CUSTOM_PROXY:
             fp.write(a.encode("utf-8"))
             fp.write(b"\n")
 

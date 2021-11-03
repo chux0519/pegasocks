@@ -495,16 +495,19 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 	uint8_t atype = 0;
 	socks5_dest_addr_parse(cmd, cmd_len, &atype, &ptr->dest, &ptr->port);
 
-	bool proxy = true;
-
-	pgs_outbound_init_param_t param = { proxy,   is_udp,  logger, local,
+	pgs_outbound_init_param_t param = { true,    is_udp,  logger, local,
 					    ptr,     gconfig, config, cmd,
 					    cmd_len, cb_ctx };
 
 #ifdef WITH_ACL
 	if (local->acl != NULL) {
-		bool match = pgs_acl_match_host(local->acl, ptr->dest);
-		if (!match && atype == SOCKS5_CMD_HOSTNAME) {
+		bool bypass_match =
+			pgs_acl_match_host_bypass(local->acl, ptr->dest);
+		bool proxy_match =
+			pgs_acl_match_host_proxy(local->acl, ptr->dest);
+
+		if (!bypass_match && !proxy_match &&
+		    atype == SOCKS5_CMD_HOSTNAME) {
 			pgs_outbound_init_param_t *p =
 				malloc(sizeof(pgs_outbound_init_param_t));
 			*p = param;
@@ -514,11 +517,12 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 						outbound_dns_cb, p);
 			return true;
 		}
-		if (pgs_acl_get_mode(local->acl) == PROXY_ALL_BYPASS_LIST) {
-			proxy = !match;
-		} else if (pgs_acl_get_mode(local->acl) ==
-			   BYPASS_ALL_PROXY_LIST) {
-			proxy = match;
+
+		if (proxy_match) {
+			param.proxy = true;
+		}
+		if (bypass_match) {
+			param.proxy = false;
 		}
 	}
 #endif
@@ -1065,7 +1069,6 @@ static void outbound_dns_cb(int result, char type, int count, int ttl,
 	}
 
 	char *dest = NULL;
-	bool match;
 
 	for (i = 0; i < count; ++i) {
 		if (type == DNS_IPv4_A) {
@@ -1083,15 +1086,11 @@ static void outbound_dns_cb(int result, char type, int count, int ttl,
 			pgs_logger_debug(ctx->logger, "%s: %s",
 					 ctx->outbound->dest, dest);
 
-			match = pgs_acl_match_host(ctx->local->acl, dest);
-			if (pgs_acl_get_mode(ctx->local->acl) ==
-			    PROXY_ALL_BYPASS_LIST) {
-				ctx->proxy = !match;
-			} else if (pgs_acl_get_mode(ctx->local->acl) ==
-				   BYPASS_ALL_PROXY_LIST) {
-				ctx->proxy = match;
-			}
-			if (!ctx->proxy) {
+			bool bypass_match = pgs_acl_match_host_bypass(
+				ctx->local->acl, dest);
+
+			if (bypass_match) {
+				ctx->proxy = false;
 				if (ctx->outbound->dest != NULL) {
 					free(ctx->outbound->dest);
 					ctx->outbound->dest = (char *)malloc(

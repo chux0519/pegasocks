@@ -11,11 +11,21 @@
 
 #define LINE_BUFF_SIZE 256
 
-struct pgs_acl_s {
+typedef struct pgs_inner_acl_s {
 	pgs_acl_mode mode;
 	struct ip_set v4set;
 	struct ip_set v6set;
 	struct cork_dllist rules;
+} pgs_inner_acl_t;
+
+/* store two types of acl
+ * if domain in bypass_acl/proxy_acl, directly bypass/proxy without DNS resolve. 
+ * Otherwise we query DNS, then match again */
+struct pgs_acl_s {
+	/* proxy all, bypass list */
+	pgs_inner_acl_t *bypass_acl;
+	/* bypass all, proxy list */
+	pgs_inner_acl_t *proxy_acl;
 };
 
 struct pgs_acl_rule_s {
@@ -23,6 +33,17 @@ struct pgs_acl_rule_s {
 	pcre *pattern;
 	struct cork_dllist_item entry;
 };
+
+static void pgs_acl_add_rule(pgs_inner_acl_t *acl, const char *raw)
+{
+	pgs_acl_rule_t *rule = pgs_acl_rule_new(raw);
+	cork_dllist_add(&acl->rules, &rule->entry);
+}
+
+static pgs_acl_mode pgs_acl_get_mode(pgs_inner_acl_t *ptr)
+{
+	return ptr->mode;
+}
 
 static void parse_addr_cidr(const char *str, char *host, int *cidr)
 {
@@ -66,16 +87,27 @@ static char *trimwhitespace(char *str)
 pgs_acl_t *pgs_acl_new(const char *path)
 {
 	pgs_acl_t *ptr = malloc(sizeof(pgs_acl_t));
-	ptr->mode = PROXY_ALL_BYPASS_LIST; // this will be updated at parsing
-	ipset_init(&ptr->v4set);
-	ipset_init(&ptr->v6set);
-	cork_dllist_init(&ptr->rules);
+	ptr->bypass_acl = malloc(sizeof(pgs_inner_acl_t));
+	ptr->proxy_acl = malloc(sizeof(pgs_inner_acl_t));
+
+	ptr->proxy_acl->mode = BYPASS_ALL_PROXY_LIST;
+	ptr->bypass_acl->mode = PROXY_ALL_BYPASS_LIST;
+
+	ipset_init(&ptr->proxy_acl->v4set);
+	ipset_init(&ptr->proxy_acl->v6set);
+	cork_dllist_init(&ptr->proxy_acl->rules);
+
+	ipset_init(&ptr->bypass_acl->v4set);
+	ipset_init(&ptr->bypass_acl->v6set);
+	cork_dllist_init(&ptr->bypass_acl->rules);
 
 	FILE *fd = fopen(path, "r");
 	if (fd == NULL)
 		goto error;
 
 	char buff[LINE_BUFF_SIZE];
+
+	pgs_inner_acl_t *acl = NULL;
 
 	// parsing logic is modifed from
 	// https://github.com/shadowsocks/shadowsocks-libev/blob/master/src/acl.c#L133
@@ -113,19 +145,23 @@ pgs_acl_t *pgs_acl_new(const char *path)
 			// notice: outbound_block_list is not supported
 			if (strcmp(line, "[black_list]") == 0 ||
 			    strcmp(line, "[bypass_list]") == 0) {
-				ptr->mode = PROXY_ALL_BYPASS_LIST;
-				continue;
-			} else if (strcmp(line, "[white_list]") == 0 ||
-				   strcmp(line, "[proxy_list]") == 0) {
-				ptr->mode = BYPASS_ALL_PROXY_LIST;
-				continue;
-			} else if (strcmp(line, "[reject_all]") == 0 ||
-				   strcmp(line, "[bypass_all]") == 0) {
-				ptr->mode = BYPASS_ALL_PROXY_LIST;
+				acl = ptr->bypass_acl;
+				// ptr->mode = PROXY_ALL_BYPASS_LIST;
 				continue;
 			} else if (strcmp(line, "[accept_all]") == 0 ||
 				   strcmp(line, "[proxy_all]") == 0) {
-				ptr->mode = PROXY_ALL_BYPASS_LIST;
+				acl = ptr->bypass_acl;
+				// ptr->mode = PROXY_ALL_BYPASS_LIST;
+				continue;
+			} else if (strcmp(line, "[white_list]") == 0 ||
+				   strcmp(line, "[proxy_list]") == 0) {
+				acl = ptr->proxy_acl;
+				// ptr->mode = BYPASS_ALL_PROXY_LIST;
+				continue;
+			} else if (strcmp(line, "[reject_all]") == 0 ||
+				   strcmp(line, "[bypass_all]") == 0) {
+				acl = ptr->proxy_acl;
+				// ptr->mode = BYPASS_ALL_PROXY_LIST;
 				continue;
 			}
 
@@ -139,24 +175,24 @@ pgs_acl_t *pgs_acl_new(const char *path)
 				if (addr.version == 4) {
 					if (cidr >= 0) {
 						ipset_ipv4_add_network(
-							&ptr->v4set,
+							&acl->v4set,
 							&(addr.ip.v4), cidr);
 					} else {
-						ipset_ipv4_add(&ptr->v4set,
+						ipset_ipv4_add(&acl->v4set,
 							       &(addr.ip.v4));
 					}
 				} else if (addr.version == 6) {
 					if (cidr >= 0) {
 						ipset_ipv6_add_network(
-							&ptr->v6set,
+							&acl->v6set,
 							&(addr.ip.v6), cidr);
 					} else {
-						ipset_ipv6_add(&ptr->v6set,
+						ipset_ipv6_add(&acl->v6set,
 							       &(addr.ip.v6));
 					}
 				}
 			} else {
-				pgs_acl_add_rule(ptr, line);
+				pgs_acl_add_rule(acl, line);
 			}
 		}
 	}
@@ -171,18 +207,7 @@ error:
 	return NULL;
 }
 
-void pgs_acl_add_rule(pgs_acl_t *acl, const char *raw)
-{
-	pgs_acl_rule_t *rule = pgs_acl_rule_new(raw);
-	cork_dllist_add(&acl->rules, &rule->entry);
-}
-
-pgs_acl_mode pgs_acl_get_mode(pgs_acl_t *ptr)
-{
-	return ptr->mode;
-}
-
-void pgs_acl_free(pgs_acl_t *ptr)
+static void pgs_inner_acl_free(pgs_inner_acl_t *ptr)
 {
 	ipset_done(&ptr->v4set);
 	ipset_done(&ptr->v6set);
@@ -196,6 +221,16 @@ void pgs_acl_free(pgs_acl_t *ptr)
 	}
 	free(ptr);
 	ptr = NULL;
+}
+
+void pgs_acl_free(pgs_acl_t *ptr)
+{
+	if (ptr->bypass_acl)
+		pgs_inner_acl_free(ptr->bypass_acl);
+	if (ptr->proxy_acl)
+		pgs_inner_acl_free(ptr->proxy_acl);
+	if (ptr)
+		free(ptr);
 }
 
 pgs_acl_rule_t *pgs_acl_rule_new(const char *raw)
@@ -222,7 +257,7 @@ void pgs_acl_rule_free(pgs_acl_rule_t *ptr)
 	ptr = NULL;
 }
 
-bool pgs_acl_match_host(pgs_acl_t *acl, const char *host)
+static bool pgs_inner_acl_match_host(pgs_inner_acl_t *acl, const char *host)
 {
 	struct cork_ip addr;
 	int err = cork_ip_init(&addr, host);
@@ -248,4 +283,16 @@ bool pgs_acl_match_host(pgs_acl_t *acl, const char *host)
 		return ipset_contains_ipv6(&acl->v6set, &(addr.ip.v6));
 	}
 	return false;
+}
+
+bool pgs_acl_match_host_bypass(pgs_acl_t *acl, const char *host)
+{
+	/* proxy all bypass list, if match, we bypass it */
+	return pgs_inner_acl_match_host(acl->bypass_acl, host);
+}
+
+bool pgs_acl_match_host_proxy(pgs_acl_t *acl, const char *host)
+{
+	/* bypass all proxy list, if match, we proxy it */
+	return pgs_inner_acl_match_host(acl->proxy_acl, host);
 }
