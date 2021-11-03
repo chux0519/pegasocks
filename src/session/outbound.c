@@ -19,8 +19,10 @@ static bool pgs_outbound_fd_init(int *fd, pgs_logger_t *logger,
 				 const pgs_config_t *gconfig);
 
 /* dns callback */
+#ifdef WITH_ACL
 static void outbound_dns_cb(int result, char type, int count, int ttl,
 			    void *addrs, void *arg);
+#endif
 static bool do_outbound_init(pgs_outbound_init_param_t *param);
 
 /*
@@ -1051,6 +1053,7 @@ static bool pgs_outbound_fd_init(int *fd, pgs_logger_t *logger,
 	return true;
 }
 
+#ifdef WITH_ACL
 static void outbound_dns_cb(int result, char type, int count, int ttl,
 			    void *addrs, void *arg)
 {
@@ -1124,6 +1127,7 @@ done:
 	}
 	free(ctx);
 }
+#endif
 
 static bool do_outbound_init(pgs_outbound_init_param_t *param)
 {

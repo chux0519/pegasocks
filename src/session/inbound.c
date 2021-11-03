@@ -36,8 +36,10 @@ static int start_udp_server(const pgs_server_config_t *sconfig,
 			    pgs_session_t *session, int *port);
 static void on_udp_read(int fd, short event, void *ctx);
 static void do_udp_read(pgs_udp_read_param_t *param);
+#ifdef WITH_ACL
 static void udp_dns_cb(int result, char type, int count, int ttl, void *addrs,
 		       void *arg);
+#endif
 
 // functions
 
@@ -700,6 +702,7 @@ static void do_udp_read(pgs_udp_read_param_t *param)
 	}
 }
 
+#ifdef WITH_ACL
 static void udp_dns_cb(int result, char type, int count, int ttl, void *addrs,
 		       void *arg)
 {
@@ -766,3 +769,4 @@ static void udp_dns_cb(int result, char type, int count, int ttl, void *addrs,
 		free(ctx->dest);
 	free(ctx);
 }
+#endif
