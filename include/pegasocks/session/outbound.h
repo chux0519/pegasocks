@@ -28,7 +28,26 @@
 		bufferevent_set_timeouts((outbound->bev), &tv, NULL);          \
 	} while (0)
 
-typedef struct pgs_session_outbound_s {
+typedef struct pgs_session_outbound_s pgs_session_outbound_t;
+typedef struct pgs_outbound_init_param_s {
+	bool proxy;
+	bool is_udp;
+
+	pgs_logger_t *logger;
+	pgs_local_server_t *local;
+	pgs_session_outbound_t *outbound;
+
+	const pgs_config_t *gconfig;
+	const pgs_server_config_t *config;
+
+	const uint8_t *cmd;
+	size_t cmd_len;
+
+	/* for remote read callback (pgs_session_t*) */
+	void *cb_ctx;
+} pgs_outbound_init_param_t;
+
+struct pgs_session_outbound_s {
 	bool ready;
 	bool bypass;
 
@@ -37,8 +56,11 @@ typedef struct pgs_session_outbound_s {
 	char *dest;
 	int port;
 
+	/* used to update the inner reference of outbound */
+	pgs_outbound_init_param_t *param;
+
 	void *ctx;
-} pgs_session_outbound_t;
+};
 
 typedef struct pgs_outbound_ctx_trojan_s {
 	// sha224(password) + "\r\n" + cmd[1] + cmd.substr(3) + "\r\n"
@@ -213,8 +235,10 @@ pgs_session_outbound_is_ssl_reused(const pgs_session_outbound_t *ptr)
 #ifdef USE_MBEDTLS
 	reused = false;
 #else
-	SSL *ssl = bufferevent_openssl_get_ssl(ptr->bev);
-	reused = SSL_session_reused(ssl);
+	if (ptr->bev) {
+		SSL *ssl = bufferevent_openssl_get_ssl(ptr->bev);
+		reused = SSL_session_reused(ssl);
+	}
 #endif
 
 	return reused;

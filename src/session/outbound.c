@@ -12,24 +12,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-typedef struct pgs_outbound_init_param_s {
-	bool proxy;
-	bool is_udp;
-
-	pgs_logger_t *logger;
-	pgs_local_server_t *local;
-	pgs_session_outbound_t *outbound;
-
-	const pgs_config_t *gconfig;
-	const pgs_server_config_t *config;
-
-	const uint8_t *cmd;
-	size_t cmd_len;
-
-	/* for remote read callback (pgs_session_t*) */
-	void *cb_ctx;
-} pgs_outbound_init_param_t;
-
 /*
  * init outbound fd
  */
@@ -289,6 +271,10 @@ void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
 
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 {
+	if (ptr->param != NULL) {
+		// may be used by dns callback
+		ptr->param->outbound = NULL;
+	}
 	if (ptr->bev) {
 #ifdef USE_MBEDTLS
 		bool is_be_ssl = false;
@@ -491,6 +477,7 @@ pgs_session_outbound_t *pgs_session_outbound_new()
 	ptr->config = NULL;
 	ptr->bev = NULL;
 	ptr->ctx = NULL;
+	ptr->param = NULL;
 
 	return ptr;
 }
@@ -521,6 +508,7 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 			pgs_outbound_init_param_t *p =
 				malloc(sizeof(pgs_outbound_init_param_t));
 			*p = param;
+			ptr->param = p;
 
 			evdns_base_resolve_ipv4(local->dns_base, ptr->dest, 0,
 						outbound_dns_cb, p);
@@ -1065,6 +1053,12 @@ static void outbound_dns_cb(int result, char type, int count, int ttl,
 	pgs_outbound_init_param_t *ctx = arg;
 	int i;
 
+	if (ctx->outbound == NULL) {
+		pgs_logger_error(ctx->logger,
+				 "dns callback: outbound is already freed");
+		goto done;
+	}
+
 	if (type == DNS_CNAME) {
 		pgs_logger_debug(ctx->logger, "%s: %s (CNAME)\n",
 				 ctx->outbound->dest, (char *)addrs);
@@ -1124,6 +1118,11 @@ static void outbound_dns_cb(int result, char type, int count, int ttl,
 	pgs_logger_debug(ctx->logger, "do_outbound_init, proxy: %d",
 			 ctx->proxy);
 	do_outbound_init(ctx);
+
+done:
+	if (ctx->outbound != NULL) {
+		ctx->outbound->param = NULL;
+	}
 	free(ctx);
 }
 
