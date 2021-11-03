@@ -287,6 +287,7 @@ static bool pgs_init(const char *config, const char *acl, int threads)
 	snum = threads;
 	CONFIG = pgs_config_load(config);
 	if (CONFIG == NULL) {
+		perror("failed to load config");
 		return false;
 	}
 
@@ -294,7 +295,16 @@ static bool pgs_init(const char *config, const char *acl, int threads)
 	if (acl != NULL) {
 		ACL = pgs_acl_new(acl);
 		if (ACL == NULL) {
+			perror("failed to load acl file");
 			return false;
+		}
+	} else {
+		if (CONFIG->acl_file != NULL) {
+			ACL = pgs_acl_new(CONFIG->acl_file);
+			if (ACL == NULL) {
+				perror("failed to load acl file");
+				return false;
+			}
 		}
 	}
 #endif

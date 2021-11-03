@@ -55,6 +55,12 @@ pgs_config_t *pgs_config_parse(const char *json)
 		goto error;
 	root_obj = json_value_get_object(ptr->root_value);
 
+	const char *acl_file =
+		json_object_get_string(root_obj, CONFIG_ACL_FILE);
+	if (acl_file != NULL) {
+		ptr->acl_file = acl_file;
+	}
+
 	const char *log_file =
 		json_object_get_string(root_obj, CONFIG_LOG_FILE);
 	if (log_file != NULL) {
@@ -266,6 +272,7 @@ void *pgs_server_config_parse_extra(pgs_config_t *config,
 pgs_config_t *pgs_config_new()
 {
 	pgs_config_t *ptr = malloc(sizeof(pgs_config_t));
+	ptr->acl_file = NULL;
 	ptr->root_value = NULL;
 	ptr->servers = NULL;
 	ptr->servers_count = 0;
