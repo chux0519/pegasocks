@@ -40,6 +40,7 @@
 	} while (0)
 
 // root config fields
+#define CONFIG_ACL_FILE "acl_file"
 #define CONFIG_LOCAL_ADDRESS "local_address"
 #define CONFIG_LOCAL_PORT "local_port"
 #define CONFIG_CONTROL_PORT "control_port"
@@ -96,6 +97,7 @@ typedef struct pgs_server_config_s {
 
 typedef struct pgs_config_s {
 	JSON_Value *root_value;
+	const char *acl_file;
 	pgs_server_config_t *servers;
 	int servers_count;
 	const char *local_address;
