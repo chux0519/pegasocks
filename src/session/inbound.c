@@ -610,14 +610,16 @@ static void on_udp_read(int fd, short event, void *ctx)
 		uint8_t atype = buf[3];
 		socks5_dest_addr_parse(buf, len, &atype, &dest, &port);
 
-		bool proxy = true;
-		pgs_udp_read_param_t param = { proxy, atype, dest,    port,
-					       buf,   len,   session, config };
+		pgs_udp_read_param_t param = { true, atype, dest,    port,
+					       buf,  len,   session, config };
 #ifdef WITH_ACL
 		pgs_acl_t *acl = session->local_server->acl;
 		if (acl != NULL) {
-			bool match = pgs_acl_match_host(acl, dest);
-			if (!match && atype == SOCKS5_CMD_HOSTNAME) {
+			bool bypass_match =
+				pgs_acl_match_host_bypass(acl, dest);
+			bool proxy_match = pgs_acl_match_host_proxy(acl, dest);
+			if (!proxy_match && !bypass_match &&
+			    atype == SOCKS5_CMD_HOSTNAME) {
 				pgs_udp_read_param_t *p =
 					malloc(sizeof(pgs_udp_read_param_t));
 				*p = param;
@@ -626,11 +628,12 @@ static void on_udp_read(int fd, short event, void *ctx)
 					0, udp_dns_cb, p);
 				return;
 			}
-			if (pgs_acl_get_mode(acl) == PROXY_ALL_BYPASS_LIST) {
-				proxy = !match;
-			} else if (pgs_acl_get_mode(acl) ==
-				   BYPASS_ALL_PROXY_LIST) {
-				proxy = match;
+
+			if (proxy_match) {
+				param.proxy = true;
+			}
+			if (bypass_match) {
+				param.proxy = false;
 			}
 		}
 #endif
@@ -727,17 +730,11 @@ static void udp_dns_cb(int result, char type, int count, int ttl, void *addrs,
 			pgs_session_debug(ctx->session, "%s: %s", ctx->dest,
 					  dest);
 
-			match = pgs_acl_match_host(
+			bool bypass_match = pgs_acl_match_host_bypass(
 				ctx->session->local_server->acl, dest);
-			if (pgs_acl_get_mode(ctx->session->local_server->acl) ==
-			    PROXY_ALL_BYPASS_LIST) {
-				ctx->proxy = !match;
-			} else if (pgs_acl_get_mode(
-					   ctx->session->local_server->acl) ==
-				   BYPASS_ALL_PROXY_LIST) {
-				ctx->proxy = match;
-			}
-			if (!ctx->proxy) {
+
+			if (bypass_match) {
+				ctx->proxy = false;
 				if (ctx->dest != NULL) {
 					free(ctx->dest);
 					ctx->dest = (char *)malloc(
