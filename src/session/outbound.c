@@ -273,10 +273,15 @@ void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
 
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 {
+#ifdef WITH_ACL
 	if (ptr->param != NULL) {
-		// may be used by dns callback
+		// may be used by dns callback, update it to NULL, mark this session is terminated
 		ptr->param->outbound = NULL;
 	}
+	if (ptr->dns_base != NULL && ptr->dns_req != NULL) {
+		evdns_cancel_request(ptr->dns_base, ptr->dns_req);
+	}
+#endif
 	if (ptr->bev) {
 #ifdef USE_MBEDTLS
 		bool is_be_ssl = false;
@@ -479,7 +484,12 @@ pgs_session_outbound_t *pgs_session_outbound_new()
 	ptr->config = NULL;
 	ptr->bev = NULL;
 	ptr->ctx = NULL;
+
+#ifdef WITH_ACL
 	ptr->param = NULL;
+	ptr->dns_base = NULL;
+	ptr->dns_req = NULL;
+#endif
 
 	return ptr;
 }
@@ -514,9 +524,12 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 				malloc(sizeof(pgs_outbound_init_param_t));
 			*p = param;
 			ptr->param = p;
+			ptr->dns_base = local->dns_base;
+			ptr->dns_req =
+				evdns_base_resolve_ipv4(local->dns_base,
+							ptr->dest, 0,
+							outbound_dns_cb, p);
 
-			evdns_base_resolve_ipv4(local->dns_base, ptr->dest, 0,
-						outbound_dns_cb, p);
 			return true;
 		}
 

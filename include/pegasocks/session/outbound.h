@@ -56,8 +56,12 @@ struct pgs_session_outbound_s {
 	char *dest;
 	int port;
 
-	/* used to update the inner reference of outbound */
+#ifdef WITH_ACL
+	/* used to update the inner reference of outbound, need when enabled ACL */
 	pgs_outbound_init_param_t *param;
+	struct evdns_base *dns_base;
+	struct evdns_request *dns_req;
+#endif
 
 	void *ctx;
 };
