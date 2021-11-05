@@ -1132,6 +1132,9 @@ static void outbound_dns_cb(int result, char type, int count, int ttl,
 done:
 	if (ctx->outbound != NULL) {
 		ctx->outbound->param = NULL;
+		/* clear reference in session, to prevent double free */
+		ctx->outbound->dns_req = NULL;
+		ctx->outbound->dns_base = NULL;
 	}
 	free(ctx);
 }
