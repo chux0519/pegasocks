@@ -369,7 +369,7 @@ static void on_local_event(struct bufferevent *bev, short events, void *ctx)
 		pgs_session_error(session,
 				  "Error from bufferevent: on_local_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		bufferevent_free(bev);
+		//bufferevent_free(bev);
 		PGS_FREE_SESSION(session);
 	}
 }
