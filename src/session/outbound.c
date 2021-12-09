@@ -1189,6 +1189,7 @@ static bool do_outbound_init(pgs_outbound_init_param_t *param)
 		pgs_logger_debug(param->local->logger, "connect: %s:%d",
 				 param->config->server_address,
 				 param->config->server_port);
+		return ok;
 	}
 	if (!param->proxy) {
 		assert(!param->is_udp);
