@@ -74,7 +74,11 @@ pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
 	ptr->base = event_base_new_with_config(cfg);
 	event_config_free(cfg);
 
-	PGS_DNS_INIT(ptr->base, &ptr->dns_base, config, ptr->logger);
+	int flag = EVDNS_BASE_INITIALIZE_NAMESERVERS;
+#ifdef __ANDROID__
+	flag = 0;
+#endif
+	PGS_DNS_INIT(ptr->base, &ptr->dns_base, config, ptr->logger, flag);
 
 	ptr->sessions = pgs_list_new();
 	ptr->sessions->free = (void *)pgs_session_free;

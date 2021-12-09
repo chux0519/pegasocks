@@ -74,7 +74,12 @@ pgs_helper_thread_t *pgs_helper_thread_new(int cfd, pgs_config_t *config,
 	struct event_config *cfg = event_config_new();
 	event_config_set_flag(cfg, EVENT_BASE_FLAG_NOLOCK);
 	ptr->base = event_base_new_with_config(cfg);
-	PGS_DNS_INIT(ptr->base, &ptr->dns_base, config, logger);
+
+	int flag = EVDNS_BASE_INITIALIZE_NAMESERVERS;
+#ifdef __ANDROID__
+	flag = 0;
+#endif
+	PGS_DNS_INIT(ptr->base, &ptr->dns_base, config, logger, flag);
 
 	event_config_free(cfg);
 

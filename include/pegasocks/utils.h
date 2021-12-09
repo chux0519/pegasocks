@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 // evdns helper
-#define PGS_DNS_INIT(base, dns_base_ptr, config, logger)                        \
+#define PGS_DNS_INIT(base, dns_base_ptr, config, logger, flag)                  \
 	do {                                                                    \
 		if ((config)->dns_servers->len > 0) {                           \
 			*(dns_base_ptr) = evdns_base_new((base), 0);            \
@@ -24,8 +24,7 @@
 						(const char *)cur->val);        \
 			}                                                       \
 		} else {                                                        \
-			*(dns_base_ptr) = evdns_base_new(                       \
-				(base), EVDNS_BASE_INITIALIZE_NAMESERVERS);     \
+			*(dns_base_ptr) = evdns_base_new((base), (flag));       \
 		}                                                               \
 		evdns_base_set_option(*(dns_base_ptr),                          \
 				      "max-probe-timeout:", "5");               \
