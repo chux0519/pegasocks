@@ -690,6 +690,12 @@ static void do_udp_read(pgs_udp_read_param_t *param)
 			int offset = 3 + host_len + 2;
 			// add host_len as param
 			int n = pgs_udp_relay_trigger(
+#ifdef __ANDROID__
+				param->session->local_server->config
+					->android_protect_address,
+				param->session->local_server->config
+					->android_protect_port,
+#endif
 				udp_relay, param->dest, param->port,
 				param->buf + offset, param->len - offset,
 				param->session->local_server->base,

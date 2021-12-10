@@ -2,6 +2,7 @@
 #define _PGS_UDP_H
 
 #include "defs.h"
+#include "dns.h"
 
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -49,10 +50,13 @@ static void pgs_udp_relay_set_header(pgs_udp_relay_t *ptr, const uint8_t *cmd,
 	memcpy(ptr->packet_header, cmd, len);
 }
 
-static int pgs_udp_relay_trigger(pgs_udp_relay_t *ptr, const char *host,
-				 short port, uint8_t *buf, ssize_t len,
-				 struct event_base *base,
-				 on_udp_read_cb *read_cb, void *session)
+static int pgs_udp_relay_trigger(
+#ifdef __ANDROID__
+	const char *protect_address, int protect_port,
+#endif
+	pgs_udp_relay_t *ptr, const char *host, short port, uint8_t *buf,
+	ssize_t len, struct event_base *base, on_udp_read_cb *read_cb,
+	void *session)
 {
 	ptr->udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
 	int flag = fcntl(ptr->udp_fd, F_GETFL, 0);
@@ -71,6 +75,13 @@ static int pgs_udp_relay_trigger(pgs_udp_relay_t *ptr, const char *host,
 	if (err <= 0) {
 		return err;
 	}
+
+#ifdef __ANDROID__
+	int ret = pgs_protect_fd(ptr->udp_fd, protect_address, protect_port);
+	if (ret != ptr->udp_fd) {
+		return -1;
+	}
+#endif
 	ssize_t n = sendto(ptr->udp_fd, buf, len, 0,
 			   (struct sockaddr *)&ptr->udp_server_addr,
 			   sizeof(ptr->udp_server_addr));
