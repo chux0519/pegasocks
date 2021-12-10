@@ -2,6 +2,7 @@
 #include "crypto.h"
 #include "session/session.h"
 #include "codec/codec.h"
+#include "dns.h"
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
@@ -998,68 +999,10 @@ static bool pgs_outbound_fd_init(int *fd, pgs_logger_t *logger,
 		return false;
 
 #ifdef __ANDROID__
-	if (gconfig->android_protect_address && gconfig->android_protect_port) {
-		int sock;
-		struct sockaddr_in addr = { 0 };
-		sock = socket(AF_INET, SOCK_STREAM, 0);
-		if (sock == -1)
-			return false;
-
-		struct timeval tv;
-		tv.tv_sec = 3;
-		tv.tv_usec = 0;
-		setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,
-			   sizeof(struct timeval));
-		setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv,
-			   sizeof(struct timeval));
-
-		addr.sin_family = AF_INET;
-		addr.sin_port = htons(gconfig->android_protect_port);
-		if (inet_pton(AF_INET, gconfig->android_protect_address,
-			      &(addr.sin_addr)) != 1) {
-			close(sock);
-			return false;
-		}
-
-		if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) ==
-		    -1) {
-			pgs_logger_error(
-				logger,
-				"[ANDROID] Failed to connect to protect server");
-			close(sock);
-			return false;
-		}
-
-		char buf[4] = { 0 };
-		buf[0] = (*fd >> 24) & 0xFF;
-		buf[1] = (*fd >> 16) & 0xFF;
-		buf[2] = (*fd >> 8) & 0xFF;
-		buf[3] = *fd & 0xFF;
-		int n = write(sock, buf, 4);
-		if (n != 4) {
-			pgs_logger_error(
-				logger,
-				"[ANDROID] Failed to write to protect server");
-			close(sock);
-			return false;
-		}
-
-		n = read(sock, buf, 4);
-		if (n != 4) {
-			pgs_logger_error(
-				logger,
-				"[ANDROID] Failed to read from protect server");
-			close(sock);
-			return false;
-		}
-		close(sock);
-
-		int ret = buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3];
-		if (ret != *fd) {
-			pgs_logger_error(logger,
-					 "[ANDROID] Failed to protect fd");
-			return false;
-		}
+	int ret = pgs_protect_fd(*fd, gconfig->android_protect_address,
+				 gconfig->android_protect_port);
+	if (ret != *fd) {
+		pgs_logger_error(logger, "[ANDROID] Failed to protect fd");
 	}
 #endif
 
