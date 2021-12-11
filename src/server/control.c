@@ -170,6 +170,6 @@ static void on_control_event(struct bufferevent *bev, short events, void *ctx)
 	if (events & BEV_EVENT_ERROR)
 		pgs_logger_error(control_ctx->logger, "Error from bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		bufferevent_free(bev);
+		pgs_list_del_val(control_ctx->clients, bev);
 	}
 }
