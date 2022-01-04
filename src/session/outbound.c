@@ -994,9 +994,12 @@ static bool pgs_outbound_fd_init(int *fd, pgs_logger_t *logger,
 				 const pgs_config_t *gconfig)
 {
 	*fd = socket(AF_INET, SOCK_STREAM, 0);
-	int flag = fcntl(*fd, F_GETFL, 0);
-	if (fcntl(*fd, F_SETFL, flag | O_NONBLOCK))
+	
+	int err = evutil_make_socket_nonblocking(*fd);
+	if (err) {
+		perror("evutil_make_socket_nonblocking");
 		return false;
+	}
 
 #ifdef __ANDROID__
 	int ret = pgs_protect_fd(*fd, gconfig->android_protect_address,

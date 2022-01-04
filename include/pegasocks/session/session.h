@@ -1,7 +1,6 @@
 #ifndef _PGS_SESSION_H
 #define _PGS_SESSION_H
 
-#include <netinet/in.h>
 #include <event2/event.h>
 
 #include "server/local.h"
