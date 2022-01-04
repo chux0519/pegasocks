@@ -264,7 +264,11 @@ install(TARGETS libpegas
 )
 
 add_executable(pegas src/main.c)
-target_link_libraries(pegas libpegas)
+if(WIN32)
+  target_link_libraries(pegas libpegas ws2_32 wsock32)
+else()
+  target_link_libraries(pegas libpegas)
+endif()
 
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)

@@ -5,12 +5,15 @@
 #include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <winsock.h>
+#endif
 
 #include "pegas.h"
 
 static bool should_exit = false;
 
-static void shutdown(int signum)
+static void _shutdown(int signum)
 {
 	should_exit = true;
 	pgs_stop();
@@ -24,10 +27,13 @@ static void restart(int signum)
 
 int main(int argc, char **argv)
 {
-	signal(SIGPIPE, SIG_IGN);
-	signal(SIGINT, shutdown);
-	signal(SIGUSR1, restart);
+	
+#ifdef _WIN32
+	WSADATA wsa_data;
+	WSAStartup(0x0201, &wsa_data);
+#endif
 
+	signal(SIGINT, _shutdown);
 #ifdef DEBUG_EVENT
 	event_enable_debug_logging(EVENT_DBG_ALL);
 #endif
@@ -82,7 +88,7 @@ int main(int argc, char **argv)
 	while (!should_exit) {
 		bool ok = pgs_start(
 			config_path, acl_path, server_threads,
-			shutdown /* used by applet, can be NULL when not use applet */);
+			_shutdown /* used by applet, can be NULL when not use applet */);
 
 		if (!ok)
 			return -1;

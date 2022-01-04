@@ -5,8 +5,6 @@
 #include "dns.h"
 
 #include <fcntl.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <event2/event.h>
@@ -59,8 +57,12 @@ static int pgs_udp_relay_trigger(
 	void *session)
 {
 	ptr->udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
-	int flag = fcntl(ptr->udp_fd, F_GETFL, 0);
-	fcntl(ptr->udp_fd, F_SETFL, flag | O_NONBLOCK);
+	
+	int e = evutil_make_socket_nonblocking(ptr->udp_fd);
+	if (e) {
+		perror("evutil_make_socket_nonblocking");
+		return e;
+	}
 
 	*ptr->session_ptr = session;
 

@@ -3,8 +3,6 @@
 #include "server/manager.h"
 
 #include <ctype.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
 #include <event2/listener.h>
 #include <event2/buffer.h>

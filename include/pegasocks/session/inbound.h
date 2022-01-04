@@ -3,8 +3,6 @@
 
 #include "utils.h"
 
-#include <netinet/in.h>
-
 typedef enum {
 	INBOUND_AUTH,
 	INBOUND_CMD,

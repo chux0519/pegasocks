@@ -13,7 +13,6 @@
 #include "server/helper.h"
 #include "server/local.h"
 
-#include <arpa/inet.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -21,14 +20,11 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
-#include <sys/socket.h>
 #include <unistd.h>
-#include <sys/un.h>
-#include <netinet/in.h>
 #include <stdatomic.h>
 
 static pgs_config_t *CONFIG = NULL;
-static pgs_acl_t *ACL = NULL;
+static pgs_acl_t *PGS_ACL = NULL;
 static pgs_mpsc_t *MPSC = NULL;
 static pgs_logger_t *LOGGER = NULL; /* log consumer */
 static pgs_server_manager_t *SM = NULL;
@@ -160,17 +156,18 @@ static int init_local_server_fd(const pgs_config_t *config, int *fd,
 	sin.sin_port = htons(port);
 
 	*fd = socket(AF_INET, sock_type, 0);
-	int reuse_port = 1;
-
-	err = setsockopt(*fd, SOL_SOCKET, SO_REUSEPORT,
-			 (const void *)&reuse_port, sizeof(int));
+	err = evutil_make_listen_socket_reuseable(*fd);
+	
 	if (err < 0) {
 		perror("setsockopt");
 		return err;
 	}
 
-	int flag = fcntl(*fd, F_GETFL, 0);
-	fcntl(*fd, F_SETFL, flag | O_NONBLOCK);
+	err = evutil_make_socket_nonblocking(*fd);
+	if (err) {
+		perror("pegas.c evutil_make_socket_nonblocking");
+		return err;
+	}
 
 	err = bind(*fd, (struct sockaddr *)&sin, sizeof(sin));
 
@@ -204,8 +201,13 @@ static int init_control_fd(const pgs_config_t *config, int *fd)
 		sin.sin_port = htons(port);
 
 		*fd = socket(AF_INET, SOCK_STREAM, 0);
-		int flag = fcntl(*fd, F_GETFL, 0);
-		fcntl(*fd, F_SETFL, flag | O_NONBLOCK);
+		
+		err = evutil_make_socket_nonblocking(*fd);
+		if (err) {
+			perror("evutil_make_socket_nonblocking");
+			return err;
+		}
+	
 		err = bind(*fd, (struct sockaddr *)&sin, sizeof(sin));
 		if (err < 0) {
 			perror("bind");
@@ -213,19 +215,8 @@ static int init_control_fd(const pgs_config_t *config, int *fd)
 		}
 	} else if (config->control_file) {
 		// unix socket
-		struct sockaddr_un server;
-		*fd = socket(AF_UNIX, SOCK_STREAM, 0);
-		server.sun_family = AF_UNIX;
-		strcpy(server.sun_path, config->control_file);
-		int flag = fcntl(*fd, F_GETFL, 0);
-		fcntl(*fd, F_SETFL, flag | O_NONBLOCK);
-		unlink(config->control_file);
-		err = bind(*fd, (struct sockaddr *)&server,
-			   sizeof(struct sockaddr_un));
-		if (err < 0) {
-			perror("bind");
-			return err;
-		}
+		perror("windows");
+		return err;
 	}
 
 	return err;
@@ -253,7 +244,7 @@ static bool pgs_start_local_servers()
 		ctx->mpsc = MPSC;
 		ctx->config = CONFIG;
 		ctx->sm = SM;
-		ctx->acl = ACL;
+		ctx->acl = PGS_ACL;
 		ctx->ssl_ctx = SSL_CTX;
 		ctx->local_server_ref = (void **)&LOCAL_SERVERS[i];
 
@@ -298,15 +289,15 @@ static bool pgs_init(const char *config, const char *acl, int threads)
 
 #ifdef WITH_ACL
 	if (acl != NULL) {
-		ACL = pgs_acl_new(acl);
-		if (ACL == NULL) {
+		PGS_ACL = pgs_acl_new(acl);
+		if (PGS_ACL == NULL) {
 			perror("failed to load acl file");
 			return false;
 		}
 	} else {
 		if (CONFIG->acl_file != NULL) {
-			ACL = pgs_acl_new(CONFIG->acl_file);
-			if (ACL == NULL) {
+			PGS_ACL = pgs_acl_new(CONFIG->acl_file);
+			if (PGS_ACL == NULL) {
 				perror("failed to load acl file");
 				return false;
 			}
@@ -375,9 +366,9 @@ static void pgs_clean()
 		CONFIG = NULL;
 	}
 #ifdef WITH_ACL
-	if (ACL != NULL) {
-		pgs_acl_free(ACL);
-		ACL = NULL;
+	if (PGS_ACL != NULL) {
+		pgs_acl_free(PGS_ACL);
+		PGS_ACL = NULL;
 	}
 #endif
 

@@ -5,8 +5,6 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <pthread.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <unistd.h>
 
 static void accept_error_cb(struct evconnlistener *listener, void *ctx)

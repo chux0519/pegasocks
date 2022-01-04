@@ -543,9 +543,12 @@ static int init_udp_server_fd(const pgs_config_t *config, int *fd, int *port)
 	}
 
 	*fd = socket(AF_INET, SOCK_DGRAM, 0);
-
-	int flag = fcntl(*fd, F_GETFL, 0);
-	fcntl(*fd, F_SETFL, flag | O_NONBLOCK);
+	
+	err = evutil_make_socket_nonblocking(*fd);
+	if (err) {
+		perror("evutil_make_socket_nonblocking");
+		return err;
+	}
 
 	err = bind(*fd, (struct sockaddr *)&sin, sizeof(sin));
 

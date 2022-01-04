@@ -7,7 +7,6 @@
 #include "trojan.h"
 #include "shadowsocks.h"
 
-#include <arpa/inet.h>
 #ifndef htonll
 #define htonll(x)                                                              \
 	((1 == htonl(1)) ?                                                     \
