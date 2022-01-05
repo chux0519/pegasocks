@@ -8,7 +8,7 @@
 
 #include "mpsc.h"
 
-typedef enum { DEBUG, INFO, WARN, PGS_ERROR } LOG_LEVEL;
+typedef enum { LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR } LOG_LEVEL;
 
 typedef struct pgs_logger_s {
 	pgs_mpsc_t *mpsc;
@@ -30,16 +30,16 @@ typedef struct pgs_logger_server_s {
 #define MAX_MSG_LEN 4096
 #define TIME_FORMAT "%Y-%m-%d %H:%M:%S"
 #define SESSION_TIME_FORMAT "%H:%M:%S"
-#define pgs_logger_debug(logger, ...) pgs_logger_log(DEBUG, logger, __VA_ARGS__)
-#define pgs_logger_info(logger, ...) pgs_logger_log(INFO, logger, __VA_ARGS__)
-#define pgs_logger_warn(logger, ...) pgs_logger_log(WARN, logger, __VA_ARGS__)
-#define pgs_logger_error(logger, ...) pgs_logger_log(PGS_ERROR, logger, __VA_ARGS__)
-#define pgs_logger_main_info(fp, ...) pgs_logger_main_log(INFO, fp, __VA_ARGS__)
+#define pgs_logger_debug(logger, ...) pgs_logger_log(LOG_DEBUG, logger, __VA_ARGS__)
+#define pgs_logger_info(logger, ...) pgs_logger_log(LOG_INFO, logger, __VA_ARGS__)
+#define pgs_logger_warn(logger, ...) pgs_logger_log(LOG_WARN, logger, __VA_ARGS__)
+#define pgs_logger_error(logger, ...) pgs_logger_log(LOG_ERROR, logger, __VA_ARGS__)
+#define pgs_logger_main_info(fp, ...) pgs_logger_main_log(LOG_INFO, fp, __VA_ARGS__)
 #define pgs_logger_main_debug(fp, ...)                                         \
-	pgs_logger_main_log(DEBUG, fp, __VA_ARGS__)
+	pgs_logger_main_log(LOG_DEBUG, fp, __VA_ARGS__)
 #define pgs_logger_main_error(fp, ...)                                         \
-	pgs_logger_main_log(PGS_ERROR, fp, __VA_ARGS__)
-#define pgs_logger_main_warn(fp, ...) pgs_logger_main_log(WARN, fp, __VA_ARGS__)
+	pgs_logger_main_log(LOG_ERROR, fp, __VA_ARGS__)
+#define pgs_logger_main_warn(fp, ...) pgs_logger_main_log(LOG_WARN, fp, __VA_ARGS__)
 
 #define PARSE_TIME_NOW(buffer)                                                 \
 	do {                                                                   \

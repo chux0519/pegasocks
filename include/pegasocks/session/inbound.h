@@ -3,6 +3,10 @@
 
 #include "utils.h"
 
+#ifndef _WIN32
+#include <netinet/in.h>
+#endif
+
 typedef enum {
 	INBOUND_AUTH,
 	INBOUND_CMD,

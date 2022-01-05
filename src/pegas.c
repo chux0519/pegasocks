@@ -23,6 +23,11 @@
 #include <unistd.h>
 #include <stdatomic.h>
 
+#ifndef _WIN32
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#endif
+
 static pgs_config_t *CONFIG = NULL;
 static pgs_acl_t *PGS_ACL = NULL;
 static pgs_mpsc_t *MPSC = NULL;
