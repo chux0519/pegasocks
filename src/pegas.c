@@ -162,7 +162,7 @@ static int init_local_server_fd(const pgs_config_t *config, int *fd,
 
 	*fd = socket(AF_INET, sock_type, 0);
 	err = evutil_make_listen_socket_reuseable(*fd);
-	
+
 	if (err < 0) {
 		perror("setsockopt");
 		return err;
@@ -206,13 +206,13 @@ static int init_control_fd(const pgs_config_t *config, int *fd)
 		sin.sin_port = htons(port);
 
 		*fd = socket(AF_INET, SOCK_STREAM, 0);
-		
+
 		err = evutil_make_socket_nonblocking(*fd);
 		if (err) {
 			perror("evutil_make_socket_nonblocking");
 			return err;
 		}
-	
+
 		err = bind(*fd, (struct sockaddr *)&sin, sizeof(sin));
 		if (err < 0) {
 			perror("bind");

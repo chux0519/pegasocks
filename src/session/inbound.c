@@ -543,7 +543,7 @@ static int init_udp_server_fd(const pgs_config_t *config, int *fd, int *port)
 	}
 
 	*fd = socket(AF_INET, SOCK_DGRAM, 0);
-	
+
 	err = evutil_make_socket_nonblocking(*fd);
 	if (err) {
 		perror("evutil_make_socket_nonblocking");
