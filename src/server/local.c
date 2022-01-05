@@ -7,6 +7,11 @@
 #include <pthread.h>
 #include <unistd.h>
 
+#ifndef _WIN32
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif
+
 static void accept_error_cb(struct evconnlistener *listener, void *ctx)
 {
 	pgs_local_server_t *local = (pgs_local_server_t *)ctx;

@@ -9,6 +9,11 @@
 #include <stdlib.h>
 #include <event2/event.h>
 
+#ifndef _WIN32
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#endif
+
 typedef struct pgs_udp_relay_s {
 	int udp_fd;
 	uint8_t *udp_rbuf;
