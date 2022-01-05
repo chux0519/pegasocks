@@ -27,12 +27,13 @@ static void restart(int signum)
 
 int main(int argc, char **argv)
 {
-	
 #ifdef _WIN32
 	WSADATA wsa_data;
 	WSAStartup(0x0201, &wsa_data);
+#else
+	signal(SIGPIPE, SIG_IGN);
+	signal(SIGUSR1, restart);
 #endif
-
 	signal(SIGINT, _shutdown);
 #ifdef DEBUG_EVENT
 	event_enable_debug_logging(EVENT_DBG_ALL);
