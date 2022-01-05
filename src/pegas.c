@@ -26,6 +26,7 @@
 #ifndef _WIN32
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
 #endif
 
 static pgs_config_t *CONFIG = NULL;
