@@ -3,6 +3,10 @@
 #include "server/manager.h"
 
 #include <ctype.h>
+#ifndef _WIN32
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif
 
 #include <event2/listener.h>
 #include <event2/buffer.h>
