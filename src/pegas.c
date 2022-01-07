@@ -26,6 +26,7 @@
 #ifndef _WIN32
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <netinet/in.h>
 #endif
 
@@ -221,7 +222,7 @@ static int init_control_fd(const pgs_config_t *config, int *fd)
 		}
 	} else if (config->control_file) {
 		// unix socket
-#ifndef _WIN32
+#ifdef _WIN32
 		perror("unix socket is not supported on windows");
 		return err;
 #endif
