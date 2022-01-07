@@ -225,7 +225,7 @@ static int init_control_fd(const pgs_config_t *config, int *fd)
 #ifdef _WIN32
 		perror("unix socket is not supported on windows");
 		return err;
-#endif
+#else
 		struct sockaddr_un server;
 		*fd = socket(AF_UNIX, SOCK_STREAM, 0);
 		server.sun_family = AF_UNIX;
@@ -242,6 +242,7 @@ static int init_control_fd(const pgs_config_t *config, int *fd)
 			perror("bind");
 			return err;
 		}
+#endif
 	}
 
 	return err;
