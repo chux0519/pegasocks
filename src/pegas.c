@@ -221,8 +221,26 @@ static int init_control_fd(const pgs_config_t *config, int *fd)
 		}
 	} else if (config->control_file) {
 		// unix socket
-		perror("windows");
+#ifndef _WIN32
+		perror("unix socket is not supported on windows");
 		return err;
+#endif
+		struct sockaddr_un server;
+		*fd = socket(AF_UNIX, SOCK_STREAM, 0);
+		server.sun_family = AF_UNIX;
+		strcpy(server.sun_path, config->control_file);
+		err = evutil_make_socket_nonblocking(*fd);
+		if (err) {
+			perror("evutil_make_socket_nonblocking");
+			return err;
+		}
+		unlink(config->control_file);
+		err = bind(*fd, (struct sockaddr *)&server,
+			   sizeof(struct sockaddr_un));
+		if (err < 0) {
+			perror("bind");
+			return err;
+		}
 	}
 
 	return err;
