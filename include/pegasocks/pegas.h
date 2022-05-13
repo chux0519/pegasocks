@@ -3,6 +3,10 @@
 
 #include "stdbool.h"
 
+#ifndef PGS_VERSION
+#define PGS_VERSION "v0.0.0-develop"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -10,6 +14,8 @@ extern "C" {
 bool pgs_start(const char *config, const char *acl, int threads,
 	       void (*shutdown)());
 void pgs_stop();
+
+void pgs_get_version(char *version);
 
 /*
  * pgs_get_servers will encode metrics as json string to `out`

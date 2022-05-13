@@ -1,6 +1,7 @@
 #include "server/helper.h"
 #include "server/metrics.h"
 #include "server/control.h"
+#include "dns.h"
 
 #include "utils.h"
 #include <assert.h>
@@ -74,7 +75,8 @@ pgs_helper_thread_t *pgs_helper_thread_new(int cfd, pgs_config_t *config,
 	struct event_config *cfg = event_config_new();
 	event_config_set_flag(cfg, EVENT_BASE_FLAG_NOLOCK);
 	ptr->base = event_base_new_with_config(cfg);
-	PGS_DNS_INIT(ptr->base, &ptr->dns_base, config, logger);
+
+	pgs_dns_init(ptr->base, &ptr->dns_base, config, logger);
 
 	event_config_free(cfg);
 

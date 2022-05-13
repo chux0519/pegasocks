@@ -123,6 +123,11 @@ void pgs_stop()
 	atomic_store(&SHUTINGDOWN, 0);
 }
 
+void pgs_get_version(char *version)
+{
+	sprintf(version, "%s", PGS_VERSION);
+}
+
 void pgs_get_servers(char *out, int max_len, int *olen)
 {
 	pgs_sm_get_servers(SM, out, max_len, olen);

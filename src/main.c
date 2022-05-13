@@ -8,10 +8,6 @@
 
 #include "pegas.h"
 
-#ifndef PGS_VERSION
-#define PGS_VERSION "v0.0.0-develop"
-#endif
-
 static bool should_exit = false;
 
 static void shutdown(int signum)

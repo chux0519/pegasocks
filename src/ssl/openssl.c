@@ -119,8 +119,10 @@ void pgs_ssl_ctx_free(pgs_ssl_ctx_t *ctx)
 {
 	SSL_CTX_free(ctx->_);
 	free(ctx);
-	if (SESSION_CACHE_LIST != NULL)
+	if (SESSION_CACHE_LIST != NULL) {
 		pgs_list_free(SESSION_CACHE_LIST);
+		SESSION_CACHE_LIST = NULL;
+	}
 }
 
 // init bev with ssl context

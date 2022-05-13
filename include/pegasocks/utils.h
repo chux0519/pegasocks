@@ -4,35 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// evdns helper
-#define PGS_DNS_INIT(base, dns_base_ptr, config, logger)                        \
-	do {                                                                    \
-		if ((config)->dns_servers->len > 0) {                           \
-			*(dns_base_ptr) = evdns_base_new((base), 0);            \
-			pgs_list_node_t *cur, *next;                            \
-			pgs_list_foreach((config)->dns_servers, cur, next)      \
-			{                                                       \
-				pgs_logger_debug((logger),                      \
-						 "Add DNS server: %s",          \
-						 (const char *)cur->val);       \
-				if (evdns_base_nameserver_ip_add(               \
-					    *(dns_base_ptr),                    \
-					    (const char *)cur->val) != 0)       \
-					pgs_logger_error(                       \
-						(logger),                       \
-						"Failed to add DNS server: %s", \
-						(const char *)cur->val);        \
-			}                                                       \
-		} else {                                                        \
-			*(dns_base_ptr) = evdns_base_new(                       \
-				(base), EVDNS_BASE_INITIALIZE_NAMESERVERS);     \
-		}                                                               \
-		evdns_base_set_option(*(dns_base_ptr),                          \
-				      "max-probe-timeout:", "5");               \
-		evdns_base_set_option(*(dns_base_ptr),                          \
-				      "probe-backoff-factor:", "1");            \
-	} while (0)
-
 #define PGS_DEFAULT_BUFSIZE 1 * 1024
 
 // ======================== buffers for codec
