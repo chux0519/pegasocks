@@ -40,7 +40,10 @@ set(CMAKE_C_FLAGS_UBSAN
     FORCE)
 # SAN end =======================================
 
-cmake_policy(SET CMP0074 NEW)
+if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.12.0") 
+  cmake_policy(SET CMP0074 NEW)
+endif()
+
 
 set(PEGAS_SOURCES 
                   src/pegas.c
