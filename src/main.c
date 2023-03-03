@@ -67,11 +67,11 @@ int main(int argc, char **argv)
 
 	char full_config_path[512] = { 0 };
 	char config_home[512] = { 0 };
-#ifdef _WIN32
-	strcpy(full_config_path, "config.json");
-	config_path = full_config_path;
-#endif
+
 	if (!config_path) {
+#ifdef _WIN32
+		strcpy(full_config_path, "config.json");
+#else
 		const char *xdg_config_home = getenv("XDG_CONFIG_HOME");
 		const char *home = getenv("HOME");
 		if (!xdg_config_home || strlen(xdg_config_home) == 0) {
@@ -88,6 +88,7 @@ int main(int argc, char **argv)
 				return -1;
 			}
 		}
+#endif
 		config_path = full_config_path;
 	}
 

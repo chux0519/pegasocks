@@ -265,16 +265,41 @@ install(TARGETS libpegas
   PUBLIC_HEADER DESTINATION include/pegasocks
 )
 
-add_executable(pegas src/main.c)
+
 if(WIN32)
+  add_executable(pegas WIN32 src/main.c)
   target_link_libraries(pegas libpegas ws2_32)
+ 
+  if(Libevent2_ROOT)
+    file(GLOB runtime_dlls LIST_DIRECTORIES false ${Libevent2_ROOT}/bin/*.dll)
+    add_custom_command(
+          TARGET pegas POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy
+                  ${runtime_dlls}
+                  $<TARGET_FILE_DIR:pegas>)
+  endif()
+  
+  add_custom_command(
+    TARGET pegas POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_SOURCE_DIR}/logo/icon.ico
+            $<TARGET_FILE_DIR:pegas>)
+
 else()
+  add_executable(pegas src/main.c)
   target_link_libraries(pegas libpegas)
 endif()
 
 
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)
+
+if(runtime_dlls)
+  install(FILES ${runtime_dlls} DESTINATION bin)
+endif()
+if(WIN32)
+  install(FILES logo/icon.ico DESTINATION bin)
+endif()
 
 # manpage
 find_program(A2X_EXECUTABLE NAMES a2x a2x.py)
