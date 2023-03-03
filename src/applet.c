@@ -91,7 +91,7 @@ void pgs_tray_init(pgs_tray_context_t *ctx)
 		sprintf(full_icon_path, "%s/%s", local_icon_path, TRAY_ICON);
 		tray.icon = full_icon_path;
 	}
-#if defined(__APPLE__) || defined(__MACH__)
+#if defined(TRAY_WINAPI) || defined(TRAY_APPKIT)
 	tray.icon = TRAY_ICON;
 #endif
 

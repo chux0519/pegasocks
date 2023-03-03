@@ -40,6 +40,8 @@ set(CMAKE_C_FLAGS_UBSAN
     FORCE)
 # SAN end =======================================
 
+cmake_policy(SET CMP0074 NEW)
+
 set(PEGAS_SOURCES 
                   src/pegas.c
                   src/config.c
@@ -265,10 +267,11 @@ install(TARGETS libpegas
 
 add_executable(pegas src/main.c)
 if(WIN32)
-  target_link_libraries(pegas libpegas ws2_32 wsock32)
+  target_link_libraries(pegas libpegas ws2_32)
 else()
   target_link_libraries(pegas libpegas)
 endif()
+
 
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)
