@@ -8,6 +8,8 @@
 #include "log.h"
 #ifndef _WIN32
 #include <unistd.h>
+#else
+#define F_OK 0
 #endif
 
 typedef struct pgs_tray_context_s {
