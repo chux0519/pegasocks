@@ -274,7 +274,7 @@ if(WIN32)
   target_link_libraries(pegas libpegas ws2_32)
  
   if(Libevent2_ROOT)
-    file(GLOB runtime_dlls LIST_DIRECTORIES false ${Libevent2_ROOT}/bin/*.dll)
+    file(GLOB runtime_dlls LIST_DIRECTORIES false ${Libevent2_ROOT}/lib/*.dll)
     add_custom_command(
           TARGET pegas POST_BUILD
           COMMAND ${CMAKE_COMMAND} -E copy
