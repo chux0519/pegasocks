@@ -13,6 +13,17 @@ Tested on msys2-ucrt64
 
 Then I recommend build libevent your self, just use the same toolchain as well.
 
+
+```
+mkdir -p ./libevent/build
+cd ./libevent/build
+cmake -DCMAKE_INSTALL_PREFIX=./dist ..
+
+cmake --build .
+
+cmake --install . --prefix "./dist"
+```
+
 Suppose we have the libevent compiled and installed it to `/c/Users/Bob/repos/libevent/build/dist`
 
 ## Compile
