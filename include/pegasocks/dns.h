@@ -88,8 +88,23 @@ static void pgs_dns_init(struct event_base *base,
 #ifdef __ANDROID__
 		*(dns_base_ptr) = evdns_base_new((base), 0);
 #else
+#ifdef _WIN32
+		*(dns_base_ptr) = evdns_base_new((base), 0);
+		int ret =
+			evdns_base_config_windows_nameservers(*(dns_base_ptr));
+		if (ret == 0) {
+			pgs_logger_info(logger,
+					"Found name servers from windows");
+		} else {
+			pgs_logger_error(
+				logger,
+				"Failed to find name servers from windows");
+		}
+#else
+		// process  resolv.conf
 		*(dns_base_ptr) = evdns_base_new(
 			(base), EVDNS_BASE_INITIALIZE_NAMESERVERS);
+#endif
 #endif
 	}
 	evdns_base_set_option(*(dns_base_ptr), "max-probe-timeout:", "5");
