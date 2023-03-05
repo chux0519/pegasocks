@@ -946,7 +946,7 @@ static void on_ss_remote_event(struct bufferevent *bev, short events, void *ctx)
 
 	if (events & BEV_EVENT_CONNECTED) {
 		session->outbound->ready = true;
-		on_ss_local_read(bev, ctx);
+		on_ss_local_read(session->inbound->bev, ctx);
 	}
 	if (events & BEV_EVENT_TIMEOUT)
 		pgs_session_error(session, "shadowsocks remote timeout");
