@@ -206,6 +206,15 @@ void on_ss_local_read(struct bufferevent *bev, void *ctx)
 	if (len <= 0)
 		return;
 
+	/*
+		Payload length is a 2-byte big-endian unsigned integer capped at 0x3FFF. 
+		The higher two bits are reserved and must be set to zero. 
+		Payload is therefore limited to 16*1024 - 1 bytes.
+	*/
+	if (len > 0x3FFF) {
+		len = 0x3FFF;
+	}
+
 	uint8_t *msg = evbuffer_pullup(inboundr, len);
 
 	pgs_session_debug(session, "local -> encode -> remote");

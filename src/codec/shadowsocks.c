@@ -245,10 +245,7 @@ static bool shadowsocks_write_remote_aes(pgs_session_t *session,
 
 		size_t addr_len = ssctx->cmd_len - 3;
 		size_t chunk_len = addr_len + len;
-		if (iv_len + chunk_len > BUFSIZE_16K) {
-			pgs_session_error(session, "payload too large");
-			return false;
-		}
+
 		uint8_t *payload = malloc(chunk_len);
 		memcpy(payload, ssctx->cmd + 3, addr_len);
 		memcpy(payload + addr_len, msg, len);
@@ -330,10 +327,6 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 		return false;
 	}
 	offset += (2 + ssctx->tag_len);
-
-	if (offset + payload_len + ssctx->tag_len > BUFSIZE_16K) {
-		return false;
-	}
 
 	if (!ssctx->iv_sent) {
 		uint8_t *payload = malloc(payload_len);
