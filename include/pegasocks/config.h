@@ -75,7 +75,8 @@
 // SHADOWSOCKS
 #define CONFIG_SS_METHOD "method"
 #define CONFIG_SS_PLUGIN "plugin"
-#define CONFIG_SS_PLUGIN_OPTS "plugin_opts"
+#define CONFIG_SS_PLUGIN_OPTS_NAME "plugin_opts.name"
+#define CONFIG_SS_PLUGIN_OPTS_HOST "plugin_opts.host"
 
 typedef struct pgs_config_ssl_s pgs_trojanserver_ssl_t;
 typedef struct pgs_config_ssl_s pgs_v2rayserver_ssl_t;
@@ -138,10 +139,18 @@ typedef struct pgs_config_extra_v2ray_s {
 	pgs_cryptor_type_t secure;
 } pgs_config_extra_v2ray_t;
 
+typedef struct pgs_obfs_para_s {
+	const char *name;
+	const char *host;
+	const char *uri;
+	const char *method;
+	uint16_t port;
+} pgs_obfs_para_t;
+
 typedef struct pgs_config_extra_ss_s {
 	pgs_cryptor_type_t method;
 	const char *plugin;
-	const char *plugin_opts;
+	pgs_obfs_para_t *plugin_opts;
 } pgs_config_extra_ss_t;
 
 /* common */
@@ -157,6 +166,7 @@ pgs_server_config_t *pgs_servers_config_new(uint64_t len);
 void pgs_servers_config_free(pgs_server_config_t *servers,
 			     uint64_t servers_count);
 void *pgs_server_config_parse_extra(pgs_config_t *config,
+				    const pgs_server_config_t sconfig,
 				    const char *server_type, JSON_Object *jobj);
 void pgs_server_config_free_extra(const char *server_type, void *ptr);
 
@@ -173,9 +183,13 @@ pgs_config_extra_v2ray_t *pgs_config_extra_v2ray_new();
 void pgs_config_extra_v2ray_free(pgs_config_extra_v2ray_t *ptr);
 
 /* shadowsocks config */
-pgs_config_extra_ss_t *pgs_config_extra_ss_parse(pgs_config_t *config,
-						 JSON_Object *jobj);
+pgs_config_extra_ss_t *
+pgs_config_extra_ss_parse(pgs_config_t *config,
+			  const pgs_server_config_t sconfig, JSON_Object *jobj);
 pgs_config_extra_ss_t *pgs_config_extra_ss_new();
 void pgs_config_extra_ss_free(pgs_config_extra_ss_t *ptr);
+
+pgs_obfs_para_t *pgs_obfs_para_new();
+void pgs_obfs_para_free(pgs_obfs_para_t *ptr);
 
 #endif

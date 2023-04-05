@@ -222,6 +222,8 @@ pgs_outbound_ctx_ss_t *pgs_outbound_ctx_ss_new(const uint8_t *cmd,
 	ptr->cmd_len = cmd_len;
 	ptr->cipher = cipher;
 	ptr->iv_sent = false;
+	ptr->obfs_http = false;
+	ptr->obfs_para = NULL;
 
 	ptr->aead_decode_state = READY;
 	ptr->plen = 0;
@@ -422,11 +424,16 @@ bool pgs_session_ss_outbound_init(
 {
 	int fd = -1;
 	pgs_config_extra_ss_t *ssconf = (pgs_config_extra_ss_t *)config->extra;
-
-	ptr->ctx =
+	pgs_outbound_ctx_ss_t *ssctx =
 		pgs_outbound_ctx_ss_new(cmd, cmd_len, config->password,
 					strlen((const char *)config->password),
 					ssconf->method);
+	if (ssconf->plugin != NULL &&
+	    strcmp(ssconf->plugin, "obfs-local") == 0) {
+		ssctx->obfs_http = true;
+		ssctx->obfs_para = ssconf->plugin_opts;
+	}
+	ptr->ctx = ssctx;
 
 	if (!pgs_outbound_fd_init(&fd, logger, gconfig))
 		goto error;

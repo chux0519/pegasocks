@@ -61,6 +61,7 @@ pgs_cryptor_t *pgs_cryptor_new(pgs_cryptor_type_t cipher,
 
 	switch (ptr->cipher) {
 	case AES_128_CFB:
+	case AES_CHACHA20_IETF:
 		if (!pgs_cryptor_init_aes(ptr)) {
 			goto error;
 		}
@@ -92,6 +93,7 @@ void pgs_cryptor_free(pgs_cryptor_t *ptr)
 {
 	switch (ptr->cipher) {
 	case AES_128_CFB:
+	case AES_CHACHA20_IETF:
 		if (ptr->ctx) {
 			mbedtls_cipher_free(ptr->ctx);
 			free(ptr->ctx);
@@ -124,6 +126,7 @@ bool pgs_cryptor_encrypt(pgs_cryptor_t *ptr, const uint8_t *plaintext,
 {
 	switch (ptr->cipher) {
 	case AES_128_CFB:
+	case AES_CHACHA20_IETF:
 		return pgs_cryptor_encrypt_aes(ptr, plaintext, plaintext_len,
 					       tag, ciphertext, ciphertext_len);
 	case AEAD_AES_128_GCM:
@@ -147,6 +150,7 @@ bool pgs_cryptor_decrypt(pgs_cryptor_t *ptr, const uint8_t *ciphertext,
 {
 	switch (ptr->cipher) {
 	case AES_128_CFB:
+	case AES_CHACHA20_IETF:
 		return pgs_cryptor_decrypt_aes(ptr, ciphertext, ciphertext_len,
 					       tag, plaintext, plaintext_len);
 	case AEAD_AES_128_GCM:
@@ -315,6 +319,8 @@ static const mbedtls_cipher_type_t get_mbedtls_cipher(pgs_cryptor_type_t cipher)
 	switch (cipher) {
 	case AES_128_CFB:
 		return MBEDTLS_CIPHER_AES_128_CFB128;
+	case AES_CHACHA20_IETF:
+	//TODO:
 	case AEAD_AES_128_GCM:
 		return MBEDTLS_CIPHER_AES_128_GCM;
 	case AEAD_AES_256_GCM:

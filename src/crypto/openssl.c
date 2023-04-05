@@ -12,6 +12,8 @@ static const EVP_CIPHER *get_openssl_cipher(pgs_cryptor_type_t cipher)
 	switch (cipher) {
 	case AES_128_CFB:
 		return EVP_aes_128_cfb();
+	case AES_CHACHA20_IETF:
+		return EVP_chacha20();
 	case AEAD_AES_128_GCM:
 		return EVP_aes_128_gcm();
 	case AEAD_AES_256_GCM:

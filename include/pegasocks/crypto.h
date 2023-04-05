@@ -16,6 +16,9 @@
 
 #define AES_128_CFB_KEY_LEN 16
 #define AES_128_CFB_IV_LEN 16
+#define AES_CHACHA20_IETF_KEY_LEN 32
+#define AES_CHACHA20_IETF_IV_LEN 16 // 12
+#define AES_CHACHA20_IETF_NONCE_LEN 12
 #define AEAD_AES_128_GCM_KEY_LEN 16
 #define AEAD_AES_128_GCM_IV_LEN 12
 #define AEAD_AES_128_GCM_TAG_LEN 16
@@ -30,6 +33,8 @@ typedef struct pgs_base_cryptor_s pgs_aes_cryptor_t;
 typedef enum { PGS_ENCRYPT, PGS_DECRYPT } pgs_cryptor_direction_t;
 typedef enum {
 	AES_128_CFB = 0x00, /* vmess */
+	AES_CHACHA20_IETF, /* shadowsocks */
+
 	AEAD_AES_128_GCM = 0x03, /* vmess */
 	AEAD_CHACHA20_POLY1305 = 0x04, /* shadowsocks | vmess */
 	AEAD_AES_256_GCM = 0x05, /* shadowsocks */
@@ -65,6 +70,7 @@ static inline bool is_aead_cipher(pgs_cryptor_type_t cipher)
 {
 	switch (cipher) {
 	case AES_128_CFB:
+	case AES_CHACHA20_IETF:
 		return false;
 	case AEAD_AES_128_GCM:
 	case AEAD_AES_256_GCM:
@@ -87,6 +93,11 @@ static inline void pgs_cryptor_type_info(pgs_cryptor_type_t cipher,
 	case AES_128_CFB:
 		*key_len = AES_128_CFB_KEY_LEN;
 		*iv_len = AES_128_CFB_IV_LEN;
+		*tag_len = 0;
+		break;
+	case AES_CHACHA20_IETF:
+		*key_len = AES_CHACHA20_IETF_KEY_LEN;
+		*iv_len = AES_CHACHA20_IETF_IV_LEN;
 		*tag_len = 0;
 		break;
 	case AEAD_AES_128_GCM:

@@ -123,6 +123,10 @@ typedef struct pgs_outbound_ctx_ss_s {
 	size_t cmd_len;
 
 	bool iv_sent;
+	bool obfs_http;
+	int obfs_stage;
+	int deobfs_stage;
+	pgs_obfs_para_t *obfs_para;
 
 	/* AEAD decode state machine */
 	enum {

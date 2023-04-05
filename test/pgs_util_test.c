@@ -4,6 +4,9 @@
 #else
 #include <openssl/evp.h>
 #endif
+#ifdef TEST_SODIUM
+#include <sodium.h>
+#endif
 #include "assert.h"
 
 static void debug_hex(const uint8_t *buf, size_t len)
@@ -370,6 +373,39 @@ void test_increase_nonce()
 	}
 }
 
+void test_chacha20ietf()
+{
+#ifdef TEST_SODIUM
+	unsigned char key[32] = {
+		1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+		1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8,
+	};
+	unsigned char iv[16] = {
+		0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4
+	};
+	unsigned char plaintext[8] = "password";
+	unsigned char result1[] = "d9647d6947e0d5b7";
+	pgs_cryptor_t *encryptor =
+		pgs_cryptor_new(AES_CHACHA20_IETF, PGS_ENCRYPT, key, iv);
+	assert(encryptor != NULL);
+	{
+		unsigned char out[8] = { 0 };
+		size_t output_len;
+		bool ret = pgs_cryptor_encrypt(encryptor, plaintext, 8, NULL,
+					       out, &output_len);
+		assert(ret == true);
+		assert(output_len == 8);
+		debug_hex(out, sizeof(out));
+		debug_hex(iv, sizeof(iv));
+	}
+	pgs_cryptor_free(encryptor);
+
+	{
+		sodium_init();
+	}
+#endif
+}
+
 int main()
 {
 	test_sha224();
@@ -398,5 +434,7 @@ int main()
 	printf("test_hkdf_sha1 passed\n");
 	test_increase_nonce();
 	printf("test_increase_nonce passed\n");
+	test_chacha20ietf();
+	printf("test_chacha20ietf passed\n");
 	return 0;
 }

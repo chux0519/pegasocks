@@ -20,6 +20,16 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 static void pgs_ss_increase_cryptor_iv(pgs_outbound_ctx_ss_t *ctx,
 				       pgs_cryptor_direction_t dir);
 
+static const char *obfs_http_prefix_template =
+	"%s %s HTTP/1.1\r\n"
+	"Host: %s\r\n"
+	"User-Agent: curl/7.64.0\r\n"
+	"Upgrade: websocket\r\n"
+	"Connection: Upgrade\r\n"
+	"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+	"Content-Length: %lu\r\n"
+	"\r\n";
+
 bool shadowsocks_write_remote(pgs_session_t *session, const uint8_t *msg,
 			      size_t len, size_t *olen)
 {
@@ -82,6 +92,32 @@ static bool shadowsocks_write_local_aes(pgs_session_t *session,
 
 	pgs_outbound_ctx_ss_t *ssctx = session->outbound->ctx;
 
+	if (ssctx->obfs_http && ssctx->deobfs_stage == 0) {
+		if (len < 4) {
+			return true;
+		}
+		int err = -1;
+		// DROP http header
+		size_t rlen = len;
+		while (len >= 4) {
+			if (msg[0] == '\r' && msg[1] == '\n' &&
+			    msg[2] == '\r' && msg[3] == '\n') {
+				len -= 4;
+				msg += 4;
+				err = 0;
+				break;
+			}
+			len--;
+			msg++;
+		}
+		if (!err) {
+			ssctx->deobfs_stage++;
+			struct evbuffer *outboudr =
+				bufferevent_get_input(session->outbound->bev);
+			evbuffer_drain(outboudr, rlen - len);
+		}
+	}
+
 	size_t offset = 0, decode_len = 0;
 	if (ssctx->decryptor == NULL) {
 		if (len < ssctx->iv_len) {
@@ -122,6 +158,31 @@ static bool shadowsocks_write_local_aead(pgs_session_t *session,
 	*clen = 0;
 	size_t decode_len;
 
+	if (ssctx->obfs_http && ssctx->deobfs_stage == 0) {
+		if (len < 4) {
+			return true;
+		}
+		int err = -1;
+		// DROP http header
+		size_t rlen = len;
+		while (len >= 4) {
+			if (msg[0] == '\r' && msg[1] == '\n' &&
+			    msg[2] == '\r' && msg[3] == '\n') {
+				len -= 4;
+				msg += 4;
+				err = 0;
+				break;
+			}
+			len--;
+			msg++;
+		}
+		if (!err) {
+			ssctx->deobfs_stage++;
+			struct evbuffer *outboudr =
+				bufferevent_get_input(session->outbound->bev);
+			evbuffer_drain(outboudr, rlen - len);
+		}
+	}
 	// init decryptor
 	if (!ssctx->decryptor) {
 		if (len < ssctx->key_len) {
@@ -276,6 +337,26 @@ static bool shadowsocks_write_remote_aes(pgs_session_t *session,
 		}
 		*olen = len;
 	}
+	if (ssctx->obfs_http && ssctx->obfs_stage == 0) {
+		// write template first
+		char host_port[256];
+		if (ssctx->obfs_para->port != 80)
+			snprintf(host_port, sizeof(host_port), "%s:%d",
+				 ssctx->obfs_para->host,
+				 ssctx->obfs_para->port);
+		else
+			snprintf(host_port, sizeof(host_port), "%s",
+				 ssctx->obfs_para->host);
+
+		char http_header[512];
+		size_t obfs_len =
+			snprintf(http_header, sizeof(http_header),
+				 obfs_http_prefix_template,
+				 ssctx->obfs_para->method,
+				 ssctx->obfs_para->uri, host_port, *olen);
+		evbuffer_add(outboundw, http_header, obfs_len);
+		ssctx->obfs_stage++;
+	}
 	evbuffer_add(outboundw, ssctx->wbuf->buffer, *olen);
 	return true;
 }
@@ -360,6 +441,28 @@ static bool shadowsocks_write_remote_aead(pgs_session_t *session,
 	}
 
 	*olen = offset + payload_len + ssctx->tag_len;
+
+	if (ssctx->obfs_http && ssctx->obfs_stage == 0) {
+		// write template first
+		char host_port[256];
+		if (ssctx->obfs_para->port != 80)
+			snprintf(host_port, sizeof(host_port), "%s:%d",
+				 ssctx->obfs_para->host,
+				 ssctx->obfs_para->port);
+		else
+			snprintf(host_port, sizeof(host_port), "%s",
+				 ssctx->obfs_para->host);
+
+		char http_header[512];
+		size_t obfs_len =
+			snprintf(http_header, sizeof(http_header),
+				 obfs_http_prefix_template,
+				 ssctx->obfs_para->method,
+				 ssctx->obfs_para->uri, host_port, *olen);
+		evbuffer_add(outboundw, http_header, obfs_len);
+		ssctx->obfs_stage++;
+	}
+
 	evbuffer_add(outboundw, ssctx->wbuf->buffer, *olen);
 
 	return true;

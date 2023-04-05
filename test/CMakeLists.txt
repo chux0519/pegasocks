@@ -37,9 +37,14 @@ else()
     ${CMAKE_SOURCE_DIR}/src/crypto/openssl.c
   )
 endif()
+
+
+
 add_executable (pgs_util_test ${CONFIG_UTIL_SOURCES})
 
 add_executable (pgs_config_test ${CONFIG_TEST_SOURCES})
+
+
 
 if(USE_MBEDTLS)
   target_link_libraries (pgs_util_test ${MBEDTLS_LIBRARIES})
@@ -47,6 +52,14 @@ if(USE_MBEDTLS)
 else()
   target_link_libraries (pgs_util_test ${OPENSSL_LIBRARIES})
   target_link_libraries (pgs_config_test ${OPENSSL_LIBRARIES})
+endif()
+
+if(TEST_SODIUM)
+add_definitions(-DTEST_SODIUM=1)
+find_package(Sodium REQUIRED)
+message(STATUS "Found libsodium ${sodium_LIBRARY_RELEASE}")
+include_directories(${sodium_INCLUDE_DIR})
+target_link_libraries(pgs_util_test ${sodium_LIBRARY_RELEASE})
 endif()
 
 add_test (PegaUtilTests pgs_util_test)

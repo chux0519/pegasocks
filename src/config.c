@@ -234,7 +234,7 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 
 		// parse type specific data
 		ptr[i].extra = pgs_server_config_parse_extra(
-			config, server_type, server);
+			config, ptr[i], server_type, server);
 		if (ptr[i].extra == NULL)
 			goto error;
 	}
@@ -257,6 +257,7 @@ void pgs_server_config_free_extra(const char *server_type, void *ptr)
 }
 
 void *pgs_server_config_parse_extra(pgs_config_t *config,
+				    const pgs_server_config_t sconfig,
 				    const char *server_type, JSON_Object *jobj)
 {
 	if (IS_TROJAN_SERVER(server_type)) {
@@ -264,7 +265,7 @@ void *pgs_server_config_parse_extra(pgs_config_t *config,
 	} else if (IS_V2RAY_SERVER(server_type)) {
 		return pgs_config_extra_v2ray_parse(config, jobj);
 	} else if (IS_SHADOWSOCKS_SERVER(server_type)) {
-		return pgs_config_extra_ss_parse(config, jobj);
+		return pgs_config_extra_ss_parse(config, sconfig, jobj);
 	}
 	return NULL;
 }
@@ -455,8 +456,9 @@ void pgs_config_extra_v2ray_free(pgs_config_extra_v2ray_t *ptr)
 }
 
 /* shadowsocks */
-pgs_config_extra_ss_t *pgs_config_extra_ss_parse(pgs_config_t *config,
-						 JSON_Object *jobj)
+pgs_config_extra_ss_t *
+pgs_config_extra_ss_parse(pgs_config_t *config,
+			  const pgs_server_config_t sconfig, JSON_Object *jobj)
 {
 	pgs_config_extra_ss_t *ptr = pgs_config_extra_ss_new();
 
@@ -464,23 +466,48 @@ pgs_config_extra_ss_t *pgs_config_extra_ss_parse(pgs_config_t *config,
 	if (method != NULL) {
 		if (strcasecmp(method, "aes-128-cfb") == 0) {
 			ptr->method = AES_128_CFB;
+		} else if (strcasecmp(method, "chacha20-ietf") == 0) {
+			ptr->method = AES_CHACHA20_IETF;
 		} else if (strcasecmp(method, "aes-128-gcm") == 0) {
 			ptr->method = AEAD_AES_128_GCM;
 		} else if (strcasecmp(method, "aes-256-gcm") == 0) {
 			ptr->method = AEAD_AES_256_GCM;
-		} else if (strcasecmp(method, "chacha20-poly1305") == 0 ||
-			   strcasecmp(method, "chacha20-ietf-poly1305") == 0) {
+		} else if (strcasecmp(method, "chacha20-ietf-poly1305") == 0) {
 			ptr->method = AEAD_CHACHA20_POLY1305;
 		}
 	}
 
 	const char *plugin = json_object_dotget_string(jobj, CONFIG_SS_PLUGIN);
-	const char *plugin_opts =
-		json_object_dotget_string(jobj, CONFIG_SS_PLUGIN_OPTS);
-	if (plugin != NULL)
+
+	if (plugin != NULL) {
 		ptr->plugin = plugin;
-	if (plugin_opts != NULL)
-		ptr->plugin_opts = plugin_opts;
+		if (strcasecmp(ptr->plugin, "obfs-local") == 0) {
+			const char *obfs_name = json_object_dotget_string(
+				jobj, CONFIG_SS_PLUGIN_OPTS_NAME);
+			if (obfs_name != NULL &&
+			    strcasecmp(obfs_name, "http") == 0) {
+				ptr->plugin_opts = pgs_obfs_para_new();
+				ptr->plugin_opts->host =
+					json_object_dotget_string(
+						jobj,
+						CONFIG_SS_PLUGIN_OPTS_HOST);
+				if (ptr->plugin_opts->host == NULL) {
+					pgs_config_error(
+						config,
+						"Error: %s can not be NULL",
+						CONFIG_SS_PLUGIN_OPTS_HOST);
+					goto error;
+				}
+				ptr->plugin_opts->port = sconfig.server_port;
+			} else {
+				pgs_config_error(
+					config,
+					"Error: only %s=http is supported",
+					CONFIG_SS_PLUGIN_OPTS_NAME);
+				goto error;
+			}
+		}
+	}
 
 	return ptr;
 
@@ -501,6 +528,25 @@ pgs_config_extra_ss_t *pgs_config_extra_ss_new()
 }
 
 void pgs_config_extra_ss_free(pgs_config_extra_ss_t *ptr)
+{
+	if (ptr->plugin_opts != NULL)
+		pgs_obfs_para_free(ptr->plugin_opts);
+	free(ptr);
+	ptr = NULL;
+}
+
+pgs_obfs_para_t *pgs_obfs_para_new()
+{
+	pgs_obfs_para_t *ptr = malloc(sizeof(pgs_obfs_para_t));
+	ptr->method = "GET";
+	ptr->uri = "/";
+	ptr->port = 80;
+	ptr->name = "http"; // only support http by now
+	ptr->host = NULL;
+
+	return ptr;
+}
+void pgs_obfs_para_free(pgs_obfs_para_t *ptr)
 {
 	free(ptr);
 	ptr = NULL;

@@ -391,7 +391,7 @@ void test_shadowsocks_config()
                 \"server_port\": 10086,\
                 \"method\": \"chacha20-ietf-poly1305\",\
                 \"plugin\": \"obfs-local\",\
-                \"plugin_opts\": \"obfs=http;obfs-host=www.baidu.com\",\
+                \"plugin_opts\": {\"name\": \"http\", \"host\": \"bing.com\"},\
                 \"password\": \"password\"\
             }\
         ],\
@@ -425,8 +425,8 @@ void test_shadowsocks_config()
 	pgs_config_extra_ss_t *ss_config = server->extra;
 	assert(ss_config->method == AEAD_CHACHA20_POLY1305);
 	PGS_STREUQAL(ss_config->plugin, "obfs-local");
-	PGS_STREUQAL(ss_config->plugin_opts,
-		     "obfs=http;obfs-host=www.baidu.com");
+	PGS_STREUQAL(ss_config->plugin_opts->name, "http");
+	PGS_STREUQAL(ss_config->plugin_opts->host, "bing.com");
 
 	pgs_config_free(config);
 }
