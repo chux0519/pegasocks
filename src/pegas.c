@@ -45,6 +45,7 @@ static pthread_t HELPER_THREAD = 0;
 static pgs_helper_thread_t *HELPER_THREAD_CTX = NULL; /* const pointer */
 
 static int lfd = 0;
+static int ufd = 0;
 static int cfd = 0;
 static int snum = 0;
 
@@ -267,6 +268,7 @@ static bool pgs_start_local_servers()
 		pgs_local_server_ctx_t *ctx =
 			malloc(sizeof(pgs_local_server_ctx_t));
 		ctx->fd = lfd;
+		ctx->ufd = ufd;
 		ctx->mpsc = MPSC;
 		ctx->config = CONFIG;
 		ctx->sm = SM;
@@ -332,6 +334,9 @@ static bool pgs_init(const char *config, const char *acl, int threads)
 #endif
 
 	if (init_local_server_fd(CONFIG, &lfd, SOCK_STREAM) < 0) {
+		return false;
+	}
+	if (init_local_server_fd(CONFIG, &ufd, SOCK_DGRAM) < 0) {
 		return false;
 	}
 	if (init_control_fd(CONFIG, &cfd) < 0) {
@@ -400,6 +405,7 @@ static void pgs_clean()
 
 	// will be closed by bufferevents
 	lfd = 0;
+	ufd = 0;
 	cfd = 0;
 
 	snum = 0;

@@ -87,6 +87,18 @@ if(MBEDTLS_INCLUDE_DIR AND EXISTS "${MBEDTLS_INCLUDE_DIR}/mbedtls/version.h")
     string(REGEX REPLACE "^#define MBEDTLS_VERSION_PATCH[ \\t\\n\\r]+([0-9]+)$" "\\1" MBEDTLS_VERSION_PATCH "${VERSION_PATCH_LINE}")
 endif()
 
+if(NOT MBEDTLS_VERSION AND EXISTS "${MBEDTLS_INCLUDE_DIR}/mbedtls/build_info.h")
+    file(STRINGS "${MBEDTLS_INCLUDE_DIR}/mbedtls/build_info.h" VERSION_STRING_LINE REGEX "^#define MBEDTLS_VERSION_STRING[ \\t\\n\\r]+\"[^\"]*\"$")
+    file(STRINGS "${MBEDTLS_INCLUDE_DIR}/mbedtls/build_info.h" VERSION_MAJOR_LINE REGEX "^#define MBEDTLS_VERSION_MAJOR[ \\t\\n\\r]+[0-9]+$")
+    file(STRINGS "${MBEDTLS_INCLUDE_DIR}/mbedtls/build_info.h" VERSION_MINOR_LINE REGEX "^#define MBEDTLS_VERSION_MINOR[ \\t\\n\\r]+[0-9]+$")
+    file(STRINGS "${MBEDTLS_INCLUDE_DIR}/mbedtls/build_info.h" VERSION_PATCH_LINE REGEX "^#define MBEDTLS_VERSION_PATCH[ \\t\\n\\r]+[0-9]+$")
+
+    string(REGEX REPLACE "^#define MBEDTLS_VERSION_STRING[ \\t\\n\\r]+\"([^\"]*)\"$" "\\1" MBEDTLS_VERSION "${VERSION_STRING_LINE}")
+    string(REGEX REPLACE "^#define MBEDTLS_VERSION_MAJOR[ \\t\\n\\r]+([0-9]+)$" "\\1" MBEDTLS_VERSION_MAJOR "${VERSION_MAJOR_LINE}")
+    string(REGEX REPLACE "^#define MBEDTLS_VERSION_MINOR[ \\t\\n\\r]+([0-9]+)$" "\\1" MBEDTLS_VERSION_MINOR "${VERSION_MINOR_LINE}")
+    string(REGEX REPLACE "^#define MBEDTLS_VERSION_PATCH[ \\t\\n\\r]+([0-9]+)$" "\\1" MBEDTLS_VERSION_PATCH "${VERSION_PATCH_LINE}")
+endif()
+
 
 if(MBEDTLS_USE_STATIC_LIBS)
     set(_MBEDTLS_LIB_NAME libmbedtls.a)

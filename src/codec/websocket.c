@@ -1,4 +1,4 @@
-#include "codec/codec.h"
+#include "codec/websocket.h"
 #include "crypto.h"
 
 #include <assert.h>

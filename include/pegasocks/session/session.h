@@ -5,25 +5,43 @@
 #include <netinet/in.h>
 #endif
 #include <event2/event.h>
+#include <event2/buffer.h>
 
+#include "codec/websocket.h"
 #include "server/local.h"
-#include "inbound.h"
-#include "outbound.h"
 #include "utils.h"
 
-#define pgs_session_debug(session, ...)                                        \
-	pgs_logger_debug(session->local_server->logger, __VA_ARGS__)
-#define pgs_session_info(session, ...)                                         \
-	pgs_logger_info(session->local_server->logger, __VA_ARGS__)
-#define pgs_session_warn(session, ...)                                         \
-	pgs_logger_warn(session->local_server->logger, __VA_ARGS__)
-#define pgs_session_error(session, ...)                                        \
-	pgs_logger_error(session->local_server->logger, __VA_ARGS__)
-#define pgs_session_debug_buffer(session, buf, len)                            \
-	pgs_logger_debug_buffer(session->local_server->logger, buf, len)
+#ifndef htonll
+#define htonll(x)                                                              \
+	((1 == htonl(1)) ?                                                     \
+		       (x) :                                                         \
+		       ((uint64_t)htonl((x)&0xFFFFFFFF) << 32) | htonl((x) >> 32))
+#endif
 
+#ifndef ntohll
+#define ntohll(x) htonll(x)
+#endif
+
+#define pgs_session_debug(session, ...)                                        \
+	pgs_logger_debug(session->local->logger, __VA_ARGS__)
+#define pgs_session_info(session, ...)                                         \
+	pgs_logger_info(session->local->logger, __VA_ARGS__)
+#define pgs_session_warn(session, ...)                                         \
+	pgs_logger_warn(session->local->logger, __VA_ARGS__)
+#define pgs_session_error(session, ...)                                        \
+	pgs_logger_error(session->local->logger, __VA_ARGS__)
+#define pgs_session_debug_buffer(session, buf, len)                            \
+	pgs_logger_debug_buffer(session->local->logger, buf, len)
 #define PGS_FREE_SESSION(session)                                              \
-	pgs_list_del(session->local_server->sessions, session->node)
+	pgs_list_del(session->local->sessions, session->node)
+
+typedef enum { PROTOCOL_TYPE_TCP = 0, PROTOCOL_TYPE_UDP } pgs_protocol_t;
+typedef enum {
+	SOCKS5_AUTH = 0,
+	SOCKS5_CMD,
+	SOCKS5_PROXY,
+	SOCKS5_UDP_ASSOCIATE
+} pgs_socks5_state;
 
 typedef struct pgs_server_session_stats_s {
 	struct timeval start;
@@ -32,22 +50,86 @@ typedef struct pgs_server_session_stats_s {
 	uint64_t recv;
 } pgs_session_stats_t;
 
+typedef struct pgs_inbound_s {
+	pgs_protocol_t protocol;
+
+	void *ctx;
+
+	void (*read)(void *session);
+	bool (*write)(void *ctx, uint8_t *msg, size_t len, size_t *olen);
+	void (*free)(void *ctx);
+} pgs_inbound_t;
+
+typedef struct pgs_outbound_s {
+	pgs_protocol_t protocol;
+	bool ready;
+	void *ctx;
+
+	bool (*write)(void *ctx, uint8_t *msg, size_t len, size_t *olen);
+	void (*free)(void *ctx);
+} pgs_outbound_t;
+
+typedef struct pgs_trojan_ctx_s {
+	int fd;
+	struct bufferevent *bev;
+
+	// sha224(password) + "\r\n" + cmd[1] + cmd.substr(3) + "\r\n"
+	char *head;
+	size_t head_len;
+} pgs_trojan_ctx_t;
+
+typedef struct pgs_socks5_cmd_s {
+	uint8_t atype;
+	char *dest;
+	uint16_t port;
+
+	uint8_t *raw_cmd;
+	size_t cmd_len;
+} pgs_socks5_cmd_t;
+
 typedef struct pgs_session_s {
-	pgs_session_inbound_t *inbound;
-	pgs_session_outbound_t *outbound;
-	pgs_local_server_t *local_server;
-	pgs_session_stats_t *metrics;
+	pgs_socks5_state state;
+	pgs_socks5_cmd_t cmd;
+
+	const pgs_server_config_t *config;
+	pgs_local_server_t *local;
+
+	pgs_inbound_t inbound;
+	pgs_outbound_t outbound;
 
 	pgs_list_node_t *node; /* store the value to sessions */
 } pgs_session_t;
 
+typedef struct pgs_ping_session_s {
+	pgs_session_t session; /* session can be up cast to pgs_ping_session_t */
+
+	double ping;
+	double g204;
+
+	int idx;
+
+	struct timeval ts_start;
+	struct timeval ts_send;
+	struct timeval ts_recv;
+} pgs_ping_session_t;
+
+pgs_ping_session_t *pgs_ping_session_new(pgs_local_server_t *,
+					 const pgs_server_config_t *, int);
+void pgs_ping_session_free(pgs_ping_session_t *);
+
+pgs_trojan_ctx_t *pgs_trojan_ctx_new(pgs_session_t *);
+void pgs_trojan_ctx_free(pgs_trojan_ctx_t *);
+
 // session
-pgs_session_t *pgs_session_new(int fd, pgs_local_server_t *local_server);
-void pgs_session_start(pgs_session_t *session);
+pgs_session_t *pgs_session_new(pgs_local_server_t *,
+			       const pgs_server_config_t *);
+void pgs_session_start(pgs_session_t *session, int fd);
 void pgs_session_free(pgs_session_t *session);
 
-// metrics
-void on_session_metrics_recv(pgs_session_t *session, uint64_t len);
-void on_session_metrics_send(pgs_session_t *session, uint64_t len);
+pgs_socks5_cmd_t socks5_cmd_parse(const uint8_t *, size_t);
+void pgs_socks5_cmd_free(pgs_socks5_cmd_t);
+
+void on_local_event(struct bufferevent *bev, short events, void *ctx);
+void on_socks5_handshake(struct bufferevent *bev, void *ctx);
 
 #endif

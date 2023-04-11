@@ -78,7 +78,6 @@ pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config)
 			}
 		}
 		SSL_CTX_set_mode(ptr->_, SSL_MODE_AUTO_RETRY);
-		SSL_CTX_set_session_cache_mode(ptr->_, SSL_SESS_CACHE_OFF);
 		if (SESSION_CACHE_LIST == NULL) {
 			SESSION_CACHE_LIST = pgs_list_new();
 			SESSION_CACHE_LIST->free = (void *)session_cache_free;
@@ -109,6 +108,7 @@ pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config)
 			}
 		}
 		SSL_CTX_set_session_cache_mode(ptr->_, SSL_SESS_CACHE_CLIENT);
+		SSL_CTX_set_options(ptr->_, SSL_OP_NO_TICKET);
 		SSL_CTX_sess_set_new_cb(ptr->_, new_session_cb);
 		SSL_CTX_sess_set_remove_cb(ptr->_, remove_session_cb);
 	}
@@ -144,10 +144,10 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev, int fd,
 	if (session != NULL) {
 		SSL_set_session(ssl, session);
 	}
-
 	*bev = bufferevent_openssl_socket_new(
 		base, fd, ssl, BUFFEREVENT_SSL_CONNECTING,
 		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+
 #ifdef BUFFEREVENT_SSL_BATCH_WRITE
 	bufferevent_ssl_set_flags(*bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN |
 						BUFFEREVENT_SSL_BATCH_WRITE);

@@ -14,12 +14,17 @@
 #include "ssl.h"
 #include "utils.h"
 
+#define UDP_PACKET_HEADER_SIZE (1 + 28 + 2 + 64)
+#define DEFAULT_MTU 1397 // 1492 - UDP_PACKET_HEADER_SIZE
+
 typedef struct pgs_local_server_s {
 	uint32_t tid;
 	int server_fd;
+	int server_udp_fd;
 	struct event_base *base;
 	struct evdns_base *dns_base;
 	struct evconnlistener *listener;
+	struct event *udp_listener;
 	pgs_logger_t *logger;
 
 	// to graceful shutdown
@@ -35,6 +40,7 @@ typedef struct pgs_local_server_s {
 
 typedef struct pgs_local_server_ctx_s {
 	int fd;
+	int ufd;
 	pgs_mpsc_t *mpsc;
 	pgs_config_t *config;
 	pgs_server_manager_t *sm;
@@ -44,7 +50,7 @@ typedef struct pgs_local_server_ctx_s {
 	void **local_server_ref; /* it will be used to stop the server from other threads */
 } pgs_local_server_ctx_t;
 
-pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
+pgs_local_server_t *pgs_local_server_new(int fd, int ufd, pgs_mpsc_t *mpsc,
 					 pgs_config_t *config, pgs_acl_t *acl,
 					 pgs_server_manager_t *sm,
 					 pgs_ssl_ctx_t *ssl_ctx);

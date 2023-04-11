@@ -3,6 +3,8 @@
 
 #include "session/session.h"
 
+#include <stdbool.h>
+
 #define pgs_ws_write_head_text(b, l) pgs_ws_write_head(b, l, 0x01)
 #define pgs_ws_write_head_bin(b, l) pgs_ws_write_head(b, l, 0x02)
 #define pgs_ws_write_text(b, msg, l) pgs_ws_write(b, msg, l, 0x01)

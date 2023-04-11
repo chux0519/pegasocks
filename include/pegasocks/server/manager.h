@@ -6,8 +6,6 @@
 #include "defs.h"
 #include "config.h"
 
-#define MAX_SESSION_STATS_SIZE 16
-
 typedef struct pgs_server_stats_s {
 	double connect_delay;
 	double g204_delay;

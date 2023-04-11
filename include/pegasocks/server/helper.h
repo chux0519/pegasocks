@@ -8,6 +8,7 @@
 #include "manager.h"
 #include "ssl.h"
 #include "utils.h"
+#include "local.h"
 
 typedef void(pgs_timer_cb_t)(evutil_socket_t fd, short event, void *data);
 
@@ -24,16 +25,9 @@ typedef struct pgs_helper_thread_s {
 
 	pgs_timer_t *log_timer;
 	pgs_timer_t *ping_timer;
-
 	struct event *ev_term;
 
-	pgs_list_t *mtasks; /* metrics tasks */
-
-	// share
-	pgs_server_manager_t *sm;
-	pgs_logger_t *logger;
-	const pgs_config_t *config;
-	pgs_ssl_ctx_t *ssl_ctx;
+	pgs_local_server_t fake_local;
 } pgs_helper_thread_t;
 
 typedef struct pgs_helper_thread_ctx_s {

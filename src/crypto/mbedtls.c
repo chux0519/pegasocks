@@ -196,12 +196,12 @@ error:
 
 void md5(const uint8_t *input, uint64_t input_len, uint8_t *res)
 {
-	mbedtls_md5_ret(input, input_len, res);
+	mbedtls_md5(input, input_len, res);
 }
 
 void sha1(const uint8_t *input, uint64_t input_len, uint8_t *res)
 {
-	mbedtls_sha1_ret(input, input_len, res);
+	mbedtls_sha1(input, input_len, res);
 }
 
 void hmac_md5(const uint8_t *key, uint64_t key_len, const uint8_t *data,
@@ -425,14 +425,15 @@ static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
 				    uint8_t *ciphertext, size_t *ciphertext_len)
 {
 	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_ENCRYPT, ptr->iv,
-			       ptr->iv_len, NULL, 0)) {
+			       ptr->iv_len)) {
 		return false;
 	}
-	if (mbedtls_gcm_update(ptr->ctx, plaintext_len, plaintext,
-			       ciphertext)) {
+	if (mbedtls_gcm_update(ptr->ctx, plaintext, plaintext_len, ciphertext,
+			       plaintext_len, ciphertext_len)) {
 		return false;
 	}
-	if (mbedtls_gcm_finish(ptr->ctx, tag, ptr->tag_len)) {
+	if (mbedtls_gcm_finish(ptr->ctx, ciphertext, plaintext_len,
+			       ciphertext_len, tag, ptr->tag_len)) {
 		return false;
 	}
 	*ciphertext_len = plaintext_len;
@@ -445,11 +446,12 @@ static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
 				    uint8_t *plaintext, size_t *plaintext_len)
 {
 	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv,
-			       ptr->iv_len, tag, ptr->tag_len)) {
+			       ptr->iv_len)) {
 		return false;
 	}
-	if (mbedtls_gcm_update(ptr->ctx, ciphertext_len, ciphertext,
-			       plaintext)) {
+	mbedtls_gcm_update_ad(ptr->ctx, tag, ptr->tag_len);
+	if (mbedtls_gcm_update(ptr->ctx, ciphertext, ciphertext_len, plaintext,
+			       ciphertext_len, plaintext_len)) {
 		return false;
 	}
 	*plaintext_len = ciphertext_len;

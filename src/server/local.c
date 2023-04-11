@@ -12,6 +12,81 @@
 #include <arpa/inet.h>
 #endif
 
+static void on_udp_read(int fd, short event, void *ctx)
+{
+	pgs_local_server_t *ptr = (pgs_local_server_t *)ctx;
+	pgs_logger_debug(ptr->logger, "udp local read triggered");
+
+	const pgs_server_config_t *config =
+		pgs_server_manager_get_config(ptr->sm);
+
+	pgs_buffer_t *rbuf = pgs_buffer_new();
+	pgs_buffer_ensure(rbuf, DEFAULT_MTU * 2);
+
+	struct sockaddr_in in_addr;
+	socklen_t in_addr_len = sizeof(struct sockaddr_in);
+	memset(&in_addr, 0, in_addr_len);
+
+	ssize_t len = recvfrom(fd, rbuf->buffer, rbuf->cap, 0,
+			       (struct sockaddr *)&in_addr, &in_addr_len);
+	if (len == -1) {
+		pgs_logger_error(ptr->logger, "error: udp recvfrom");
+		goto clean;
+	}
+	if (len == 0) {
+		pgs_logger_warn(ptr->logger, "udp connection closed");
+		goto clean;
+	}
+	if (len > DEFAULT_MTU) {
+		pgs_logger_warn(ptr->logger, "mtu too small");
+		goto clean;
+	}
+	char *dest = NULL;
+	int port = 0;
+
+	if (len <= 3) { /*FRAG is not supported now*/
+		pgs_logger_error(ptr->logger, "invalid udp datagram");
+		goto clean;
+	}
+	uint8_t *buf = rbuf->buffer;
+	uint8_t atype = buf[3];
+	// socks5_dest_addr_parse(buf, len, &atype, &dest, &port);
+	// pgs_udp_read_param_t param = { true, atype, dest,    port,
+	// 			       buf,  len,   session, config };
+#ifdef WITH_ACL
+	pgs_acl_t *acl = session->local_server->acl;
+	if (acl != NULL) {
+		bool bypass_match = pgs_acl_match_host_bypass(acl, dest);
+		bool proxy_match = pgs_acl_match_host_proxy(acl, dest);
+		if (!proxy_match && !bypass_match &&
+		    atype == SOCKS5_CMD_HOSTNAME) {
+			pgs_udp_read_param_t *p =
+				malloc(sizeof(pgs_udp_read_param_t));
+			*p = param;
+			evdns_base_resolve_ipv4(session->local_server->dns_base,
+						dest, 0, udp_dns_cb, p);
+			return;
+		}
+
+		if (proxy_match) {
+			param.proxy = true;
+		}
+		if (bypass_match) {
+			param.proxy = false;
+		}
+	}
+#endif
+	// do_udp_read(&param);
+
+clean:
+	if (dest != NULL) {
+		free(dest);
+	}
+	if (rbuf != NULL) {
+		pgs_buffer_free(rbuf);
+	}
+}
+
 static void accept_error_cb(struct evconnlistener *listener, void *ctx)
 {
 	pgs_local_server_t *local = (pgs_local_server_t *)ctx;
@@ -39,10 +114,8 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 			 sin->sin_port);
 
 	// new session
-	pgs_session_t *session = pgs_session_new(fd, local);
-
-	// start session
-	pgs_session_start(session);
+	pgs_session_t *session = pgs_session_new(local, NULL);
+	pgs_session_start(session, fd);
 }
 
 static void pgs_local_server_term(int sig, short events, void *arg)
@@ -54,7 +127,7 @@ static void pgs_local_server_term(int sig, short events, void *arg)
  * New server, this must be called in a seperate thread
  * it will create a base loop without LOCK, so not thread-safe (one loop per thread)
  * */
-pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
+pgs_local_server_t *pgs_local_server_new(int fd, int ufd, pgs_mpsc_t *mpsc,
 					 pgs_config_t *config, pgs_acl_t *acl,
 					 pgs_server_manager_t *sm,
 					 pgs_ssl_ctx_t *ssl_ctx)
@@ -66,6 +139,7 @@ pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
 
 	// shared across server threads
 	ptr->server_fd = fd;
+	ptr->server_udp_fd = ufd;
 	ptr->config = config;
 	ptr->sm = sm;
 	ptr->acl = acl;
@@ -90,6 +164,10 @@ pgs_local_server_t *pgs_local_server_new(int fd, pgs_mpsc_t *mpsc,
 				   -1, fd);
 	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
 
+	ptr->udp_listener = event_new(ptr->base, ptr->server_udp_fd,
+				      EV_READ | EV_PERSIST, on_udp_read, ptr);
+	event_add(ptr->udp_listener, NULL);
+
 	ptr->ev_term = evuser_new(ptr->base, pgs_local_server_term, ptr->base);
 
 	return ptr;
@@ -101,6 +179,10 @@ void pgs_local_server_destroy(pgs_local_server_t *local)
 	if (local->ev_term) {
 		evuser_del(local->ev_term);
 		event_free(local->ev_term);
+	}
+	if (local->udp_listener) {
+		event_del(local->udp_listener);
+		event_free(local->udp_listener);
 	}
 	if (local->listener)
 		evconnlistener_free(local->listener);
@@ -128,8 +210,8 @@ void *start_local_server(void *data)
 	pgs_local_server_ctx_t *ctx = (pgs_local_server_ctx_t *)data;
 
 	pgs_local_server_t *local =
-		pgs_local_server_new(ctx->fd, ctx->mpsc, ctx->config, ctx->acl,
-				     ctx->sm, ctx->ssl_ctx);
+		pgs_local_server_new(ctx->fd, ctx->ufd, ctx->mpsc, ctx->config,
+				     ctx->acl, ctx->sm, ctx->ssl_ctx);
 
 	// it will be used to stop/free pegas from other threads
 	*ctx->local_server_ref = local;

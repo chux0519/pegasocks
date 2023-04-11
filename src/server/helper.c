@@ -1,5 +1,6 @@
 #include "server/helper.h"
-#include "server/metrics.h"
+// #include "server/metrics.h"
+#include "session/session.h"
 #include "server/control.h"
 #include "dns.h"
 
@@ -8,14 +9,17 @@
 #include <signal.h>
 #include <pthread.h>
 
+#include <event2/event.h>
+
 static void pgs_timer_cb(evutil_socket_t fd, short event, void *data)
 {
 	pgs_timer_t *arg = data;
 	pgs_helper_thread_t *ctx = arg->ctx;
-	assert(ctx->logger != NULL);
-	assert(ctx->config != NULL);
-	assert(ctx->config->log_file != NULL);
-	pgs_logger_tryrecv(ctx->logger, ctx->config->log_file);
+	assert(ctx->fake_local.logger != NULL);
+	assert(ctx->fake_local.config != NULL);
+	assert(ctx->fake_local.config->log_file != NULL);
+	pgs_logger_tryrecv(ctx->fake_local.logger,
+			   ctx->fake_local.config->log_file);
 	arg->tv.tv_sec = 1;
 	arg->tv.tv_usec = 0;
 	evtimer_add(arg->ev, &arg->tv);
@@ -26,12 +30,12 @@ static void pgs_metrics_timer_cb(evutil_socket_t fd, short event, void *data)
 {
 	pgs_timer_t *arg = data;
 	pgs_helper_thread_t *ctx = arg->ctx;
-	for (int i = 0; i < ctx->sm->server_len; i++) {
-		pgs_metrics_task_ctx_t *t = get_metrics_g204_connect(
-			i, ctx->config, ctx->base, ctx->dns_base, ctx->sm,
-			ctx->logger, ctx->ssl_ctx, ctx->mtasks);
+	for (int i = 0; i < ctx->fake_local.sm->server_len; i++) {
+		const pgs_server_config_t *server =
+			&ctx->fake_local.config->servers[i];
+		pgs_ping_session_new(&ctx->fake_local, server, i);
 	}
-	arg->tv.tv_sec = ctx->config->ping_interval;
+	arg->tv.tv_sec = ctx->fake_local.config->ping_interval;
 	arg->tv.tv_usec = 0;
 	evtimer_add(arg->ev, &arg->tv);
 
@@ -71,12 +75,21 @@ pgs_helper_thread_t *pgs_helper_thread_new(int cfd, pgs_config_t *config,
 					   pgs_ssl_ctx_t *ssl_ctx)
 {
 	pgs_helper_thread_t *ptr = malloc(sizeof(pgs_helper_thread_t));
-
 	struct event_config *cfg = event_config_new();
 	event_config_set_flag(cfg, EVENT_BASE_FLAG_NOLOCK);
 	ptr->base = event_base_new_with_config(cfg);
-
 	pgs_dns_init(ptr->base, &ptr->dns_base, config, logger);
+
+	ptr->fake_local.base = ptr->base;
+	ptr->fake_local.config = config;
+	ptr->fake_local.acl = NULL;
+	ptr->fake_local.dns_base = ptr->dns_base;
+	ptr->fake_local.logger = logger;
+	ptr->fake_local.sm = sm;
+	ptr->fake_local.ssl_ctx = ssl_ctx;
+	ptr->fake_local.tid = (uint32_t)pthread_self();
+	ptr->fake_local.sessions = pgs_list_new();
+	ptr->fake_local.sessions->free = (void *)pgs_ping_session_free;
 
 	event_config_free(cfg);
 
@@ -88,14 +101,8 @@ pgs_helper_thread_t *pgs_helper_thread_new(int cfd, pgs_config_t *config,
 
 	ptr->ev_term = evuser_new(ptr->base, pgs_helper_term, ptr->base);
 
-	ptr->mtasks = pgs_list_new();
-	ptr->mtasks->free = (void *)pgs_metrics_task_ctx_free;
-
 	ptr->tid = (uint32_t)pthread_self();
-	ptr->config = config;
-	ptr->logger = logger;
-	ptr->sm = sm;
-	ptr->ssl_ctx = ssl_ctx;
+
 	return ptr;
 }
 
@@ -105,14 +112,15 @@ void pgs_helper_thread_free(pgs_helper_thread_t *ptr)
 		evuser_del(ptr->ev_term);
 		event_free(ptr->ev_term);
 	}
-	if (ptr->mtasks) {
-		pgs_list_free(ptr->mtasks);
+	if (ptr->fake_local.sessions) {
+		pgs_list_free(ptr->fake_local.sessions);
 	}
 	if (ptr->ping_timer)
 		pgs_timer_destroy(ptr->ping_timer);
 	if (ptr->log_timer) {
 		// drain logs first
-		pgs_logger_tryrecv(ptr->logger, ptr->config->log_file);
+		pgs_logger_tryrecv(ptr->fake_local.logger,
+				   ptr->fake_local.config->log_file);
 		pgs_timer_destroy(ptr->log_timer);
 	}
 	if (ptr->dns_base)
