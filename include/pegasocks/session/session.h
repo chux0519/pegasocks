@@ -40,7 +40,8 @@ typedef enum {
 	SOCKS5_AUTH = 0,
 	SOCKS5_CMD,
 	SOCKS5_PROXY,
-	SOCKS5_UDP_ASSOCIATE
+	SOCKS5_UDP_ASSOCIATE,
+	DNS_RESOLVE,
 } pgs_socks5_state;
 
 typedef struct pgs_server_session_stats_s {
@@ -89,6 +90,7 @@ typedef struct pgs_socks5_cmd_s {
 
 typedef struct pgs_session_s {
 	pgs_socks5_state state;
+	bool proxy;
 	pgs_socks5_cmd_t cmd;
 
 	const pgs_server_config_t *config;
@@ -96,6 +98,10 @@ typedef struct pgs_session_s {
 
 	pgs_inbound_t inbound;
 	pgs_outbound_t outbound;
+
+#ifdef WITH_ACL
+	struct evdns_request *dns_req;
+#endif
 
 	pgs_list_node_t *node; /* store the value to sessions */
 } pgs_session_t;

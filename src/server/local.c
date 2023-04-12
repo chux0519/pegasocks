@@ -50,33 +50,6 @@ static void on_udp_read(int fd, short event, void *ctx)
 	}
 	uint8_t *buf = rbuf->buffer;
 	uint8_t atype = buf[3];
-	// socks5_dest_addr_parse(buf, len, &atype, &dest, &port);
-	// pgs_udp_read_param_t param = { true, atype, dest,    port,
-	// 			       buf,  len,   session, config };
-#ifdef WITH_ACL
-	pgs_acl_t *acl = session->local_server->acl;
-	if (acl != NULL) {
-		bool bypass_match = pgs_acl_match_host_bypass(acl, dest);
-		bool proxy_match = pgs_acl_match_host_proxy(acl, dest);
-		if (!proxy_match && !bypass_match &&
-		    atype == SOCKS5_CMD_HOSTNAME) {
-			pgs_udp_read_param_t *p =
-				malloc(sizeof(pgs_udp_read_param_t));
-			*p = param;
-			evdns_base_resolve_ipv4(session->local_server->dns_base,
-						dest, 0, udp_dns_cb, p);
-			return;
-		}
-
-		if (proxy_match) {
-			param.proxy = true;
-		}
-		if (bypass_match) {
-			param.proxy = false;
-		}
-	}
-#endif
-	// do_udp_read(&param);
 
 clean:
 	if (dest != NULL) {

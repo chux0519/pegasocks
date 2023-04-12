@@ -30,6 +30,70 @@ static inline int socks5_cmd_get_addr_len(const uint8_t *data)
 	return 0;
 }
 
+#ifdef WITH_ACL
+static void dns_cb(int result, char type, int count, int ttl, void *addrs,
+		   void *arg)
+{
+	pgs_session_t *session = arg;
+	int i;
+	char dest[32] = { 0 };
+	size_t raw_cmd_len = 4 + 4 + 2;
+	uint8_t raw_cmd[10] = { 0 };
+
+	for (i = 0; i < count; ++i) {
+		if (type == DNS_IPv4_A) {
+			uint32_t addr = ((uint32_t *)addrs)[i];
+			uint32_t ip = ntohl(addr);
+			sprintf(dest, "%d.%d.%d.%d",
+				(int)(uint8_t)((ip >> 24) & 0xff),
+				(int)(uint8_t)((ip >> 16) & 0xff),
+				(int)(uint8_t)((ip >> 8) & 0xff),
+				(int)(uint8_t)((ip)&0xff));
+
+			pgs_session_debug(session, "[DNS] %s: %s",
+					  session->cmd.dest, dest);
+
+			bool bypass_match = pgs_acl_match_host_bypass(
+				session->local->acl, dest);
+
+			if (session->cmd.dest != NULL) {
+				memcpy(raw_cmd, session->cmd.raw_cmd, 4);
+				raw_cmd[3] = SOCKS5_CMD_IPV4;
+				raw_cmd[4] = (ip >> 24) & 0xFF;
+				raw_cmd[5] = (ip >> 16) & 0xFF;
+				raw_cmd[6] = (ip >> 8) & 0xFF;
+				raw_cmd[7] = ip & 0xFF;
+				raw_cmd[8] = (session->cmd.port >> 8) & 0xFF;
+				raw_cmd[9] = session->cmd.port & 0xFF;
+			}
+
+			if (bypass_match) {
+				session->proxy = false;
+				pgs_session_debug(session, "[bypass] %s(%s)",
+						  session->cmd.dest, dest);
+				break;
+			}
+
+		} else if (type == DNS_PTR) {
+			pgs_session_debug(session, "%s: %s", session->cmd.dest,
+					  ((char **)addrs)[i]);
+		}
+		if (raw_cmd[0] != 0) {
+			pgs_socks5_cmd_free(session->cmd);
+			session->cmd = socks5_cmd_parse(raw_cmd, raw_cmd_len);
+		}
+	}
+	if (!count) {
+		pgs_session_error(session, "%s: No answer (%d)",
+				  session->cmd.dest, result);
+	}
+	session->state = DNS_RESOLVE;
+	on_socks5_handshake(session->inbound.ctx, session);
+	/* just leave it, prevent to double free */
+	session->dns_req = NULL;
+}
+#endif
+
 static void pgs_ping_read(void *psession)
 {
 	pgs_ping_session_t *ptr = (pgs_ping_session_t *)psession;
@@ -76,12 +140,6 @@ static bool pgs_ping_write(void *ctx, uint8_t *msg, size_t len, size_t *olen)
 	return true;
 }
 
-static void pgs_inbound_tcp_free(void *ctx)
-{
-	if (ctx)
-		bufferevent_free((struct bufferevent *)ctx);
-}
-
 static void pgs_inbound_tcp_read(void *psession)
 {
 	pgs_session_t *session = (pgs_session_t *)psession;
@@ -90,12 +148,12 @@ static void pgs_inbound_tcp_read(void *psession)
 	size_t len = evbuffer_get_length(ireader);
 	uint8_t *msg = evbuffer_pullup(ireader, len);
 	size_t olen;
+
 	bool ok =
 		session->outbound.write(session->outbound.ctx, msg, len, &olen);
-	evbuffer_drain(ireader, len);
-
 	if (!ok)
 		goto error;
+	evbuffer_drain(ireader, len);
 
 	return;
 
@@ -159,6 +217,51 @@ static bool pgs_outbound_trojanws_write(void *ctx, uint8_t *msg, size_t len,
 	return true;
 }
 
+static void on_bypass_event(struct bufferevent *bev, short events, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+
+	if (events & BEV_EVENT_CONNECTED)
+		session->inbound.read(session);
+
+	if (events & BEV_EVENT_ERROR)
+		pgs_session_error(session,
+				  "Error from bufferevent: on_bypass_event");
+	if (events & BEV_EVENT_TIMEOUT)
+		pgs_session_debug(session, "bypass remote timeout: %s:%d",
+				  session->cmd.dest, session->cmd.port);
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
+		PGS_FREE_SESSION(session);
+	}
+}
+
+static void on_bypass_read(struct bufferevent *bev, void *ctx)
+{
+	pgs_session_t *session = (pgs_session_t *)ctx;
+	struct evbuffer *input = bufferevent_get_input(bev);
+	size_t len = evbuffer_get_length(input);
+	unsigned char *msg = evbuffer_pullup(input, len);
+	size_t olen = 0;
+	if (!session->inbound.write(session->inbound.ctx, msg, len, &olen)) {
+		goto error;
+	}
+	evbuffer_drain(input, len);
+
+	return;
+error:
+	PGS_FREE_SESSION(session);
+}
+
+static bool pgs_outbound_bypass_write(void *ctx, uint8_t *msg, size_t len,
+				      size_t *olen)
+{
+	struct bufferevent *bev = (struct bufferevent *)ctx;
+	struct evbuffer *writer = bufferevent_get_output(bev);
+	evbuffer_add(writer, msg, len);
+	*olen = len;
+	return true;
+}
+
 static void on_trojan_event(struct bufferevent *bev, short events, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
@@ -178,23 +281,22 @@ static void on_trojan_event(struct bufferevent *bev, short events, void *ctx)
 		session->outbound.ready = true;
 		pgs_trojan_ctx_t *tctx = session->outbound.ctx;
 
-		// manually trigger a read local event
 		if (session->state != SOCKS5_PROXY) {
 			pgs_session_error(session, "invalid session state");
 			PGS_FREE_SESSION(session);
 			return;
 		}
 		// manually trigger a read(cached buffer)
-		session->inbound.read(session);
+		return session->inbound.read(session);
 	}
-	if (events & BEV_EVENT_TIMEOUT)
-		pgs_session_debug(session, "trojan remote timeout: %s:%d",
-				  session->cmd.dest, session->cmd.port);
 
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(
 			session,
 			"Error from bufferevent: on_trojan_remote_event");
+	if (events & BEV_EVENT_TIMEOUT)
+		pgs_session_debug(session, "trojan remote timeout: %s:%d",
+				  session->cmd.dest, session->cmd.port);
 
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))
 		PGS_FREE_SESSION(session);
@@ -203,7 +305,6 @@ static void on_trojan_event(struct bufferevent *bev, short events, void *ctx)
 static void on_trojan_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t len = evbuffer_get_length(input);
 	unsigned char *msg = evbuffer_pullup(input, len);
@@ -233,17 +334,17 @@ static void on_trojanws_event(struct bufferevent *bev, short events, void *ctx)
 			   session->config->server_address,
 			   session->config->server_port, tconf->websocket.path);
 	}
-	if (events & BEV_EVENT_TIMEOUT)
-		pgs_session_debug(session, "trojan remote timeout: %s:%d",
-				  session->cmd.dest, session->cmd.port);
 
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(
 			session,
 			"Error from bufferevent: on_trojan_remote_event");
-
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))
+	if (events & BEV_EVENT_TIMEOUT)
+		pgs_session_debug(session, "trojan remote timeout: %s:%d",
+				  session->cmd.dest, session->cmd.port);
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
 		PGS_FREE_SESSION(session);
+	}
 }
 
 static void on_trojanws_read(struct bufferevent *bev, void *ctx)
@@ -341,7 +442,7 @@ static bool pgs_init_tcp_inbound(pgs_session_t *session, int fd)
 	session->inbound.ctx = bev;
 	session->inbound.read = pgs_inbound_tcp_read;
 	session->inbound.write = pgs_inbound_tcp_write;
-	session->inbound.free = pgs_inbound_tcp_free;
+	session->inbound.free = (void *)bufferevent_free;
 
 	// starting to serve
 	bufferevent_setcb(bev, on_socks5_handshake, NULL, on_local_event,
@@ -350,17 +451,60 @@ static bool pgs_init_tcp_inbound(pgs_session_t *session, int fd)
 	return true;
 }
 
-static void pgs_outbound_tcp_free(void *ctx)
+static bool pgs_init_bypass_tcp_outbound(pgs_session_t *session)
 {
-	if (ctx)
-		pgs_trojan_ctx_free(ctx);
-}
+	session->outbound.protocol = PROTOCOL_TYPE_TCP;
+	session->outbound.ready = true;
 
+	// init a buffer event
+	int fd = socket(AF_INET, SOCK_STREAM, 0);
+	int err = evutil_make_socket_nonblocking(fd);
+	if (err) {
+		if (fd)
+			evutil_closesocket(fd);
+		return false;
+	}
+	int opt = 1;
+	setsockopt(fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
+
+#ifdef __ANDROID__
+	pgs_config_t *gconfig = session->local->config;
+	int ret = pgs_protect_fd(fd, gconfig->android_protect_address,
+				 gconfig->android_protect_port);
+	if (ret != fd) {
+		pgs_session_error(session, "[ANDROID] Failed to protect fd");
+		return false;
+	}
+#endif
+
+	struct bufferevent *bev = bufferevent_socket_new(
+		session->local->base, fd,
+		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	session->outbound.ctx = bev;
+	session->outbound.free = (void *)bufferevent_free;
+	session->outbound.write = pgs_outbound_bypass_write;
+
+	bufferevent_setcb(bev, on_bypass_read, NULL, on_bypass_event, session);
+
+	// setup timeout and connect
+	struct timeval tv = {
+		.tv_sec = session->local->config->timeout,
+		.tv_usec = 0,
+	};
+	bufferevent_set_timeouts(bev, &tv, NULL);
+	// enable read event
+	bufferevent_enable(bev, EV_READ);
+	bufferevent_socket_connect_hostname(bev, session->local->dns_base,
+					    AF_INET, session->cmd.dest,
+					    session->cmd.port);
+
+	return true;
+}
 static bool pgs_init_tcp_outbound(pgs_session_t *session)
 {
-	// TODO: check if we should bypass this or not
-	// if bypass, use bypass on read
-	// if not, use trojan/...
+	if (!session->proxy)
+		return pgs_init_bypass_tcp_outbound(session);
+
 	session->outbound.protocol = PROTOCOL_TYPE_TCP;
 	session->outbound.ready = false;
 
@@ -371,7 +515,7 @@ static bool pgs_init_tcp_outbound(pgs_session_t *session)
 		if (ctx == NULL || ctx->fd == -1)
 			return false;
 		session->outbound.ctx = ctx;
-		session->outbound.free = pgs_outbound_tcp_free;
+		session->outbound.free = (void *)pgs_trojan_ctx_free;
 
 		// setup ssl bufferevemt
 		const char *sni = NULL;
@@ -419,6 +563,7 @@ pgs_session_t *pgs_session_new(pgs_local_server_t *local,
 			       const pgs_server_config_t *config)
 {
 	pgs_session_t *ptr = calloc(1, sizeof(pgs_session_t));
+	ptr->proxy = true;
 
 	ptr->local = local;
 	if (config)
@@ -439,11 +584,24 @@ void pgs_session_start(pgs_session_t *session, int fd)
 }
 void pgs_session_free(pgs_session_t *session)
 {
-	pgs_socks5_cmd_free(session->cmd);
-	if (session->inbound.free)
-		session->inbound.free(session->inbound.ctx);
+	if (!session)
+		return;
+	pgs_session_debug(session, "session to %s:%d closed", session->cmd.dest,
+			  session->cmd.port);
+#ifdef WITH_ACL
+	if (session->dns_req) {
+		evdns_cancel_request(session->local->dns_base,
+				     session->dns_req);
+	}
+#endif
 	if (session->outbound.free)
 		session->outbound.free(session->outbound.ctx);
+
+	if (session->inbound.free)
+		session->inbound.free(session->inbound.ctx);
+
+	pgs_socks5_cmd_free(session->cmd);
+
 	free(session);
 }
 
@@ -519,9 +677,8 @@ void on_local_event(struct bufferevent *bev, short events, void *ctx)
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(session,
 				  "Error from bufferevent: on_local_event");
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR))
 		PGS_FREE_SESSION(session);
-	}
 }
 
 void on_socks5_handshake(struct bufferevent *bev, void *ctx)
@@ -566,12 +723,8 @@ void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 		switch (rdata[1]) {
 		case 0x01: {
 			// CMD connect
-			pgs_session_debug(session, "connect to %s:%d",
+			pgs_session_debug(session, "--> %s:%d",
 					  session->cmd.dest, session->cmd.port);
-
-			if (!pgs_init_tcp_outbound(session))
-				goto error;
-
 			// socks5 response, BND.ADDR and BND.PORT should be 0
 			// only the UDP ASSOCIATE command will set this,
 			// e.g. using `nc -X 5 -x 127.0.0.1:1080 %h %p` to proxy the ssh connection
@@ -581,6 +734,37 @@ void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 			evbuffer_drain(input, cmdlen);
 
 			session->state = SOCKS5_PROXY;
+
+#ifdef WITH_ACL
+			if (session->local->acl != NULL) {
+				bool bypass_match = pgs_acl_match_host_bypass(
+					session->local->acl, session->cmd.dest);
+				bool proxy_match = pgs_acl_match_host_proxy(
+					session->local->acl, session->cmd.dest);
+
+				if (proxy_match) {
+					session->proxy = true;
+				}
+				if (bypass_match) {
+					session->proxy = false;
+				}
+
+				if (!bypass_match && !proxy_match &&
+				    session->cmd.atype == SOCKS5_CMD_HOSTNAME) {
+					// this will resolve cmd.dest and modify the original raw_cmd and atype
+					// after resolve, will trigger a handshake call again
+					session->dns_req =
+						evdns_base_resolve_ipv4(
+							session->local->dns_base,
+							session->cmd.dest, 0,
+							dns_cb, session);
+					return;
+				}
+			}
+#endif
+			if (!pgs_init_tcp_outbound(session))
+				goto error;
+
 			return;
 		}
 		case 0x02: // bind
@@ -609,9 +793,16 @@ void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 		if (session->inbound.read == NULL)
 			goto error;
 		session->inbound.read(session);
+		return;
 
 	case SOCKS5_UDP_ASSOCIATE:
 		// should never hit here
+	case DNS_RESOLVE: {
+		if (!pgs_init_tcp_outbound(session))
+			goto error;
+		session->state = SOCKS5_PROXY;
+		return;
+	}
 	default:
 		break;
 	}
@@ -677,8 +868,10 @@ void pgs_trojan_ctx_free(pgs_trojan_ctx_t *ctx)
 		return;
 	if (ctx->bev)
 		bufferevent_free(ctx->bev);
+
 	if (ctx->head)
 		free(ctx->head);
+
 	free(ctx);
 }
 
@@ -690,6 +883,7 @@ pgs_ping_session_t *pgs_ping_session_new(pgs_local_server_t *local,
 	ptr->idx = idx;
 
 	ptr->session.cmd = socks5_cmd_parse(g204_cmd, 20);
+	ptr->session.proxy = true;
 	ptr->session.inbound.protocol = PROTOCOL_TYPE_TCP;
 	ptr->session.state = SOCKS5_PROXY;
 	ptr->session.config = config;
