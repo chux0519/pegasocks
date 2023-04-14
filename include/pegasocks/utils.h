@@ -47,4 +47,9 @@ void pgs_list_del_val(pgs_list_t *ptr, void *val);
 	     (cur) != NULL;                                                    \
 	     (cur) = (_next), (_next) = (cur) ? ((cur)->next) : (NULL))
 
+#define pgs_list_foreach_backward(list, cur, _prev)                            \
+	for ((cur) = (list)->tail, (_prev) = (cur) ? ((cur)->prev) : (NULL);   \
+	     (cur) != NULL;                                                    \
+	     (cur) = (_prev), (_prev) = (cur) ? ((cur)->prev) : (NULL))
+
 #endif

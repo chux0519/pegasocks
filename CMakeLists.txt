@@ -56,6 +56,7 @@ set(PEGAS_SOURCES
                   # src/codec/vmess.c
                   # src/codec/shadowsocks.c
                   src/session/session.c
+                  src/session/filter.c
                   src/server/helper.c
                   src/server/local.c
                   src/server/manager.c

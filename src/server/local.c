@@ -14,50 +14,9 @@
 
 static void on_udp_read(int fd, short event, void *ctx)
 {
-	pgs_local_server_t *ptr = (pgs_local_server_t *)ctx;
-	pgs_logger_debug(ptr->logger, "udp local read triggered");
-
-	const pgs_server_config_t *config =
-		pgs_server_manager_get_config(ptr->sm);
-
-	pgs_buffer_t *rbuf = pgs_buffer_new();
-	pgs_buffer_ensure(rbuf, DEFAULT_MTU * 2);
-
-	struct sockaddr_in in_addr;
-	socklen_t in_addr_len = sizeof(struct sockaddr_in);
-	memset(&in_addr, 0, in_addr_len);
-
-	ssize_t len = recvfrom(fd, rbuf->buffer, rbuf->cap, 0,
-			       (struct sockaddr *)&in_addr, &in_addr_len);
-	if (len == -1) {
-		pgs_logger_error(ptr->logger, "error: udp recvfrom");
-		goto clean;
-	}
-	if (len == 0) {
-		pgs_logger_warn(ptr->logger, "udp connection closed");
-		goto clean;
-	}
-	if (len > DEFAULT_MTU) {
-		pgs_logger_warn(ptr->logger, "mtu too small");
-		goto clean;
-	}
-	char *dest = NULL;
-	int port = 0;
-
-	if (len <= 3) { /*FRAG is not supported now*/
-		pgs_logger_error(ptr->logger, "invalid udp datagram");
-		goto clean;
-	}
-	uint8_t *buf = rbuf->buffer;
-	uint8_t atype = buf[3];
-
-clean:
-	if (dest != NULL) {
-		free(dest);
-	}
-	if (rbuf != NULL) {
-		pgs_buffer_free(rbuf);
-	}
+	pgs_local_server_t *local = (pgs_local_server_t *)ctx;
+	pgs_session_t *session = pgs_session_new(local, NULL);
+	pgs_session_start_udp(session, fd);
 }
 
 static void accept_error_cb(struct evconnlistener *listener, void *ctx)
@@ -88,7 +47,7 @@ static void accept_conn_cb(struct evconnlistener *listener, int fd,
 
 	// new session
 	pgs_session_t *session = pgs_session_new(local, NULL);
-	pgs_session_start(session, fd);
+	pgs_session_start_tcp(session, fd);
 }
 
 static void pgs_local_server_term(int sig, short events, void *arg)

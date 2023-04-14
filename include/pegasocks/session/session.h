@@ -88,6 +88,12 @@ typedef struct pgs_socks5_cmd_s {
 	size_t cmd_len;
 } pgs_socks5_cmd_t;
 
+typedef struct pgs_udp_ctx_s {
+	int fd;
+	pgs_buffer_t *cache;
+	const pgs_socks5_cmd_t *cmd;
+} pgs_udp_ctx_t;
+
 typedef struct pgs_session_s {
 	pgs_socks5_state state;
 	bool proxy;
@@ -98,6 +104,8 @@ typedef struct pgs_session_s {
 
 	pgs_inbound_t inbound;
 	pgs_outbound_t outbound;
+
+	pgs_list_t *filters; /* filters */
 
 #ifdef WITH_ACL
 	struct evdns_request *dns_req;
@@ -126,10 +134,15 @@ void pgs_ping_session_free(pgs_ping_session_t *);
 pgs_trojan_ctx_t *pgs_trojan_ctx_new(pgs_session_t *);
 void pgs_trojan_ctx_free(pgs_trojan_ctx_t *);
 
+pgs_udp_ctx_t *pgs_udp_ctx_new(int, const pgs_socks5_cmd_t *);
+
+void pgs_udp_ctx_free(pgs_udp_ctx_t *);
+
 // session
 pgs_session_t *pgs_session_new(pgs_local_server_t *,
 			       const pgs_server_config_t *);
-void pgs_session_start(pgs_session_t *session, int fd);
+void pgs_session_start_tcp(pgs_session_t *session, int fd);
+void pgs_session_start_udp(pgs_session_t *session, int fd);
 void pgs_session_free(pgs_session_t *session);
 
 pgs_socks5_cmd_t socks5_cmd_parse(const uint8_t *, size_t);
@@ -137,5 +150,22 @@ void pgs_socks5_cmd_free(pgs_socks5_cmd_t);
 
 void on_local_event(struct bufferevent *bev, short events, void *ctx);
 void on_socks5_handshake(struct bufferevent *bev, void *ctx);
+
+static inline int socks5_cmd_get_addr_len(const uint8_t *data)
+{
+	switch (data[0] /*atype*/) {
+	case 0x01:
+		// IPv4
+		return 4;
+	case 0x03:
+		return 1 + data[1];
+	case 0x04:
+		// IPv6
+		return 16;
+	default:
+		break;
+	}
+	return 0;
+}
 
 #endif
