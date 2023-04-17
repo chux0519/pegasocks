@@ -375,9 +375,10 @@ static void on_ws_outbound_read(struct bufferevent *bev, void *ctx)
 			size_t res_len = 0;
 			size_t read_len = 0;
 
-			int status = apply_filters(session, msg, len, &result,
-						   &res_len, &read_len,
+			int status = apply_filters(session, msg, remain_len,
+						   &result, &res_len, &read_len,
 						   FILTER_DIR_DECODE);
+
 			switch (status) {
 			case FILTER_FAIL:
 				goto error;
@@ -401,50 +402,6 @@ static void on_ws_outbound_read(struct bufferevent *bev, void *ctx)
 			remain_len -= read_len;
 			msg += read_len;
 		}
-
-		// if (len < 2)
-		// 	return; // wait next read
-		// pgs_session_debug(session, "msg len: %d", len);
-		// while (len > 2) {
-		// 	pgs_ws_resp_t ws_meta;
-		// 	if (pgs_ws_parse_head(msg, len, &ws_meta)) {
-		// 		pgs_session_debug(
-		// 			session,
-		// 			"opcode: %d, payload_len: %d, header_len: %d",
-		// 			ws_meta.opcode, ws_meta.payload_len,
-		// 			ws_meta.header_len);
-		// 		// ignore opcode here
-
-		// 		if (!session->inbound.write(
-		// 			    session->inbound.ctx,
-		// 			    msg + ws_meta.header_len,
-		// 			    ws_meta.payload_len, &olen)) {
-		// 			goto error;
-		// 		}
-		// 		pgs_session_debug(session,
-		// 				  "write back to local: %d",
-		// 				  ws_meta.payload_len);
-
-		// 		if (!ws_meta.fin)
-		// 			pgs_session_debug(
-		// 				session,
-		// 				"frame to be continued..");
-
-		// 		evbuffer_drain(input,
-		// 			       ws_meta.header_len +
-		// 				       ws_meta.payload_len);
-
-		// 		len -= (ws_meta.header_len +
-		// 			ws_meta.payload_len);
-		// 		msg += (ws_meta.header_len +
-		// 			ws_meta.payload_len);
-		// 	} else {
-		// 		pgs_session_debug(
-		// 			session,
-		// 			"Failed to parse ws header, wait for more data");
-		// 		return;
-		// 	}
-		// }
 	}
 	return;
 error:
