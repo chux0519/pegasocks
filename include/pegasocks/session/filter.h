@@ -7,6 +7,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+typedef enum { FILTER_DIR_ENCODE, FILTER_DIR_DECODE } pgs_filter_direction;
+typedef enum {
+	FILTER_SUCCESS = 0,
+	FILTER_FAIL,
+	FILTER_NEED_MORE_DATA,
+	FILTER_SKIP,
+} pgs_filter_result;
 typedef enum { FILTER_TROJAN = 0, FITLER_WEBSOCKET } pgs_filter_type;
 typedef struct pgs_filter_s {
 	pgs_filter_type type;
@@ -14,10 +21,10 @@ typedef struct pgs_filter_s {
 	void *ctx;
 
 	void (*free)(void *ctx);
-	bool (*encode)(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
-		       size_t *olen);
-	bool (*decode)(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
-		       size_t *olen);
+	int (*encode)(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
+		      size_t *olen);
+	int (*decode)(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
+		      size_t *olen, size_t *clen /* consumeed length */);
 } pgs_filter_t;
 
 pgs_filter_t *pgs_filter_new(pgs_filter_type, const pgs_session_t *);
@@ -42,7 +49,7 @@ typedef struct pgs_ws_header_s {
 } pgs_ws_header_t;
 
 typedef struct pgs_ws_filter_ctx_s {
-	bool handshake_ok;
+	int opcode;
 	pgs_ws_header_t header;
 } pgs_ws_filter_ctx_t;
 
