@@ -108,7 +108,6 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 			filter = (pgs_filter_t *)(cur->val);
 			status = filter->decode(filter->ctx, input, ilen,
 						&output, &olen, clen);
-
 			switch (status) {
 			case (FILTER_NEED_MORE_DATA):
 			case (FILTER_FAIL):
@@ -192,6 +191,8 @@ static void pgs_ping_read(void *psession)
 				   &read_len, FILTER_DIR_ENCODE);
 	switch (status) {
 	case FILTER_FAIL:
+		if (result)
+			free(result);
 		goto error;
 	case FILTER_NEED_MORE_DATA:
 		return;
@@ -206,6 +207,9 @@ static void pgs_ping_read(void *psession)
 	size_t wlen;
 	bool ok = ptr->session.outbound.write(ptr->session.outbound.ctx, result,
 					      res_len, &wlen);
+
+	if (result)
+		free(result);
 
 	if (!ok)
 		goto error;
@@ -384,6 +388,7 @@ static void on_ws_outbound_read(struct bufferevent *bev, void *ctx)
 				goto error;
 			case FILTER_NEED_MORE_DATA:
 				return;
+			case FILTER_SKIP:
 			case FILTER_SUCCESS:
 			default:
 				break;
@@ -391,12 +396,13 @@ static void on_ws_outbound_read(struct bufferevent *bev, void *ctx)
 
 			size_t wlen;
 
-			if (!session->inbound.write(session->inbound.ctx,
-						    result, res_len, &wlen))
-				goto error;
-
+			bool ok = session->inbound.write(
+				session->inbound.ctx, result, res_len, &wlen);
 			if (result != msg)
 				free(result);
+
+			if (!ok)
+				goto error;
 
 			evbuffer_drain(reader, read_len);
 			remain_len -= read_len;
@@ -463,12 +469,13 @@ static void on_tcp_outbound_read(struct bufferevent *bev, void *ctx)
 
 	size_t wlen;
 
-	if (!session->inbound.write(session->inbound.ctx, result, res_len,
-				    &wlen))
-		goto error;
-
+	bool ok = session->inbound.write(session->inbound.ctx, result, res_len,
+					 &wlen);
 	if (result != msg)
 		free(result);
+
+	if (!ok)
+		goto error;
 
 	evbuffer_drain(reader, read_len);
 
@@ -1120,6 +1127,9 @@ void pgs_ping_session_free(pgs_ping_session_t *ptr)
 	pgs_socks5_cmd_free(ptr->session.cmd);
 	if (ptr->session.outbound.free)
 		ptr->session.outbound.free(ptr->session.outbound.ctx);
+
+	if (ptr->session.filters)
+		pgs_list_free(ptr->session.filters);
 	free(ptr);
 }
 
