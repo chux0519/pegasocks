@@ -14,6 +14,33 @@ const unsigned char g204_cmd[] = { 0x05, 0x01, 0x00, 0x03, 0x0d, 0x77, 0x77,
 const char g204_http_req[] =
 	"GET /generate_204 HTTP/1.1\r\nHost: www.google.cn\r\n\r\n";
 
+const char *ws_upgrade = "HTTP/1.1 101";
+const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
+const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
+
+static inline void pgs_ws_req(struct evbuffer *out, const char *hostname,
+			      const char *server_address, int server_port,
+			      const char *path)
+{
+	// out, hostname, server_address, server_port, path
+	evbuffer_add_printf(out, "GET %s HTTP/1.1\r\n", path);
+	evbuffer_add_printf(out, "Host:%s:%d\r\n", hostname, server_port);
+	evbuffer_add_printf(out, "Upgrade:websocket\r\n");
+	evbuffer_add_printf(out, "Connection:upgrade\r\n");
+	evbuffer_add_printf(out, "Sec-WebSocket-Key:%s\r\n", ws_key);
+	evbuffer_add_printf(out, "Sec-WebSocket-Version:13\r\n");
+	evbuffer_add_printf(
+		out, "Origin:https://%s:%d\r\n", server_address,
+		server_port); //missing this key will lead to 403 response.
+	evbuffer_add_printf(out, "\r\n");
+}
+
+static inline bool pgs_ws_upgrade_check(const char *data)
+{
+	return strncmp(data, ws_upgrade, strlen(ws_upgrade)) != 0 ||
+	       !strstr(data, ws_accept);
+}
+
 #ifdef WITH_ACL
 static void dns_cb(int result, char type, int count, int ttl, void *addrs,
 		   void *arg)
@@ -482,32 +509,6 @@ static void on_tcp_outbound_read(struct bufferevent *bev, void *ctx)
 	return;
 error:
 	PGS_FREE_SESSION(session);
-}
-
-static bool pgs_outbound_trojanws_write(void *ctx, uint8_t *msg, size_t len,
-					size_t *olen)
-{
-	pgs_trojan_ctx_t *tctx = (pgs_trojan_ctx_t *)ctx;
-	struct bufferevent *outbev = tctx->bev;
-	struct evbuffer *writer = bufferevent_get_output(outbev);
-
-	ssize_t head_len = tctx->head_len;
-	ssize_t ws_len = len;
-	if (head_len > 0) {
-		ws_len += head_len;
-	}
-	// we only need to write ws header
-	// use all 0 for xor encode
-	// x ^ 0 = x, so no need for extra xor
-	pgs_ws_write_head_text(writer, ws_len);
-	*olen = ws_len;
-
-	if (tctx->head_len) {
-		evbuffer_add(writer, tctx->head, tctx->head_len);
-		tctx->head_len = 0;
-	}
-	evbuffer_add(writer, msg, len);
-	return true;
 }
 
 static bool pgs_init_udp_inbound(pgs_session_t *session, int fd)

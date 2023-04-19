@@ -7,7 +7,6 @@
 #include <event2/event.h>
 #include <event2/buffer.h>
 
-#include "codec/websocket.h"
 #include "server/local.h"
 #include "utils.h"
 
