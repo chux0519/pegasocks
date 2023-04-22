@@ -267,6 +267,81 @@ static bool pgs_ping_write(void *ctx, uint8_t *msg, size_t len, size_t *olen)
 	return false; /* terminate */
 }
 
+static bool pgs_inbound_udp_write(void *pctx, uint8_t *msg, size_t len,
+				  size_t *olen)
+{
+	/**
+	 * SOCKS5 UDP Response
+     * +----+------+------+----------+----------+----------+
+     * |RSV | FRAG | ATYP | DST.ADDR | DST.PORT |   DATA   |
+     * +----+------+------+----------+----------+----------+
+     * | 2  |  1   |  1   | Variable |    2     | Variable |
+     * +----+------+------+----------+----------+----------+
+	 */
+	pgs_udp_ctx_t *ctx = pctx;
+	size_t size = ctx->cmd->cmd_len + len;
+	uint8_t *buf = malloc(sizeof(uint8_t) * size);
+	buf[0] = 0x00; // RSV
+	buf[1] = 0x00; // RSV
+	buf[2] = 0x00; // FRAG
+
+	memcpy(buf + 3, ctx->cmd->raw_cmd + 3, ctx->cmd->cmd_len - 3);
+
+	memcpy(buf + ctx->cmd->cmd_len, msg, len);
+
+	int n = sendto(ctx->fd, buf, size, 0, (struct sockaddr *)&ctx->in_addr,
+		       ctx->in_addr_len);
+
+	free(buf);
+
+	return false; /* close this session */
+}
+
+static void pgs_inbound_udp_read(void *psession)
+{
+	pgs_session_t *session = (pgs_session_t *)psession;
+	pgs_udp_ctx_t *ctx = session->inbound.ctx;
+	size_t len = ctx->cache_len - ctx->cmd->cmd_len;
+	uint8_t *msg = ctx->cache->buffer + ctx->cmd->cmd_len;
+	if (len == 0)
+		return;
+
+	uint8_t *result = NULL;
+	size_t res_len = 0;
+	size_t _ = 0;
+
+	int status = apply_filters(session, msg, len, &result, &res_len, &_,
+				   FILTER_DIR_ENCODE);
+	switch (status) {
+	case FILTER_FAIL:
+		goto error;
+	case FILTER_NEED_MORE_DATA:
+		return;
+	case FILTER_SUCCESS:
+	default:
+		break;
+	}
+
+	if (!result)
+		goto error;
+
+	size_t wlen;
+	bool ok = session->outbound.write(session->outbound.ctx, result,
+					  res_len, &wlen);
+
+	if (!ok)
+		goto error;
+
+	if (result != msg)
+		free(result);
+
+	// TODO: free cache?
+	return;
+
+error:
+	PGS_FREE_SESSION(session);
+}
+
 static void pgs_inbound_tcp_read(void *psession)
 {
 	pgs_session_t *session = (pgs_session_t *)psession;
@@ -526,7 +601,7 @@ static bool pgs_init_udp_inbound(pgs_session_t *session, int fd)
 	pgs_session_debug(session, "udp local read triggered");
 
 	session->inbound.protocol = PROTOCOL_TYPE_UDP;
-	session->state = SOCKS5_UDP_ASSOCIATE;
+	session->state = SOCKS5_PROXY;
 	session->proxy = true;
 
 	const pgs_server_config_t *config =
@@ -536,14 +611,14 @@ static bool pgs_init_udp_inbound(pgs_session_t *session, int fd)
 	pgs_udp_ctx_t *ctx = pgs_udp_ctx_new(fd, &session->cmd);
 	session->inbound.ctx = ctx;
 	session->inbound.free = (void *)pgs_udp_ctx_free;
-	session->inbound.read = NULL;
-	session->inbound.write = NULL;
+	session->inbound.read = pgs_inbound_udp_read;
+	session->inbound.write = pgs_inbound_udp_write;
 
-	struct sockaddr_in in_addr = { 0 };
-	socklen_t in_addr_len = sizeof(struct sockaddr_in);
+	ssize_t len =
+		recvfrom(fd, ctx->cache->buffer, ctx->cache->cap, 0,
+			 (struct sockaddr *)&ctx->in_addr, &ctx->in_addr_len);
+	ctx->cache_len = len;
 
-	ssize_t len = recvfrom(fd, ctx->cache->buffer, ctx->cache->cap, 0,
-			       (struct sockaddr *)&in_addr, &in_addr_len);
 	if (len == -1) {
 		pgs_session_debug(session, "error: udp recvfrom");
 		goto clean;
@@ -572,7 +647,8 @@ static bool pgs_init_udp_inbound(pgs_session_t *session, int fd)
 	}
 	size_t cmd_len = 4 + addr_len + 2;
 	session->cmd = socks5_cmd_parse(buf, cmd_len);
-
+	pgs_session_debug(session, "udp -> %s:%d", session->cmd.dest,
+			  session->cmd.port);
 #ifdef WITH_ACL
 	if (session->local->acl != NULL) {
 		bool bypass_match = pgs_acl_match_host_bypass(
@@ -587,7 +663,8 @@ static bool pgs_init_udp_inbound(pgs_session_t *session, int fd)
 			session->proxy = false;
 		}
 
-		if (!bypass_match && !proxy_match) {
+		if (!bypass_match && !proxy_match &&
+		    session->cmd.atype == SOCKS5_CMD_HOSTNAME) {
 			session->dns_req = evdns_base_resolve_ipv4(
 				session->local->dns_base, session->cmd.dest, 0,
 				dns_cb, session);
@@ -680,12 +757,13 @@ static bool pgs_init_outbound(pgs_session_t *session, pgs_protocol_t protocol)
 		case (PROTOCOL_TYPE_TCP):
 			return pgs_init_bypass_tcp_outbound(session);
 		case (PROTOCOL_TYPE_UDP):
-			return pgs_init_bypass_udp_outbound(session);
+			return pgs_init_bypass_udp_outbound(
+				session); /* UDP bypass */
 		default:
 			return false;
 		}
 	}
-	session->outbound.protocol = PROTOCOL_TYPE_TCP;
+	session->outbound.protocol = protocol; /* UDP indicates udp over tcp */
 	session->outbound.ready = false;
 
 	const char *server_type = session->config->server_type;
@@ -808,8 +886,9 @@ void pgs_session_free(pgs_session_t *session)
 {
 	if (!session)
 		return;
-	pgs_session_debug(session, "session to %s:%d closed", session->cmd.dest,
-			  session->cmd.port);
+	if (session->cmd.dest != NULL && session->cmd.port != 0)
+		pgs_session_debug(session, "session to %s:%d closed",
+				  session->cmd.dest, session->cmd.port);
 #ifdef WITH_ACL
 	if (session->dns_req) {
 		evdns_cancel_request(session->local->dns_base,
@@ -910,7 +989,6 @@ void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_socks5_state state = session->state;
-
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
@@ -944,7 +1022,6 @@ void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 		}
 		size_t cmdlen = 4 + addr_len + 2;
 		session->cmd = socks5_cmd_parse(rdata, cmdlen);
-
 		switch (rdata[1]) {
 		case 0x01: {
 			// CMD connect
@@ -995,13 +1072,19 @@ void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 		case 0x02: // bind
 		case 0x03: {
 			/* CMD UDP ASSOCIATE (not a standard rfc implementation, but it works and is efficient)*/
-			int port = session->local->config->local_port;
-			evbuffer_add(output, "\x05\x00\x00\x01\x00\x00\x00\x00",
-				     8);
-			int ns_port = htons(port);
-			evbuffer_add(output, &ns_port, 2);
-			evbuffer_drain(input, len);
-			session->state = SOCKS5_UDP_ASSOCIATE;
+			if (session->cmd.port == 0) {
+				int port = session->local->config->local_port;
+				evbuffer_add(output,
+					     "\x05\x00\x00\x01\x00\x00\x00\x00",
+					     8);
+				int ns_port = htons(port);
+				evbuffer_add(output, &ns_port, 2);
+				evbuffer_drain(input, len);
+				session->state = SOCKS5_UDP_ASSOCIATE;
+			} else {
+				// TODO: should bind the dst.addr and dst.port
+			}
+
 			return;
 		}
 
@@ -1021,7 +1104,8 @@ void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 		return;
 
 	case SOCKS5_UDP_ASSOCIATE:
-		// should never hit here
+		// should never hit
+		goto error;
 	case DNS_RESOLVE: {
 		if (!pgs_init_outbound(session, PROTOCOL_TYPE_TCP))
 			goto error;
@@ -1152,6 +1236,11 @@ pgs_udp_ctx_t *pgs_udp_ctx_new(int fd, const pgs_socks5_cmd_t *cmd)
 
 	ptr->cache = pgs_buffer_new();
 	pgs_buffer_ensure(ptr->cache, 2 * DEFAULT_MTU);
+
+	ptr->in_addr = (struct sockaddr_in){ 0 };
+	ptr->in_addr_len = sizeof(struct sockaddr_in);
+
+	return ptr;
 }
 
 void pgs_udp_ctx_free(pgs_udp_ctx_t *ptr)
@@ -1160,5 +1249,6 @@ void pgs_udp_ctx_free(pgs_udp_ctx_t *ptr)
 		return;
 	if (ptr->cache)
 		pgs_buffer_free(ptr->cache);
+	/* keep the fd, it's the ufd */
 	free(ptr);
 }

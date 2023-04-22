@@ -34,7 +34,17 @@
 #define PGS_FREE_SESSION(session)                                              \
 	pgs_list_del(session->local->sessions, session->node)
 
-typedef enum { PROTOCOL_TYPE_TCP = 0, PROTOCOL_TYPE_UDP } pgs_protocol_t;
+typedef enum {
+	PROTOCOL_TYPE_TCP = 0x01,
+	PROTOCOL_TYPE_UDP = 0x03
+
+	/*
+	 The same as socks5 RFC's CMD section
+		o  CMD
+			o  CONNECT X'01'
+			o  UDP ASSOCIATE X'03'
+	*/
+} pgs_protocol_t;
 typedef enum {
 	SOCKS5_AUTH = 0,
 	SOCKS5_CMD,
@@ -90,6 +100,10 @@ typedef struct pgs_socks5_cmd_s {
 typedef struct pgs_udp_ctx_s {
 	int fd;
 	pgs_buffer_t *cache;
+	size_t cache_len;
+
+	struct sockaddr_in in_addr;
+	socklen_t in_addr_len;
 	const pgs_socks5_cmd_t *cmd;
 } pgs_udp_ctx_t;
 

@@ -257,11 +257,27 @@ void pgs_filter_free(pgs_filter_t *ptr)
 
 pgs_trojan_filter_ctx_t *pgs_trojan_filter_ctx_new(const pgs_session_t *session)
 {
+	/**
+	+-----------------------+---------+----------------+---------+----------+
+	| hex(SHA224(password)) |  CRLF   | Trojan Request |  CRLF   | Payload  |
+	+-----------------------+---------+----------------+---------+----------+
+	|          56           | X'0D0A' |    Variable    | X'0D0A' | Variable |
+	+-----------------------+---------+----------------+---------+----------+
+
+	where Trojan Request is a SOCKS5-like request:
+
+	+-----+------+----------+----------+
+	| CMD | ATYP | DST.ADDR | DST.PORT |
+	+-----+------+----------+----------+
+	|  1  |  1   | Variable |    2     |
+	+-----+------+----------+----------+
+	*/
 	pgs_trojan_filter_ctx_t *ptr = malloc(sizeof(pgs_trojan_filter_ctx_t));
 	ptr->head_sent = false;
 
 	const uint8_t *sha224_pass = session->config->password;
 	size_t sha224_pass_len = SHA224_LEN * 2;
+
 	const uint8_t *cmd = session->cmd.raw_cmd;
 	size_t cmd_len = session->cmd.cmd_len;
 
@@ -272,7 +288,7 @@ pgs_trojan_filter_ctx_t *pgs_trojan_filter_ctx_new(const pgs_session_t *session)
 	memcpy(ptr->head, sha224_pass, sha224_pass_len);
 	ptr->head[sha224_pass_len] = '\r';
 	ptr->head[sha224_pass_len + 1] = '\n';
-	ptr->head[sha224_pass_len + 2] = cmd[1];
+	ptr->head[sha224_pass_len + 2] = session->outbound.protocol;
 	memcpy(ptr->head + sha224_pass_len + 3, cmd + 3, cmd_len - 3);
 	ptr->head[ptr->head_len - 2] = '\r';
 	ptr->head[ptr->head_len - 1] = '\n';

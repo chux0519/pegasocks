@@ -16,6 +16,7 @@ static void on_udp_read(int fd, short event, void *ctx)
 {
 	pgs_local_server_t *local = (pgs_local_server_t *)ctx;
 	pgs_session_t *session = pgs_session_new(local, NULL);
+	assert(fd == local->server_udp_fd);
 	pgs_session_start_udp(session, fd);
 }
 
@@ -138,7 +139,6 @@ static void timer_noop(evutil_socket_t fd, short event, void *data)
  * */
 void *start_local_server(void *data)
 {
-	// pgs_local_server_new(&ctx);
 	pgs_local_server_ctx_t *ctx = (pgs_local_server_ctx_t *)data;
 
 	pgs_local_server_t *local =
