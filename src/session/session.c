@@ -18,6 +18,8 @@ const char *ws_upgrade = "HTTP/1.1 101";
 const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
 const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 
+static bool pgs_init_outbound(pgs_session_t *session, pgs_protocol_t protocol);
+
 static inline void pgs_ws_req(struct evbuffer *out, const char *hostname,
 			      const char *server_address, int server_port,
 			      const char *path)
@@ -76,24 +78,23 @@ static void dns_cb(int result, char type, int count, int ttl, void *addrs,
 				raw_cmd[7] = ip & 0xFF;
 				raw_cmd[8] = (session->cmd.port >> 8) & 0xFF;
 				raw_cmd[9] = session->cmd.port & 0xFF;
+
+				pgs_socks5_cmd_free(session->cmd);
+				session->cmd =
+					socks5_cmd_parse(raw_cmd, raw_cmd_len);
 			}
 
 			if (bypass_match) {
 				session->proxy = false;
-				pgs_session_debug(session, "[bypass] %s(%s)",
-						  session->cmd.dest, dest);
+				pgs_session_debug(session, "[bypass] %s", dest);
 				break;
 			}
-
 		} else if (type == DNS_PTR) {
 			pgs_session_debug(session, "%s: %s", session->cmd.dest,
 					  ((char **)addrs)[i]);
 		}
-		if (raw_cmd[0] != 0) {
-			pgs_socks5_cmd_free(session->cmd);
-			session->cmd = socks5_cmd_parse(raw_cmd, raw_cmd_len);
-		}
 	}
+
 	if (!count) {
 		pgs_session_error(session, "%s: No answer (%d)",
 				  session->cmd.dest, result);
@@ -106,10 +107,11 @@ static void dns_cb(int result, char type, int count, int ttl, void *addrs,
 		break;
 	}
 	case PROTOCOL_TYPE_UDP: {
-		// TODO: init outbound( udp bypass / trojan / vmess udp over tcp )
+		pgs_init_outbound(session, PROTOCOL_TYPE_UDP);
+		return;
 	}
-	default: {
-	}
+	default:
+		break;
 	}
 
 	/* just leave it, prevent to double free */
@@ -272,6 +274,9 @@ static void pgs_inbound_tcp_read(void *psession)
 	struct evbuffer *ireader = bufferevent_get_input(bev);
 	size_t len = evbuffer_get_length(ireader);
 	uint8_t *msg = evbuffer_pullup(ireader, len);
+
+	if (len == 0)
+		return;
 
 	// apply filters
 	uint8_t *result = NULL;
@@ -447,9 +452,14 @@ static void on_tcp_outbound_event(struct bufferevent *bev, short events,
 	pgs_session_t *session = (pgs_session_t *)ctx;
 
 	if (events & BEV_EVENT_CONNECTED) {
-		pgs_session_debug(session, "%s:%d connected",
-				  session->config->server_address,
-				  session->config->server_port);
+		if (!session->proxy) {
+			pgs_session_debug(session, "%s:%d connected",
+					  session->cmd.dest, session->cmd.port);
+		} else {
+			pgs_session_debug(session, "%s:%d connected",
+					  session->config->server_address,
+					  session->config->server_port);
+		}
 
 		session->outbound.ready = true;
 
@@ -480,7 +490,7 @@ static void on_tcp_outbound_read(struct bufferevent *bev, void *ctx)
 
 	uint8_t *result = NULL;
 	size_t res_len = 0;
-	size_t read_len = 0;
+	size_t read_len = len; /* non-zero */
 
 	int status = apply_filters(session, msg, len, &result, &res_len,
 				   &read_len, FILTER_DIR_DECODE);
@@ -585,14 +595,8 @@ static bool pgs_init_udp_inbound(pgs_session_t *session, int fd)
 		}
 	}
 #endif
-	if (!session->proxy) {
-		// TODO: init udp outbound
-	} else {
-		// proxy udp over tcp
-		// custom different write methods is good enough
-	}
 
-	return true;
+	return pgs_init_outbound(session, PROTOCOL_TYPE_UDP);
 clean:
 	return false;
 }
@@ -667,14 +671,20 @@ static bool pgs_init_bypass_tcp_outbound(pgs_session_t *session)
 	bufferevent_socket_connect_hostname(bev, session->local->dns_base,
 					    AF_INET, session->cmd.dest,
 					    session->cmd.port);
-
 	return true;
 }
-static bool pgs_init_tcp_outbound(pgs_session_t *session)
+static bool pgs_init_outbound(pgs_session_t *session, pgs_protocol_t protocol)
 {
-	if (!session->proxy)
-		return pgs_init_bypass_tcp_outbound(session);
-
+	if (!session->proxy) {
+		switch (protocol) {
+		case (PROTOCOL_TYPE_TCP):
+			return pgs_init_bypass_tcp_outbound(session);
+		case (PROTOCOL_TYPE_UDP):
+			return pgs_init_bypass_udp_outbound(session);
+		default:
+			return false;
+		}
+	}
 	session->outbound.protocol = PROTOCOL_TYPE_TCP;
 	session->outbound.ready = false;
 
@@ -710,6 +720,14 @@ static bool pgs_init_tcp_outbound(pgs_session_t *session)
 
 		session->outbound.ctx = bev;
 		session->outbound.free = (void *)bufferevent_free;
+
+		if (protocol == PROTOCOL_TYPE_UDP) {
+			pgs_filter_t *tr_udp_filter =
+				pgs_filter_new(FITLER_TROJAN_UDP, session);
+			pgs_list_node_t *node =
+				pgs_list_node_new(tr_udp_filter);
+			pgs_list_add(session->filters, node);
+		}
 
 		pgs_filter_t *trojan_filter =
 			pgs_filter_new(FILTER_TROJAN, session);
@@ -749,14 +767,6 @@ static bool pgs_init_tcp_outbound(pgs_session_t *session)
 				  server_type);
 		return false;
 	}
-	return true;
-}
-
-static bool pgs_init_udp_outbound(pgs_session_t *session)
-{
-	if (!session->proxy)
-		return pgs_init_bypass_udp_outbound(session);
-
 	return true;
 }
 
@@ -977,7 +987,7 @@ void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 				}
 			}
 #endif
-			if (!pgs_init_tcp_outbound(session))
+			if (!pgs_init_outbound(session, PROTOCOL_TYPE_TCP))
 				goto error;
 
 			return;
@@ -1013,7 +1023,7 @@ void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 	case SOCKS5_UDP_ASSOCIATE:
 		// should never hit here
 	case DNS_RESOLVE: {
-		if (!pgs_init_tcp_outbound(session))
+		if (!pgs_init_outbound(session, PROTOCOL_TYPE_TCP))
 			goto error;
 		session->state = SOCKS5_PROXY;
 		return;
@@ -1110,7 +1120,7 @@ pgs_ping_session_t *pgs_ping_session_new(pgs_local_server_t *local,
 	ptr->session.filters = pgs_list_new();
 	ptr->session.filters->free = (void *)pgs_filter_free;
 
-	pgs_init_tcp_outbound(&ptr->session);
+	pgs_init_outbound(&ptr->session, PROTOCOL_TYPE_TCP);
 
 	ptr->ping = -1;
 	ptr->g204 = -1;

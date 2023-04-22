@@ -14,7 +14,11 @@ typedef enum {
 	FILTER_NEED_MORE_DATA,
 	FILTER_SKIP,
 } pgs_filter_result;
-typedef enum { FILTER_TROJAN = 0, FITLER_WEBSOCKET } pgs_filter_type;
+typedef enum {
+	FILTER_TROJAN = 0,
+	FITLER_TROJAN_UDP,
+	FITLER_WEBSOCKET,
+} pgs_filter_type;
 typedef struct pgs_filter_s {
 	pgs_filter_type type;
 

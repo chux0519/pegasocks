@@ -147,6 +147,72 @@ static int trojan_decode(void *ctx, const uint8_t *msg, size_t len,
 	return FILTER_SKIP;
 }
 
+static int trojan_udp_encode(void *ctx, const uint8_t *msg, size_t len,
+			     uint8_t **out, size_t *olen)
+{
+	const pgs_socks5_cmd_t *cmd = ctx;
+	/*
+	+------+----------+----------+--------+---------+----------+
+	| ATYP | DST.ADDR | DST.PORT | Length |  CRLF   | Payload  |
+	+------+----------+----------+--------+---------+----------+
+	|  1   | Variable |    2     |   2    | X'0D0A' | Variable |
+	+------+----------+----------+--------+---------+----------+
+	*/
+	size_t len1 = cmd->cmd_len - 3; /*RSV(2) | FRAG(1) |*/
+	size_t buf_len = len1 + 2 + 2 + len;
+	uint8_t *buf = malloc(sizeof(uint8_t) * buf_len);
+	memcpy(buf, cmd->raw_cmd + 3, len1);
+	buf[len1] = len >> 8;
+	buf[len1 + 1] = len & 0xFF;
+	buf[len1 + 2] = '\r';
+	buf[len1 + 3] = '\n';
+	memcpy(buf + len1 + 2 + 2, msg, len);
+
+	*out = buf;
+	*olen = buf_len;
+
+	return FILTER_SUCCESS;
+}
+
+static int trojan_udp_decode(void *ctx, const uint8_t *msg, size_t len,
+			     uint8_t **out, size_t *olen, size_t *clen)
+{
+	uint8_t atype = msg[0];
+	size_t len1 = 1 + 2; /* atype(1) + len(dst) + port(2)*/
+	switch (atype) {
+	case 0x01: {
+		// IPv4
+		len1 += 4;
+		break;
+	}
+	case 0x03: {
+		len1 += (1 + msg[1]);
+		break;
+	}
+	case 0x04: {
+		// IPv6
+		len1 += 16;
+		break;
+	}
+	default:
+		break;
+	}
+	uint16_t payload_len = msg[len1] << 8 | msg[len1 + 1];
+	if (len < (len1 + 2 /*length*/ + 2 /*CRLF*/ + payload_len) ||
+	    msg[len1 + 2] != '\r' || msg[len1 + 3] != '\n') {
+		return FILTER_FAIL;
+	}
+
+	uint8_t *buf = malloc(sizeof(uint8_t) * payload_len);
+	memcpy(buf, msg + len1 + 2 + 2, payload_len);
+
+	*out = buf;
+	*olen = payload_len;
+	*clen = len;
+
+	return FILTER_SUCCESS;
+}
+
 pgs_filter_t *pgs_filter_new(pgs_filter_type type, const pgs_session_t *session)
 {
 	pgs_filter_t *ptr = malloc(sizeof(pgs_filter_t));
@@ -158,6 +224,13 @@ pgs_filter_t *pgs_filter_new(pgs_filter_type type, const pgs_session_t *session)
 		ptr->free = (void *)pgs_trojan_filter_ctx_free;
 		ptr->encode = trojan_encode;
 		ptr->decode = trojan_decode;
+		break;
+	}
+	case (FITLER_TROJAN_UDP): {
+		ptr->ctx = (void *)&session->cmd;
+		ptr->free = NULL;
+		ptr->encode = trojan_udp_encode;
+		ptr->decode = trojan_udp_decode;
 		break;
 	}
 	case (FITLER_WEBSOCKET): {
