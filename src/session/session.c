@@ -345,8 +345,9 @@ static void pgs_inbound_udp_read(void *psession)
 {
 	pgs_session_t *session = (pgs_session_t *)psession;
 	pgs_udp_ctx_t *ctx = session->inbound.ctx;
-	size_t len = ctx->cache_len - ctx->cmd->cmd_len;
-	uint8_t *msg = ctx->cache->buffer + ctx->cmd->cmd_len;
+
+	size_t len = ctx->cache_len;
+	uint8_t *msg = ctx->cache->buffer;
 	if (len == 0)
 		return;
 
@@ -707,6 +708,11 @@ static bool pgs_init_udp_inbound(pgs_session_t *session, int fd)
 	session->cmd = socks5_cmd_parse(buf, cmd_len);
 	pgs_session_debug(session, "udp -> %s:%d", session->cmd.dest,
 			  session->cmd.port);
+
+	// since dns could modify the cmd_len, we move the data to the begining
+	memmove(ctx->cache->buffer, ctx->cache->buffer + cmd_len,
+		ctx->cache_len - cmd_len);
+	ctx->cache_len -= cmd_len;
 #ifdef WITH_ACL
 	if (session->local->acl != NULL) {
 		bool bypass_match = pgs_acl_match_host_bypass(
