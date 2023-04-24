@@ -268,13 +268,13 @@ static bool pgs_start_local_servers()
 		pgs_local_server_ctx_t *ctx =
 			malloc(sizeof(pgs_local_server_ctx_t));
 		ctx->fd = lfd;
-		ctx->ufd = ufd;
 		ctx->mpsc = MPSC;
 		ctx->config = CONFIG;
 		ctx->sm = SM;
 		ctx->acl = PGS_ACL;
 		ctx->ssl_ctx = SSL_CTX;
 		ctx->local_server_ref = (void **)&LOCAL_SERVERS[i];
+		ctx->ufd = i == 0 ? ufd : 0;
 
 		pthread_create(&THREADS[i], &attr, start_local_server, ctx);
 	}

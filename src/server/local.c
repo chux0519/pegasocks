@@ -72,7 +72,7 @@ pgs_local_server_t *pgs_local_server_new(int fd, int ufd, pgs_mpsc_t *mpsc,
 
 	// shared across server threads
 	ptr->server_fd = fd;
-	ptr->server_udp_fd = ufd;
+
 	ptr->config = config;
 	ptr->sm = sm;
 	ptr->acl = acl;
@@ -97,9 +97,16 @@ pgs_local_server_t *pgs_local_server_new(int fd, int ufd, pgs_mpsc_t *mpsc,
 				   -1, fd);
 	evconnlistener_set_error_cb(ptr->listener, accept_error_cb);
 
-	ptr->udp_listener = event_new(ptr->base, ptr->server_udp_fd,
-				      EV_READ | EV_PERSIST, on_udp_read, ptr);
-	event_add(ptr->udp_listener, NULL);
+	if (ufd) {
+		ptr->server_udp_fd = ufd;
+		ptr->udp_listener =
+			event_new(ptr->base, ptr->server_udp_fd,
+				  EV_READ | EV_PERSIST, on_udp_read, ptr);
+		event_add(ptr->udp_listener, NULL);
+	} else {
+		ptr->server_udp_fd = 0;
+		ptr->udp_listener = NULL;
+	}
 
 	ptr->ev_term = evuser_new(ptr->base, pgs_local_server_term, ptr->base);
 
@@ -116,6 +123,9 @@ void pgs_local_server_destroy(pgs_local_server_t *local)
 	if (local->udp_listener) {
 		event_del(local->udp_listener);
 		event_free(local->udp_listener);
+	}
+	if (local->server_udp_fd) {
+		evutil_closesocket(local->server_udp_fd);
 	}
 	if (local->listener)
 		evconnlistener_free(local->listener);

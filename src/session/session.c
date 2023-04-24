@@ -335,7 +335,6 @@ static void pgs_inbound_udp_read(void *psession)
 	if (result != msg)
 		free(result);
 
-	// TODO: free cache?
 	return;
 
 error:
@@ -1072,19 +1071,15 @@ void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 		case 0x02: // bind
 		case 0x03: {
 			/* CMD UDP ASSOCIATE (not a standard rfc implementation, but it works and is efficient)*/
-			if (session->cmd.port == 0) {
-				int port = session->local->config->local_port;
-				evbuffer_add(output,
-					     "\x05\x00\x00\x01\x00\x00\x00\x00",
-					     8);
-				int ns_port = htons(port);
-				evbuffer_add(output, &ns_port, 2);
-				evbuffer_drain(input, len);
-				session->state = SOCKS5_UDP_ASSOCIATE;
-			} else {
-				// TODO: should bind the dst.addr and dst.port
-			}
-
+			int port = session->local->config->local_port;
+			evbuffer_add(
+				output,
+				"\x05\x00\x00\x01\x7f\x00\x00\x01" /* 127.0.0.1 */,
+				8);
+			int ns_port = htons(port);
+			evbuffer_add(output, &ns_port, 2);
+			evbuffer_drain(input, len);
+			session->state = SOCKS5_UDP_ASSOCIATE;
 			return;
 		}
 
