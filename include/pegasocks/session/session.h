@@ -3,6 +3,9 @@
 
 #ifndef _WIN32
 #include <netinet/in.h>
+#include <netinet/tcp.h>
+#else
+#include <winsock2.h>
 #endif
 #include <event2/event.h>
 #include <event2/buffer.h>

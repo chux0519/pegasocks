@@ -268,20 +268,21 @@ if(WIN32)
   target_link_libraries(pegas libpegas ws2_32)
  
   if(Libevent2_ROOT)
-    file(GLOB runtime_dlls LIST_DIRECTORIES false ${Libevent2_ROOT}/lib/*.dll)
-    add_custom_command(
-          TARGET pegas POST_BUILD
-          COMMAND ${CMAKE_COMMAND} -E copy
-                  ${runtime_dlls}
-                  $<TARGET_FILE_DIR:pegas>)
+    file(GLOB runtime_dlls LIST_DIRECTORIES false ${Libevent2_ROOT}/lib/*.dll ${Libevent2_ROOT}/bin/*.dll)
+    if(runtime_dlls)
+      add_custom_command(
+        TARGET pegas POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+                ${runtime_dlls}
+                $<TARGET_FILE_DIR:pegas>)
+    endif()
   endif()
-  
+
   add_custom_command(
     TARGET pegas POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
             ${CMAKE_SOURCE_DIR}/logo/icon.ico
             $<TARGET_FILE_DIR:pegas>)
-
 else()
   add_executable(pegas src/main.c)
   target_link_libraries(pegas libpegas)
@@ -291,10 +292,11 @@ endif()
 install(TARGETS pegas RUNTIME DESTINATION bin)
 install(DIRECTORY logo DESTINATION share/pegasocks)
 
-if(runtime_dlls)
-  install(FILES ${runtime_dlls} DESTINATION bin)
-endif()
+
 if(WIN32)
+  if(runtime_dlls)
+    install(FILES ${runtime_dlls} DESTINATION bin)
+  endif()
   install(FILES logo/icon.ico DESTINATION bin)
 endif()
 

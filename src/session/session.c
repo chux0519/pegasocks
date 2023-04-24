@@ -5,8 +5,6 @@
 #include <openssl/ssl.h>
 #endif
 
-#include <netinet/tcp.h>
-
 const unsigned char g204_cmd[] = { 0x05, 0x01, 0x00, 0x03, 0x0d, 0x77, 0x77,
 				   0x77, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
 				   0x65, 0x2e, 0x63, 0x6e, 0x00, 0x50 };
@@ -19,6 +17,17 @@ const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
 const char *ws_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 
 static bool pgs_init_outbound(pgs_session_t *session, pgs_protocol_t protocol);
+
+static inline void pgs_set_nodaley(int fd)
+{
+#ifndef _WIN32
+	int opt = 1;
+	setsockopt(fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
+#else
+	int opt = 1;
+	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
+#endif
+}
 
 static inline void pgs_ws_req(struct evbuffer *out, const char *hostname,
 			      const char *server_address, int server_port,
@@ -713,9 +722,7 @@ static bool pgs_init_bypass_tcp_outbound(pgs_session_t *session)
 			evutil_closesocket(fd);
 		return false;
 	}
-	int opt = 1;
-	setsockopt(fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-
+	pgs_set_nodaley(fd);
 #ifdef __ANDROID__
 	pgs_config_t *gconfig = session->local->config;
 	int ret = pgs_protect_fd(fd, gconfig->android_protect_address,
@@ -772,10 +779,7 @@ static bool pgs_init_outbound(pgs_session_t *session, pgs_protocol_t protocol)
 		// setup fd
 		int fd = socket(AF_INET, SOCK_STREAM, 0);
 		evutil_make_socket_nonblocking(fd);
-
-		int opt = 1;
-		setsockopt(fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-
+		pgs_set_nodaley(fd);
 #ifdef __ANDROID__
 		pgs_config_t *gconfig = session->local->config;
 		int ret = pgs_protect_fd(fd, gconfig->android_protect_address,
@@ -1147,8 +1151,7 @@ pgs_trojan_ctx_t *pgs_trojan_ctx_new(pgs_session_t *session)
 			evutil_closesocket(ptr->fd);
 		goto error;
 	}
-	int opt = 1;
-	setsockopt(ptr->fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
+	pgs_set_nodaley(ptr->fd);
 
 #ifdef __ANDROID__
 	pgs_config_t *gconfig = session->local->config;
