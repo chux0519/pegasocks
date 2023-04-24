@@ -205,6 +205,41 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 	return status;
 }
 
+void on_bypass_udp_read(int fd, short event, void *ctx)
+{
+	pgs_session_t *session = ctx;
+	pgs_udp_relay_ctx_t *uctx = session->outbound.ctx;
+
+	if (event & EV_TIMEOUT) {
+		goto done;
+	}
+
+	ssize_t len =
+		recvfrom(fd, uctx->buf->buffer, uctx->buf->cap, 0,
+			 (struct sockaddr *)&uctx->in_addr, &uctx->in_addr_len);
+
+	if (len == -1) {
+		pgs_session_debug(session, "error: udp recvfrom");
+		goto done;
+	}
+	if (len == 0) {
+		pgs_session_debug(session, "udp connection closed");
+		goto done;
+	}
+	if (len > DEFAULT_MTU) {
+		pgs_session_debug(session, "mtu too small");
+		goto done;
+	}
+
+	size_t wlen;
+	session->inbound.write(session->inbound.ctx, uctx->buf->buffer, len,
+			       &wlen);
+
+	// fall through to done, now we clean the relay
+done:
+	PGS_FREE_SESSION(session);
+}
+
 static void pgs_ping_read(void *psession)
 {
 	pgs_ping_session_t *ptr = (pgs_ping_session_t *)psession;
@@ -408,6 +443,21 @@ static bool pgs_bufferevent_write(void *ctx, uint8_t *msg, size_t len,
 	if (evbuffer_add(writer, msg, len))
 		return false;
 	*olen = len;
+	return true;
+}
+
+static bool pgs_udp_relay_write(void *arg, uint8_t *msg, size_t len,
+				size_t *olen)
+{
+	if (!arg)
+		return false;
+	pgs_udp_relay_ctx_t *ctx = arg;
+
+	ssize_t n = sendto(ctx->fd, msg, len, 0,
+			   (struct sockaddr *)&ctx->in_addr, ctx->in_addr_len);
+	if (n == -1)
+		return false;
+	*olen = n;
 	return true;
 }
 
@@ -706,7 +756,15 @@ static bool pgs_init_tcp_inbound(pgs_session_t *session, int fd)
 
 static bool pgs_init_bypass_udp_outbound(pgs_session_t *session)
 {
-	// TODO:
+	session->outbound.protocol = PROTOCOL_TYPE_UDP;
+	session->outbound.ready = true;
+	session->outbound.ctx = pgs_udp_relay_ctx_new(session);
+	session->outbound.free = (void *)pgs_udp_relay_ctx_free;
+	session->outbound.write = (void *)pgs_udp_relay_write;
+
+	// will read from cache and to a remote write
+	session->inbound.read(session);
+
 	return true;
 }
 static bool pgs_init_bypass_tcp_outbound(pgs_session_t *session)
@@ -1249,4 +1307,70 @@ void pgs_udp_ctx_free(pgs_udp_ctx_t *ptr)
 		pgs_buffer_free(ptr->cache);
 	/* keep the fd, it's the ufd */
 	free(ptr);
+}
+
+pgs_udp_relay_ctx_t *pgs_udp_relay_ctx_new(pgs_session_t *session)
+{
+	pgs_udp_relay_ctx_t *ptr = malloc(sizeof(pgs_udp_ctx_t));
+
+	ptr->buf = pgs_buffer_new();
+	pgs_buffer_ensure(ptr->buf, 2 * DEFAULT_MTU);
+
+	ptr->fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+	evutil_make_socket_nonblocking(ptr->fd);
+
+#ifdef __ANDROID__
+	pgs_config_t *gconfig = session->local->config;
+	int ret = pgs_protect_fd(ptr->fd, gconfig->android_protect_address,
+				 gconfig->android_protect_port);
+	if (ret != fd) {
+		pgs_session_error(session, "[ANDROID] Failed to protect fd");
+		goto error;
+	}
+#endif
+
+	ptr->in_addr = (struct sockaddr_in){ 0 };
+	ptr->in_addr_len = sizeof(struct sockaddr_in);
+
+	ptr->udp_ev =
+		event_new(session->local->base, ptr->fd, EV_READ | EV_TIMEOUT,
+			  on_bypass_udp_read, session);
+
+	struct timeval tv = {
+		.tv_sec = session->local->config->timeout,
+		.tv_usec = 0,
+	};
+	event_add(ptr->udp_ev, &tv);
+
+	ptr->in_addr.sin_family = AF_INET;
+	inet_pton(AF_INET, session->cmd.dest, &ptr->in_addr.sin_addr);
+	ptr->in_addr.sin_port = htons(session->cmd.port);
+
+	return ptr;
+
+error:
+	if (!ptr)
+		return NULL;
+	if (ptr->fd)
+		evutil_closesocket(ptr->fd);
+	if (ptr)
+		free(ptr);
+	return NULL;
+}
+
+void pgs_udp_relay_ctx_free(pgs_udp_relay_ctx_t *ptr)
+{
+	if (!ptr)
+		return;
+	if (ptr->buf)
+		pgs_buffer_free(ptr->buf);
+	if (ptr->udp_ev) {
+		event_del(ptr->udp_ev);
+		event_free(ptr->udp_ev);
+	}
+	if (ptr->fd)
+		evutil_closesocket(ptr->fd);
+	if (ptr)
+		free(ptr);
 }

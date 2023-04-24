@@ -4,6 +4,7 @@
 #ifndef _WIN32
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <arpa/inet.h>
 #else
 #include <winsock2.h>
 #endif
@@ -100,6 +101,7 @@ typedef struct pgs_socks5_cmd_s {
 	size_t cmd_len;
 } pgs_socks5_cmd_t;
 
+/* inbound udp context */
 typedef struct pgs_udp_ctx_s {
 	int fd;
 	pgs_buffer_t *cache;
@@ -109,6 +111,16 @@ typedef struct pgs_udp_ctx_s {
 	socklen_t in_addr_len;
 	const pgs_socks5_cmd_t *cmd;
 } pgs_udp_ctx_t;
+
+/* outbound udp context */
+typedef struct pgs_udp_relay_ctx_s {
+	int fd;
+	pgs_buffer_t *buf;
+	struct sockaddr_in in_addr;
+	socklen_t in_addr_len;
+
+	struct event *udp_ev;
+} pgs_udp_relay_ctx_t;
 
 typedef struct pgs_session_s {
 	pgs_socks5_state state;
@@ -153,6 +165,10 @@ void pgs_trojan_ctx_free(pgs_trojan_ctx_t *);
 pgs_udp_ctx_t *pgs_udp_ctx_new(int, const pgs_socks5_cmd_t *);
 
 void pgs_udp_ctx_free(pgs_udp_ctx_t *);
+
+pgs_udp_relay_ctx_t *pgs_udp_relay_ctx_new(pgs_session_t *session);
+
+void pgs_udp_relay_ctx_free(pgs_udp_relay_ctx_t *);
 
 // session
 pgs_session_t *pgs_session_new(pgs_local_server_t *,
