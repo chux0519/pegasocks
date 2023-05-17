@@ -1,6 +1,10 @@
 #include "session/session.h"
 #include "session/filter.h"
 
+#ifdef __ANDROID__
+#include "dns.h"
+#endif
+
 #ifndef USE_MBEDTLS
 #include <openssl/ssl.h>
 #endif
@@ -1219,9 +1223,9 @@ pgs_trojan_ctx_t *pgs_trojan_ctx_new(pgs_session_t *session)
 
 #ifdef __ANDROID__
 	pgs_config_t *gconfig = session->local->config;
-	int ret = pgs_protect_fd(fd, gconfig->android_protect_address,
+	int ret = pgs_protect_fd(ptr->fd, gconfig->android_protect_address,
 				 gconfig->android_protect_port);
-	if (ret != fd) {
+	if (ret != ptr->fd) {
 		pgs_session_error(session, "[ANDROID] Failed to protect fd");
 		goto error;
 	}
@@ -1330,7 +1334,7 @@ pgs_udp_relay_ctx_t *pgs_udp_relay_ctx_new(pgs_session_t *session)
 	pgs_config_t *gconfig = session->local->config;
 	int ret = pgs_protect_fd(ptr->fd, gconfig->android_protect_address,
 				 gconfig->android_protect_port);
-	if (ret != fd) {
+	if (ret != ptr->fd) {
 		pgs_session_error(session, "[ANDROID] Failed to protect fd");
 		goto error;
 	}
