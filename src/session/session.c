@@ -152,13 +152,13 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 			status = filter->decode(filter->ctx, input, ilen,
 						&output, &olen, clen);
 			switch (status) {
-			case (FILTER_NEED_MORE_DATA):
 			case (FILTER_FAIL):
 				if (output)
 					free(output);
 				return status;
 			case FILTER_SKIP:
 				continue;
+			case (FILTER_NEED_MORE_DATA):
 			case (FILTER_SUCCESS):
 			default:
 				break;
@@ -179,13 +179,13 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 						&output, &olen);
 
 			switch (status) {
-			case (FILTER_NEED_MORE_DATA):
 			case (FILTER_FAIL):
 				if (output)
 					free(output);
 				return status;
 			case FILTER_SKIP:
 				continue;
+			case (FILTER_NEED_MORE_DATA):
 			case (FILTER_SUCCESS):
 			default:
 				break;
@@ -637,8 +637,17 @@ static void on_tcp_outbound_read(struct bufferevent *bev, void *ctx)
 	case FILTER_FAIL:
 		goto error;
 	case FILTER_NEED_MORE_DATA:
-		return;
+		pgs_session_debug(
+			session,
+			"need more data! msg len: %d, result: %p, res_len: %d, read_len: %d",
+			len, result, res_len, read_len);
+		// should fall through and write out exists buffer
+		break;
 	case FILTER_SUCCESS:
+		pgs_session_debug(
+			session,
+			"success! msg len: %d, result: %p, res_len: %d, read_len: %d",
+			len, result, res_len, read_len);
 	default:
 		break;
 	}

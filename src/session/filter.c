@@ -1,5 +1,9 @@
 #include "session/filter.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <sys/types.h>
 
 static int ws_encode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
 		     size_t *olen)
@@ -147,16 +151,115 @@ static int trojan_decode(void *ctx, const uint8_t *msg, size_t len,
 	return FILTER_SKIP;
 }
 
+static void pgs_ss_increase_cryptor_iv(pgs_ss_filter_ctx_t *ctx,
+				       pgs_cryptor_direction_t dir)
+{
+	if (is_aead_cipher(ctx->cipher)) {
+		pgs_cryptor_t *cryptor = NULL;
+		uint8_t *iv = NULL;
+		switch (dir) {
+		case PGS_DECRYPT:
+			cryptor = ctx->decryptor;
+			iv = ctx->dec_iv;
+			break;
+		case PGS_ENCRYPT:
+			cryptor = ctx->encryptor;
+			iv = ctx->enc_iv;
+			break;
+		default:
+			break;
+		}
+
+		if (iv != NULL && cryptor != NULL) {
+			pgs_increase_nonce(iv, ctx->iv_len);
+			pgs_cryptor_reset_iv(cryptor, iv);
+		}
+	}
+}
+
 static int ss_encode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
 		     size_t *olen)
 {
 	pgs_ss_filter_ctx_t *sfctx = ctx;
-	uint8_t *buff;
+	uint8_t *buff = NULL;
 	size_t offset = 0;
 
 	if (is_aead_cipher(sfctx->cipher)) {
 		// AEAD cipher logic
-		return FILTER_SKIP;
+		// aead chunk: [encrypted pyaload length(2)][length tag][encrypted payload][payload tag]
+		// first chunk: [cmd[3:]][data]
+		size_t addr_len = sfctx->cmd_len - 3;
+		size_t payload_len = len;
+		size_t chunk_len =
+			2 + sfctx->tag_len + payload_len + sfctx->tag_len;
+
+		if (!sfctx->iv_sent) {
+			const uint8_t *salt = sfctx->enc_salt;
+			size_t salt_len = sfctx->key_len;
+
+			buff = malloc(sizeof(uint8_t) * salt_len);
+			memcpy(buff, salt, salt_len);
+			offset += salt_len;
+			payload_len = len + addr_len;
+		}
+
+		if (payload_len > 0x3FFF) {
+			return FILTER_FAIL;
+		}
+
+		uint8_t prefix[2] = { 0 };
+		prefix[0] = payload_len >> 8;
+		prefix[1] = payload_len;
+
+		buff = realloc(buff, offset + 2 + sfctx->tag_len);
+		size_t ciphertext_len;
+		pgs_cryptor_encrypt(sfctx->encryptor, prefix, 2,
+				    buff + offset + 2 /* tag */, buff + offset,
+				    &ciphertext_len);
+		pgs_ss_increase_cryptor_iv(sfctx, PGS_ENCRYPT);
+
+		if (ciphertext_len != 2) {
+			return FILTER_FAIL;
+		}
+		offset += (2 + sfctx->tag_len);
+
+		if (!sfctx->iv_sent) {
+			uint8_t *payload = malloc(payload_len);
+			memcpy(payload, sfctx->cmd + 3, addr_len);
+			memcpy(payload + addr_len, msg, len);
+
+			buff = realloc(buff,
+				       offset + payload_len + sfctx->tag_len);
+
+			bool ok = pgs_cryptor_encrypt(
+				sfctx->encryptor, payload, payload_len,
+				buff + offset + payload_len /* tag */,
+				buff + offset, &ciphertext_len);
+			pgs_ss_increase_cryptor_iv(sfctx, PGS_ENCRYPT);
+			free(payload);
+
+			sfctx->iv_sent = true;
+
+			if (!ok || ciphertext_len != payload_len) {
+				return FILTER_FAIL;
+			}
+		} else {
+			buff = realloc(buff, offset + len + sfctx->tag_len);
+			bool ok = pgs_cryptor_encrypt(
+				sfctx->encryptor, msg, len,
+				buff + offset + len /* tag */, buff + offset,
+				&ciphertext_len);
+			pgs_ss_increase_cryptor_iv(sfctx, PGS_ENCRYPT);
+
+			if (!ok || ciphertext_len != payload_len) {
+				return FILTER_FAIL;
+			}
+		}
+
+		*olen = offset + payload_len + sfctx->tag_len;
+		*out = buff;
+
+		return FILTER_SUCCESS;
 	} else {
 		// AES ciphter logic
 		// stream: [iv][chunk]
@@ -216,12 +319,117 @@ static int ss_decode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
 		     size_t *olen, size_t *clen)
 {
 	pgs_ss_filter_ctx_t *sfctx = ctx;
-	uint8_t *buff;
+	uint8_t *buff = NULL;
+	size_t buff_len = 0;
 	size_t offset = 0;
+	size_t input_len = len;
 
 	if (is_aead_cipher(sfctx->cipher)) {
-		// TODO:
-		return FILTER_SKIP;
+		// aead
+		*clen = 0;
+		size_t decode_len;
+
+		if (!sfctx->decryptor) {
+			if (len < sfctx->key_len) {
+				return FILTER_NEED_MORE_DATA;
+			}
+			hkdf_sha1(msg /*salt*/, sfctx->key_len, sfctx->ikm,
+				  sfctx->key_len, (const uint8_t *)SS_INFO, 9,
+				  sfctx->dec_key, sfctx->key_len);
+			sfctx->decryptor =
+				pgs_cryptor_new(sfctx->cipher, PGS_DECRYPT,
+						sfctx->dec_key, sfctx->dec_iv);
+			*clen += sfctx->key_len;
+			len -= sfctx->key_len;
+		}
+		assert(sfctx->decryptor);
+
+		while (true) {
+			switch (sfctx->aead_decode_state) {
+			case READY: {
+				if (sfctx->plen == 0) {
+					// parse plen
+					if (len < 2 + sfctx->tag_len) {
+						sfctx->aead_decode_state =
+							WAIT_MORE_FOR_LEN;
+						// "need more data for payload len"
+						return FILTER_NEED_MORE_DATA;
+					}
+					uint8_t chunk_len[2];
+					pgs_cryptor_decrypt(sfctx->decryptor,
+							    msg + *clen, 2,
+							    msg + *clen + 2,
+							    chunk_len,
+							    &decode_len);
+					pgs_ss_increase_cryptor_iv(sfctx,
+								   PGS_DECRYPT);
+					if (decode_len != 2) {
+						return FILTER_FAIL;
+					}
+					*clen += (2 + sfctx->tag_len);
+					len -= (2 + sfctx->tag_len);
+					sfctx->plen = (uint16_t)chunk_len[0]
+							      << 8 |
+						      chunk_len[1];
+				} else {
+					// parse payload
+					if (len <
+					    sfctx->plen + sfctx->tag_len) {
+						sfctx->aead_decode_state =
+							WAIT_MORE_FOR_PAYLOAD;
+						// "need more data for payload"
+						return FILTER_NEED_MORE_DATA;
+					}
+
+					buff = (uint8_t *)realloc(
+						buff, sizeof(uint8_t) *
+							      (buff_len +
+							       sfctx->plen));
+
+					pgs_cryptor_decrypt(
+						sfctx->decryptor, msg + *clen,
+						sfctx->plen,
+						msg + *clen + sfctx->plen,
+						buff + buff_len, &decode_len);
+					pgs_ss_increase_cryptor_iv(sfctx,
+								   PGS_DECRYPT);
+					if (decode_len != sfctx->plen) {
+						return FILTER_FAIL;
+					}
+
+					buff_len += sfctx->plen;
+					*out = buff;
+					*olen = buff_len;
+					// *olen += sfctx->plen;
+					*clen += (sfctx->plen + sfctx->tag_len);
+					len -= (sfctx->plen + sfctx->tag_len);
+
+					sfctx->plen = 0;
+					if (len == 0) {
+						return FILTER_SUCCESS;
+					}
+				}
+				break;
+			}
+			case WAIT_MORE_FOR_LEN: {
+				if (len < 2 + sfctx->tag_len) {
+					// "need more data for payload len"
+					return FILTER_NEED_MORE_DATA;
+				}
+				sfctx->aead_decode_state = READY;
+				break;
+			}
+			case WAIT_MORE_FOR_PAYLOAD: {
+				if (len < sfctx->plen + sfctx->tag_len) {
+					// "need more data for payload"
+					return FILTER_NEED_MORE_DATA;
+				}
+				sfctx->aead_decode_state = READY;
+				break;
+			}
+			}
+		}
+
 	} else {
 		// aes
 		size_t offset = 0, decode_len = 0;
