@@ -1,4 +1,5 @@
 #include "session/session.h"
+#include "config.h"
 #include "session/filter.h"
 
 #ifdef __ANDROID__
@@ -285,7 +286,7 @@ static void pgs_ping_read(void *psession)
 	bool ok = ptr->session.outbound.write(ptr->session.outbound.ctx, result,
 					      res_len, &wlen);
 
-	if (result)
+	if (result && result != msg)
 		free(result);
 
 	if (!ok)
@@ -896,6 +897,57 @@ static bool pgs_init_outbound(pgs_session_t *session, pgs_protocol_t protocol)
 			bufferevent_setcb(bev, on_ws_outbound_read, NULL,
 					  on_ws_outbound_event, session);
 		}
+
+		session->outbound.write = pgs_bufferevent_write;
+
+		// enable read event
+		bufferevent_enable(bev, EV_READ);
+		// setup timeout and connect
+		struct timeval tv = {
+			.tv_sec = session->local->config->timeout,
+			.tv_usec = 0,
+		};
+		bufferevent_set_timeouts(bev, &tv, NULL);
+		bufferevent_socket_connect_hostname(
+			bev, session->local->dns_base, AF_INET,
+			session->config->server_address,
+			session->config->server_port);
+	} else if (IS_SHADOWSOCKS_SERVER(server_type)) {
+		pgs_config_extra_ss_t *ssconf = session->config->extra;
+
+		// setup fd
+		int fd = socket(AF_INET, SOCK_STREAM, 0);
+		evutil_make_socket_nonblocking(fd);
+		pgs_set_nodaley(fd);
+#ifdef __ANDROID__
+		pgs_config_t *gconfig = session->local->config;
+		int ret = pgs_protect_fd(fd, gconfig->android_protect_address,
+					 gconfig->android_protect_port);
+		if (ret != fd) {
+			pgs_session_error(session,
+					  "[ANDROID] Failed to protect fd");
+			return false;
+		}
+#endif
+		struct bufferevent *bev = bufferevent_socket_new(
+			session->local->base, fd,
+			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+
+		session->outbound.ctx = bev;
+		session->outbound.free = (void *)bufferevent_free;
+
+		if (protocol == PROTOCOL_TYPE_UDP) {
+			pgs_session_error(session, "UDP not supported yet: %s",
+					  server_type);
+			return false;
+		}
+
+		pgs_filter_t *ss_filter = pgs_filter_new(FILTER_SS, session);
+		pgs_list_node_t *filter_node = pgs_list_node_new(ss_filter);
+		pgs_list_add(session->filters, filter_node);
+
+		bufferevent_setcb(bev, on_tcp_outbound_read, NULL,
+				  on_tcp_outbound_event, session);
 
 		session->outbound.write = pgs_bufferevent_write;
 

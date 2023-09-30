@@ -147,6 +147,113 @@ static int trojan_decode(void *ctx, const uint8_t *msg, size_t len,
 	return FILTER_SKIP;
 }
 
+static int ss_encode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
+		     size_t *olen)
+{
+	pgs_ss_filter_ctx_t *sfctx = ctx;
+	uint8_t *buff;
+	size_t offset = 0;
+
+	if (is_aead_cipher(sfctx->cipher)) {
+		// AEAD cipher logic
+		return FILTER_SKIP;
+	} else {
+		// AES ciphter logic
+		// stream: [iv][chunk]
+		// aes chunk: [encrypted payload]
+		// first chunk [cmd[3:]][data]
+		size_t ciphertext_len;
+		if (!sfctx->iv_sent) {
+			// send iv
+			const uint8_t *iv = sfctx->enc_iv;
+			size_t iv_len = sfctx->iv_len;
+
+			size_t addr_len = sfctx->cmd_len - 3;
+			size_t chunk_len = addr_len + len;
+
+			buff = malloc(sizeof(uint8_t) * (iv_len + chunk_len));
+			memcpy(buff, iv, iv_len);
+			offset += iv_len;
+
+			uint8_t *payload = malloc(chunk_len);
+			memcpy(payload, sfctx->cmd + 3, addr_len);
+			memcpy(payload + addr_len, msg, len);
+			bool ok = pgs_cryptor_encrypt(sfctx->encryptor, payload,
+						      chunk_len, NULL,
+						      buff + offset,
+						      &ciphertext_len);
+			free(payload);
+
+			if (!ok || ciphertext_len != chunk_len) {
+				return FILTER_FAIL;
+			}
+
+			offset += chunk_len;
+
+			*out = buff;
+			*olen = offset; // iv_len + chunk_len
+
+			sfctx->iv_sent = true;
+
+			return FILTER_SUCCESS;
+		} else {
+			buff = malloc(sizeof(uint8_t) * len);
+			bool ok = pgs_cryptor_encrypt(sfctx->encryptor, msg,
+						      len, NULL, buff,
+						      &ciphertext_len);
+			if (!ok || ciphertext_len != len) {
+				return FILTER_FAIL;
+			}
+
+			*out = buff;
+			*olen = len;
+			return FILTER_SUCCESS;
+		}
+	}
+}
+
+static int ss_decode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
+		     size_t *olen, size_t *clen)
+{
+	pgs_ss_filter_ctx_t *sfctx = ctx;
+	uint8_t *buff;
+	size_t offset = 0;
+
+	if (is_aead_cipher(sfctx->cipher)) {
+		// TODO:
+		return FILTER_SKIP;
+	} else {
+		// aes
+		size_t offset = 0, decode_len = 0;
+		if (sfctx->decryptor == NULL) {
+			if (len < sfctx->iv_len) {
+				return FILTER_NEED_MORE_DATA;
+			}
+			memcpy(sfctx->dec_iv, msg, sfctx->iv_len);
+			memcpy(sfctx->dec_key, sfctx->ikm, sfctx->key_len);
+			sfctx->decryptor =
+				pgs_cryptor_new(sfctx->cipher, PGS_DECRYPT,
+						sfctx->dec_key, sfctx->dec_iv);
+			offset += sfctx->iv_len;
+		}
+		assert(sfctx->decryptor != NULL);
+
+		size_t mlen = len - offset;
+		buff = malloc(sizeof(uint8_t) * mlen);
+
+		bool ok = pgs_cryptor_decrypt(sfctx->decryptor, msg + offset,
+					      mlen, NULL, buff, &decode_len);
+		if (!ok || decode_len != mlen) {
+			return FILTER_FAIL;
+		}
+
+		*olen = mlen;
+		*clen = len;
+		*out = buff;
+		return FILTER_SUCCESS;
+	}
+}
+
 static int trojan_udp_encode(void *ctx, const uint8_t *msg, size_t len,
 			     uint8_t **out, size_t *olen)
 {
@@ -240,6 +347,13 @@ pgs_filter_t *pgs_filter_new(pgs_filter_type type, const pgs_session_t *session)
 		ptr->decode = ws_decode;
 		break;
 	}
+	case (FILTER_SS): {
+		ptr->ctx = pgs_ss_filter_ctx_new(session);
+		ptr->free = (void *)pgs_ss_filter_ctx_free;
+		ptr->encode = ss_encode;
+		ptr->decode = ss_decode;
+		break;
+	}
 	default:
 		break;
 	}
@@ -325,4 +439,69 @@ void pgs_ws_filter_ctx_free(pgs_ws_filter_ctx_t *ptr)
 		return;
 
 	free(ptr);
+}
+
+pgs_ss_filter_ctx_t *pgs_ss_filter_ctx_new(const pgs_session_t *session)
+{
+	pgs_ss_filter_ctx_t *ptr = malloc(sizeof(pgs_ss_filter_ctx_t));
+
+	pgs_config_extra_ss_t *ss_extra_conf = session->config->extra;
+
+	pgs_cryptor_type_info(ss_extra_conf->method, &ptr->key_len,
+			      &ptr->iv_len, &ptr->tag_len);
+	ptr->enc_key = malloc(ptr->key_len);
+	ptr->dec_key = malloc(ptr->key_len);
+	ptr->ikm = malloc(ptr->key_len);
+	ptr->enc_salt = malloc(ptr->key_len);
+	evp_bytes_to_key(session->config->password,
+			 strlen((const char *)session->config->password),
+			 ptr->ikm, ptr->key_len);
+
+	ptr->enc_iv = calloc(1, ptr->iv_len);
+	ptr->dec_iv = calloc(1, ptr->iv_len);
+	ptr->cmd = session->cmd.raw_cmd;
+	ptr->cmd_len = session->cmd.cmd_len;
+	ptr->cipher = ss_extra_conf->method;
+	ptr->iv_sent = false;
+
+	ptr->aead_decode_state = READY;
+	ptr->plen = 0;
+
+	if (is_aead_cipher(ss_extra_conf->method)) {
+		// random bytes as salt
+		rand_bytes(ptr->enc_salt, ptr->key_len);
+		hkdf_sha1(ptr->enc_salt, ptr->key_len, ptr->ikm, ptr->key_len,
+			  (const uint8_t *)SS_INFO, 9, ptr->enc_key,
+			  ptr->key_len);
+	} else {
+		memcpy(ptr->enc_key, ptr->ikm, ptr->key_len);
+		rand_bytes(ptr->enc_iv, ptr->iv_len);
+	}
+
+	ptr->encryptor = pgs_cryptor_new(ss_extra_conf->method, PGS_ENCRYPT,
+					 ptr->enc_key, ptr->enc_iv);
+	ptr->decryptor = NULL;
+	return ptr;
+}
+
+void pgs_ss_filter_ctx_free(pgs_ss_filter_ctx_t *ptr)
+{
+	if (ptr->encryptor)
+		pgs_cryptor_free(ptr->encryptor);
+	if (ptr->decryptor)
+		pgs_cryptor_free(ptr->decryptor);
+	if (ptr->enc_iv)
+		free(ptr->enc_iv);
+	if (ptr->enc_key)
+		free(ptr->enc_key);
+	if (ptr->dec_iv)
+		free(ptr->dec_iv);
+	if (ptr->dec_key)
+		free(ptr->dec_key);
+	if (ptr->ikm)
+		free(ptr->ikm);
+	if (ptr->enc_salt)
+		free(ptr->enc_salt);
+	if (ptr)
+		free(ptr);
 }

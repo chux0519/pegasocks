@@ -18,6 +18,7 @@ typedef enum {
 	FILTER_TROJAN = 0,
 	FITLER_TROJAN_UDP,
 	FITLER_WEBSOCKET,
+	FILTER_SS,
 } pgs_filter_type;
 typedef struct pgs_filter_s {
 	pgs_filter_type type;
@@ -41,6 +42,35 @@ typedef struct pgs_trojan_filter_ctx_s {
 	size_t head_len;
 } pgs_trojan_filter_ctx_t;
 
+typedef struct pgs_ss_filter_ctx_s {
+	const uint8_t *cmd;
+	size_t cmd_len;
+
+	bool iv_sent;
+
+	/* AEAD decode state machine */
+	enum {
+		READY = 0,
+		WAIT_MORE_FOR_LEN, /* len(data) < 2 + tag_len */
+		WAIT_MORE_FOR_PAYLOAD, /* len(data) < 2 + tag_len + payload_len + tag_len */
+	} aead_decode_state;
+	size_t plen;
+
+	/* salt + ikm(pass) => encode key; len(salt) = len(key) */
+	uint8_t *enc_key; /* random bytes, to send */
+	uint8_t *enc_iv;
+	uint8_t *dec_key; /* to receive by salt (AEAD) */
+	uint8_t *dec_iv; /* to receive(AES) */
+	uint8_t *ikm;
+	uint8_t *enc_salt;
+	size_t key_len;
+	size_t iv_len;
+	size_t tag_len;
+	pgs_cryptor_t *encryptor;
+	pgs_cryptor_t *decryptor;
+	pgs_cryptor_type_t cipher;
+} pgs_ss_filter_ctx_t;
+
 pgs_trojan_filter_ctx_t *pgs_trojan_filter_ctx_new(const pgs_session_t *);
 void pgs_trojan_filter_ctx_free(pgs_trojan_filter_ctx_t *);
 
@@ -59,5 +89,8 @@ typedef struct pgs_ws_filter_ctx_s {
 
 pgs_ws_filter_ctx_t *pgs_ws_filter_ctx_new(const pgs_session_t *);
 void pgs_ws_filter_ctx_free(pgs_ws_filter_ctx_t *);
+
+pgs_ss_filter_ctx_t *pgs_ss_filter_ctx_new(const pgs_session_t *);
+void pgs_ss_filter_ctx_free(pgs_ss_filter_ctx_t *);
 
 #endif
