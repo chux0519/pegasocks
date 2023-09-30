@@ -312,6 +312,9 @@ static bool pgs_ping_write(void *ctx, uint8_t *msg, size_t len, size_t *olen)
 	pgs_session_debug((&ptr->session), "g204: %f", ptr->g204);
 
 	ptr->session.local->sm->server_stats[ptr->idx].g204_delay = ptr->g204;
+#ifdef WITH_APPLET
+	pgs_tray_update();
+#endif
 
 	return false; /* terminate */
 }
