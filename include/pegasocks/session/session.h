@@ -14,6 +14,10 @@
 #include "server/local.h"
 #include "utils.h"
 
+#if !defined(SOL_TCP) && defined(IPPROTO_TCP)
+#define SOL_TCP IPPROTO_TCP
+#endif
+
 #ifndef htonll
 #define htonll(x)                                                              \
 	((1 == htonl(1)) ?                                                     \

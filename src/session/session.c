@@ -2,6 +2,10 @@
 #include "config.h"
 #include "session/filter.h"
 
+#ifdef WITH_APPLET
+#include "applet.h"
+#endif
+
 #ifdef __ANDROID__
 #include "dns.h"
 #endif
