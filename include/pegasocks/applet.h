@@ -47,5 +47,5 @@ void pgs_tray_update();
 #endif
 
 void pgs_tray_start(pgs_tray_context_t *ctx);
-
+void pgs_tray_stop(pgs_tray_context_t *ctx);
 #endif

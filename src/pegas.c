@@ -62,6 +62,10 @@ static int init_control_fd(const pgs_config_t *config, int *fd);
 static bool pgs_start_local_servers();
 static bool pgs_start_helper();
 
+#ifdef WITH_APPLET
+pgs_tray_context_t *TRAY_CTX = NULL;
+#endif
+
 bool pgs_start(const char *config, const char *acl, int threads,
 	       void (*shutdown)())
 {
@@ -82,8 +86,11 @@ bool pgs_start(const char *config, const char *acl, int threads,
 	RUNNING = true;
 
 #ifdef WITH_APPLET
-	pgs_tray_context_t tray_ctx = { LOGGER, SM, NULL, shutdown };
-	pgs_tray_start(&tray_ctx);
+	TRAY_CTX = malloc(sizeof(pgs_tray_context_t));
+	TRAY_CTX->logger = LOGGER;
+	TRAY_CTX->sm = SM;
+	TRAY_CTX->quit = shutdown;
+	pgs_tray_start(TRAY_CTX);
 #endif
 
 	// will block here
@@ -123,6 +130,11 @@ void pgs_stop()
 	if (HELPER_THREAD_CTX != NULL) {
 		evuser_trigger(HELPER_THREAD_CTX->ev_term);
 	}
+
+#ifdef WITH_APPLET
+	pgs_tray_stop(TRAY_CTX);
+	free(TRAY_CTX);
+#endif
 
 	atomic_store(&SHUTINGDOWN, 0);
 }

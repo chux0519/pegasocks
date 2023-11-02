@@ -133,8 +133,16 @@ void pgs_tray_start(pgs_tray_context_t *ctx)
 	pgs_tray_clean();
 }
 
+void pgs_tray_stop(pgs_tray_context_t *ctx)
+{
+	tray_exit();
+}
+
 #else
 void pgs_tray_start(pgs_tray_context_t *ctx)
+{
+}
+void pgs_tray_stop(pgs_tray_context_t *ctx)
 {
 }
 

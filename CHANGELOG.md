@@ -23,3 +23,8 @@
 - clean code and file structure change (for better maintenance)
 - ci updates for mbedtls build test
 - bugfixes
+
+## 20231102
+
+- fixed macos build
+- openssl/libevent_openssl seems bugy on mac, use `-DUSE_MBEDTLS=ON` to use mbedtls
