@@ -284,7 +284,7 @@ pgs_config_t *pgs_config_new()
 	ptr->log_level = 0;
 	ptr->log_file = stderr;
 	ptr->ssl_crt = NULL;
-	ptr->ssl_verify = true;
+	ptr->ssl_verify = false;
 	ptr->dns_servers = pgs_list_new();
 	ptr->android_protect_address = NULL;
 	ptr->android_protect_port = 0;

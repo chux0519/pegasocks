@@ -74,6 +74,7 @@ pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config)
 				} else {
 					pgs_config_info(config,
 							"system cert loaded");
+					// TODO: we should call custom validate function to validate hostname
 				}
 			}
 		}
