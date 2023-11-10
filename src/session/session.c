@@ -1127,14 +1127,14 @@ void on_local_event(struct bufferevent *bev, short events, void *ctx)
 void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_socks5_state state = session->state;
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
 	size_t len;
 	uint8_t *rdata;
 
-	switch (state) {
+socks5:
+	switch (session->state) {
 	case SOCKS5_AUTH:
 		len = evbuffer_get_length(input);
 		rdata = evbuffer_pullup(input, len);
@@ -1142,9 +1142,14 @@ void on_socks5_handshake(struct bufferevent *bev, void *ctx)
 			pgs_session_error(session, "socks5: auth");
 			goto error;
 		}
+		uint8_t nmthods = rdata[1];
+		size_t rlen = 1 + 1 + nmthods;
 		evbuffer_add(output, "\x05\x00", 2);
-		evbuffer_drain(input, len);
+		// may carry more data
+		evbuffer_drain(input, rlen);
 		session->state = SOCKS5_CMD;
+		if (len > rlen)
+			goto socks5;
 		return;
 	case SOCKS5_CMD:
 		len = evbuffer_get_length(input);
