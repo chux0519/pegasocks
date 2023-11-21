@@ -163,6 +163,7 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 			case FILTER_SKIP:
 				continue;
 			case (FILTER_NEED_MORE_DATA):
+				return status;
 			case (FILTER_SUCCESS):
 			default:
 				break;
@@ -190,6 +191,7 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 			case FILTER_SKIP:
 				continue;
 			case (FILTER_NEED_MORE_DATA):
+				return status;
 			case (FILTER_SUCCESS):
 			default:
 				break;
