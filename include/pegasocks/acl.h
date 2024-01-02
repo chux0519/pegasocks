@@ -16,6 +16,8 @@ typedef enum {
 
 pgs_acl_t *pgs_acl_new(const char *path);
 
+void pgs_acl_add_bypass(pgs_acl_t *, const char *);
+
 void pgs_acl_free(pgs_acl_t *acl);
 
 pgs_acl_rule_t *pgs_acl_rule_new(const char *raw);

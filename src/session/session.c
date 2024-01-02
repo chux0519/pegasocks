@@ -238,7 +238,10 @@ void on_bypass_udp_read(int fd, short event, void *ctx)
 		goto done;
 	}
 	if (len > DEFAULT_MTU) {
-		pgs_session_debug(session, "mtu too small");
+		pgs_session_debug(
+			session,
+			"bypass udp mtu too small, read: %d, default mtu: %d",
+			len, DEFAULT_MTU);
 		goto done;
 	}
 
@@ -352,11 +355,12 @@ static bool pgs_inbound_udp_write(void *pctx, uint8_t *msg, size_t len,
 
 	free(buf);
 
-	return false; /* close this session */
+	return true;
 }
 
 static void pgs_inbound_udp_read(void *psession)
 {
+	// will be called once outbound is ready
 	pgs_session_t *session = (pgs_session_t *)psession;
 	pgs_udp_ctx_t *ctx = session->inbound.ctx;
 
@@ -365,20 +369,35 @@ static void pgs_inbound_udp_read(void *psession)
 	if (len == 0)
 		return;
 
+	if (!session->outbound.ready) {
+		pgs_session_warn(
+			session,
+			"pgs_inbound_udp_read: outbound not ready yet");
+		return;
+	}
+
 	uint8_t *result = NULL;
 	size_t res_len = 0;
 	size_t _ = 0;
 
-	int status = apply_filters(session, msg, len, &result, &res_len, &_,
-				   FILTER_DIR_ENCODE);
-	switch (status) {
-	case FILTER_FAIL:
-		goto error;
-	case FILTER_NEED_MORE_DATA:
-		return;
-	case FILTER_SUCCESS:
-	default:
-		break;
+	if (session->proxy) {
+		int status = apply_filters(session, msg, len, &result, &res_len,
+					   &_, FILTER_DIR_ENCODE);
+		switch (status) {
+		case FILTER_FAIL:
+			goto error;
+		case FILTER_NEED_MORE_DATA:
+			return;
+		case FILTER_SUCCESS:
+		default:
+			break;
+		}
+	} else {
+		// bypass
+		pgs_session_debug(session, "by pass udp -> %s:%d",
+				  session->cmd.dest, session->cmd.port);
+		result = msg;
+		res_len = len;
 	}
 
 	if (!result)
@@ -655,8 +674,9 @@ static void on_tcp_outbound_read(struct bufferevent *bev, void *ctx)
 	case FILTER_SUCCESS:
 		pgs_session_debug(
 			session,
-			"success! msg len: %d, result: %p, res_len: %d, read_len: %d",
-			len, result, res_len, read_len);
+			"[%s] msg len: %d, result: %p, res_len: %d, read_len: %d",
+			session->proxy ? "PROXY" : "BYPASS", len, result,
+			res_len, read_len);
 	default:
 		break;
 	}
@@ -702,21 +722,21 @@ static bool pgs_init_udp_inbound(pgs_session_t *session, int fd)
 	ctx->cache_len = len;
 
 	if (len == -1) {
-		pgs_session_debug(session, "error: udp recvfrom");
+		pgs_session_error(session, "error: udp recvfrom");
 		goto clean;
 	}
 	if (len == 0) {
-		pgs_session_debug(session, "udp connection closed");
+		pgs_session_error(session, "udp connection closed");
 		goto clean;
 	}
 	if (len > DEFAULT_MTU) {
-		pgs_session_debug(session, "mtu too small");
+		pgs_session_error(session, "mtu too small");
 		goto clean;
 	}
 	const uint8_t *buf = ctx->cache->buffer;
 	uint8_t frag = buf[2];
 	if (frag != 0x00) {
-		pgs_session_debug(session,
+		pgs_session_error(session,
 				  "fragmentation is not supported(frag: %d)",
 				  frag);
 		goto clean;
@@ -724,7 +744,7 @@ static bool pgs_init_udp_inbound(pgs_session_t *session, int fd)
 
 	int addr_len = socks5_cmd_get_addr_len(buf + 3);
 	if (addr_len == 0) {
-		pgs_session_debug(session, "socks5: wrong atyp");
+		pgs_session_error(session, "socks5: wrong atyp");
 		goto clean;
 	}
 	size_t cmd_len = 4 + addr_len + 2;
@@ -1227,6 +1247,7 @@ socks5:
 			evbuffer_add(output, &ns_port, 2);
 			evbuffer_drain(input, len);
 			session->state = SOCKS5_UDP_ASSOCIATE;
+			// FIXME: associate with udp relay, it should only be freed after tcp connection closed ?
 			return;
 		}
 

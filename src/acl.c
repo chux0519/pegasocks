@@ -84,6 +84,41 @@ static char *trimwhitespace(char *str)
 	return str;
 }
 
+static void pgs_acl_inner_add(pgs_inner_acl_t *acl, const char *line)
+{
+	char host[LINE_BUFF_SIZE];
+	int cidr;
+	parse_addr_cidr(line, host, &cidr);
+
+	struct cork_ip addr;
+	int err = cork_ip_init(&addr, host);
+
+	if (!err) {
+		if (addr.version == 4) {
+			if (cidr >= 0) {
+				ipset_ipv4_add_network(&acl->v4set,
+						       &(addr.ip.v4), cidr);
+			} else {
+				ipset_ipv4_add(&acl->v4set, &(addr.ip.v4));
+			}
+		} else if (addr.version == 6) {
+			if (cidr >= 0) {
+				ipset_ipv6_add_network(&acl->v6set,
+						       &(addr.ip.v6), cidr);
+			} else {
+				ipset_ipv6_add(&acl->v6set, &(addr.ip.v6));
+			}
+		}
+	} else {
+		pgs_acl_add_rule(acl, line);
+	}
+}
+
+void pgs_acl_add_bypass(pgs_acl_t *ptr, const char *line)
+{
+	pgs_acl_inner_add(ptr->bypass_acl, line);
+}
+
 pgs_acl_t *pgs_acl_new(const char *path)
 {
 	pgs_acl_t *ptr = malloc(sizeof(pgs_acl_t));
@@ -165,35 +200,7 @@ pgs_acl_t *pgs_acl_new(const char *path)
 				continue;
 			}
 
-			char host[LINE_BUFF_SIZE];
-			int cidr;
-			parse_addr_cidr(line, host, &cidr);
-
-			struct cork_ip addr;
-			int err = cork_ip_init(&addr, host);
-			if (!err) {
-				if (addr.version == 4) {
-					if (cidr >= 0) {
-						ipset_ipv4_add_network(
-							&acl->v4set,
-							&(addr.ip.v4), cidr);
-					} else {
-						ipset_ipv4_add(&acl->v4set,
-							       &(addr.ip.v4));
-					}
-				} else if (addr.version == 6) {
-					if (cidr >= 0) {
-						ipset_ipv6_add_network(
-							&acl->v6set,
-							&(addr.ip.v6), cidr);
-					} else {
-						ipset_ipv6_add(&acl->v6set,
-							       &(addr.ip.v6));
-					}
-				}
-			} else {
-				pgs_acl_add_rule(acl, line);
-			}
+			pgs_acl_inner_add(acl, line);
 		}
 	}
 

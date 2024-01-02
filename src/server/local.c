@@ -1,4 +1,5 @@
 #include "server/local.h"
+#include "acl.h"
 #include "dns.h"
 #include "session/session.h"
 
@@ -86,6 +87,16 @@ pgs_local_server_t *pgs_local_server_new(int fd, int ufd, pgs_mpsc_t *mpsc,
 	event_config_free(cfg);
 
 	pgs_dns_init(ptr->base, &ptr->dns_base, config, ptr->logger);
+
+	if (acl != NULL) {
+		// bypass DNS servers
+		// TODO: should be optional
+		pgs_list_node_t *cur, *next;
+		pgs_list_foreach(config->dns_servers, cur, next)
+		{
+			pgs_acl_add_bypass(acl, (const char *)cur->val);
+		}
+	}
 
 	ptr->sessions = pgs_list_new();
 	ptr->sessions->free = (void *)pgs_session_free;
