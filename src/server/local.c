@@ -88,6 +88,7 @@ pgs_local_server_t *pgs_local_server_new(int fd, int ufd, pgs_mpsc_t *mpsc,
 
 	pgs_dns_init(ptr->base, &ptr->dns_base, config, ptr->logger);
 
+#ifdef WITH_ACL
 	if (acl != NULL) {
 		// bypass DNS servers
 		// TODO: should be optional
@@ -97,7 +98,7 @@ pgs_local_server_t *pgs_local_server_new(int fd, int ufd, pgs_mpsc_t *mpsc,
 			pgs_acl_add_bypass(acl, (const char *)cur->val);
 		}
 	}
-
+#endif
 	ptr->sessions = pgs_list_new();
 	ptr->sessions->free = (void *)pgs_session_free;
 
