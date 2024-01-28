@@ -1,7 +1,7 @@
 #include "session/session.h"
 #include "config.h"
 #include "session/filter.h"
-#include <cstdint>
+#include <stdint.h>
 #include <ipset/ipset.h>
 #include <stdbool.h>
 
