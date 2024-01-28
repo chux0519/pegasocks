@@ -1,6 +1,9 @@
 #include "session/session.h"
 #include "config.h"
 #include "session/filter.h"
+#include <cstdint>
+#include <ipset/ipset.h>
+#include <stdbool.h>
 
 #ifdef WITH_APPLET
 #include "applet.h"
@@ -59,6 +62,51 @@ static inline bool pgs_ws_upgrade_check(const char *data)
 {
 	return strncmp(data, ws_upgrade, strlen(ws_upgrade)) != 0 ||
 	       !strstr(data, ws_accept);
+}
+
+static void pgs_udp_relay_remote_dns_cb(int result, char type, int count,
+					int ttl, void *addrs, void *arg)
+{
+	pgs_session_t *session = arg;
+	pgs_udp_relay_ctx_t *ctx = session->outbound.ctx;
+
+	int i;
+	char dest[32] = { 0 };
+	size_t raw_cmd_len = 4 + 4 + 2;
+	uint8_t raw_cmd[10] = { 0 };
+
+	for (i = 0; i < count; ++i) {
+		if (type == DNS_IPv4_A) {
+			uint32_t addr = ((uint32_t *)addrs)[i];
+			uint32_t ip = ntohl(addr);
+			sprintf(dest, "%d.%d.%d.%d",
+				(int)(uint8_t)((ip >> 24) & 0xff),
+				(int)(uint8_t)((ip >> 16) & 0xff),
+				(int)(uint8_t)((ip >> 8) & 0xff),
+				(int)(uint8_t)((ip)&0xff));
+
+			pgs_session_debug(session, "[DNS] result: %s", dest);
+			inet_pton(AF_INET, dest, &ctx->in_addr.sin_addr);
+			session->outbound.ready = true;
+			break;
+		}
+	}
+
+	/* just leave it, prevent to double free */
+	session->dns_req = NULL;
+
+	if (!session->outbound.ready) {
+		PGS_FREE_SESSION(session);
+		return;
+	}
+
+	struct timeval tv = {
+		.tv_sec = session->local->config->timeout,
+		.tv_usec = 0,
+	};
+	event_add(ctx->udp_ev, &tv);
+
+	session->inbound.read(session);
 }
 
 #ifdef WITH_ACL
@@ -216,7 +264,7 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 	return status;
 }
 
-void on_bypass_udp_read(int fd, short event, void *ctx)
+void on_remote_udp_read(int fd, short event, void *ctx)
 {
 	pgs_session_t *session = ctx;
 	pgs_udp_relay_ctx_t *uctx = session->outbound.ctx;
@@ -245,9 +293,43 @@ void on_bypass_udp_read(int fd, short event, void *ctx)
 		goto done;
 	}
 
+	const uint8_t *msg = uctx->buf->buffer;
+
+	uint8_t *result = NULL;
+	size_t res_len = 0;
+	size_t read_len = len; /* non-zero */
+
+	int status = apply_filters(session, msg, len, &result, &res_len,
+				   &read_len, FILTER_DIR_DECODE);
+	switch (status) {
+	case FILTER_FAIL:
+		goto done;
+	case FILTER_NEED_MORE_DATA:
+		pgs_session_debug(
+			session,
+			"need more data! msg len: %d, result: %p, res_len: %d, read_len: %d",
+			len, result, res_len, read_len);
+		// should fall through and write out exists buffer
+		break;
+	case FILTER_SUCCESS:
+		pgs_session_debug(
+			session,
+			"[%s] msg len: %d, result: %p, res_len: %d, read_len: %d",
+			session->proxy ? "PROXY" : "BYPASS", len, result,
+			res_len, read_len);
+	default:
+		break;
+	}
+
 	size_t wlen;
-	session->inbound.write(session->inbound.ctx, uctx->buf->buffer, len,
-			       &wlen);
+
+	bool ok = session->inbound.write(session->inbound.ctx, result, res_len,
+					 &wlen);
+	if (result != msg)
+		free(result);
+
+	if (!ok)
+		goto done;
 
 	// fall through to done, now we clean the relay
 done:
@@ -803,19 +885,29 @@ static bool pgs_init_tcp_inbound(pgs_session_t *session, int fd)
 	return true;
 }
 
-static bool pgs_init_bypass_udp_outbound(pgs_session_t *session)
+static bool pgs_init_udp_outbound_over_udp(pgs_session_t *session)
 {
 	session->outbound.protocol = PROTOCOL_TYPE_UDP;
 	session->outbound.ready = true;
-	session->outbound.ctx = pgs_udp_relay_ctx_new(session);
+	pgs_udp_relay_ctx_t *ctx = pgs_udp_relay_ctx_new(session);
+	session->outbound.ctx = ctx;
 	session->outbound.free = (void *)pgs_udp_relay_ctx_free;
 	session->outbound.write = (void *)pgs_udp_relay_write;
 
 	// will read from cache and to a remote write
-	session->inbound.read(session);
+	if (session->outbound.ready) {
+		struct timeval tv = {
+			.tv_sec = session->local->config->timeout,
+			.tv_usec = 0,
+		};
+		event_add(ctx->udp_ev, &tv);
+
+		session->inbound.read(session);
+	}
 
 	return true;
 }
+
 static bool pgs_init_bypass_tcp_outbound(pgs_session_t *session)
 {
 	session->outbound.protocol = PROTOCOL_TYPE_TCP;
@@ -870,7 +962,7 @@ static bool pgs_init_outbound(pgs_session_t *session, pgs_protocol_t protocol)
 		case (PROTOCOL_TYPE_TCP):
 			return pgs_init_bypass_tcp_outbound(session);
 		case (PROTOCOL_TYPE_UDP):
-			return pgs_init_bypass_udp_outbound(
+			return pgs_init_udp_outbound_over_udp(
 				session); /* UDP bypass */
 		default:
 			return false;
@@ -953,6 +1045,14 @@ static bool pgs_init_outbound(pgs_session_t *session, pgs_protocol_t protocol)
 	} else if (IS_SHADOWSOCKS_SERVER(server_type)) {
 		pgs_config_extra_ss_t *ssconf = session->config->extra;
 
+		pgs_filter_t *ss_filter = pgs_filter_new(FILTER_SS, session);
+		pgs_list_node_t *filter_node = pgs_list_node_new(ss_filter);
+		pgs_list_add(session->filters, filter_node);
+
+		if (protocol == PROTOCOL_TYPE_UDP) {
+			return pgs_init_udp_outbound_over_udp(session);
+		}
+
 		// setup fd
 		int fd = socket(AF_INET, SOCK_STREAM, 0);
 		evutil_make_socket_nonblocking(fd);
@@ -973,16 +1073,6 @@ static bool pgs_init_outbound(pgs_session_t *session, pgs_protocol_t protocol)
 
 		session->outbound.ctx = bev;
 		session->outbound.free = (void *)bufferevent_free;
-
-		if (protocol == PROTOCOL_TYPE_UDP) {
-			pgs_session_error(session, "UDP not supported yet: %s",
-					  server_type);
-			return false;
-		}
-
-		pgs_filter_t *ss_filter = pgs_filter_new(FILTER_SS, session);
-		pgs_list_node_t *filter_node = pgs_list_node_new(ss_filter);
-		pgs_list_add(session->filters, filter_node);
 
 		bufferevent_setcb(bev, on_tcp_outbound_read, NULL,
 				  on_tcp_outbound_event, session);
@@ -1441,17 +1531,37 @@ pgs_udp_relay_ctx_t *pgs_udp_relay_ctx_new(pgs_session_t *session)
 
 	ptr->udp_ev =
 		event_new(session->local->base, ptr->fd, EV_READ | EV_TIMEOUT,
-			  on_bypass_udp_read, session);
-
-	struct timeval tv = {
-		.tv_sec = session->local->config->timeout,
-		.tv_usec = 0,
-	};
-	event_add(ptr->udp_ev, &tv);
-
+			  on_remote_udp_read, session);
 	ptr->in_addr.sin_family = AF_INET;
-	inet_pton(AF_INET, session->cmd.dest, &ptr->in_addr.sin_addr);
-	ptr->in_addr.sin_port = htons(session->cmd.port);
+
+	if (!session->proxy) {
+		// TODO: should resolve if cmd.dest is not IP
+		inet_pton(AF_INET, session->cmd.dest, &ptr->in_addr.sin_addr);
+		ptr->in_addr.sin_port = htons(session->cmd.port);
+	} else {
+		// resolve if server_address is not IP
+		struct cork_ip ip_addr;
+		int err =
+			cork_ip_init(&ip_addr, session->config->server_address);
+		if (!err) {
+			inet_pton(AF_INET, session->config->server_address,
+				  &ptr->in_addr.sin_addr);
+			ptr->in_addr.sin_port = htons(session->cmd.port);
+		} else {
+			// DNS query
+			session->outbound.ready = false;
+			session->outbound.ctx = ptr;
+			session->dns_req = evdns_base_resolve_ipv4(
+				session->local->dns_base,
+				session->config->server_address, 0,
+				pgs_udp_relay_remote_dns_cb /*1. set in_addr.sin_addr 2. add event 3. triger read*/
+				,
+				session);
+			pgs_session_info(session, "DNS query: %s",
+					 session->config->server_address);
+			return ptr;
+		}
+	}
 
 	return ptr;
 
