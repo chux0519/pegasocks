@@ -21,8 +21,8 @@
 #ifndef htonll
 #define htonll(x)                                                              \
 	((1 == htonl(1)) ?                                                     \
-		       (x) :                                                         \
-		       ((uint64_t)htonl((x)&0xFFFFFFFF) << 32) | htonl((x) >> 32))
+		 (x) :                                                         \
+		 ((uint64_t)htonl((x)&0xFFFFFFFF) << 32) | htonl((x) >> 32))
 #endif
 
 #ifndef ntohll
@@ -139,9 +139,7 @@ typedef struct pgs_session_s {
 
 	pgs_list_t *filters; /* filters */
 
-#ifdef WITH_ACL
 	struct evdns_request *dns_req;
-#endif
 
 	pgs_list_node_t *node; /* store the value to sessions */
 } pgs_session_t;
