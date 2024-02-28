@@ -1,6 +1,7 @@
 #include "session/session.h"
 #include "config.h"
 #include "session/filter.h"
+#include <stdio.h>
 #include <stdint.h>
 #include <ipset/ipset.h>
 #include <stdbool.h>
@@ -478,6 +479,19 @@ static void pgs_inbound_udp_read(void *psession)
 		// bypass
 		pgs_session_debug(session, "by pass udp -> %s:%d",
 				  session->cmd.dest, session->cmd.port);
+#ifdef __ANDROID__
+		pgs_udp_relay_ctx_t *udp_relay_ctx = session->outbound.ctx;
+		int fd = udp_relay_ctx->fd;
+
+		pgs_config_t *gconfig = session->local->config;
+		int ret = pgs_protect_fd(fd, gconfig->android_protect_address,
+					 gconfig->android_protect_port);
+		if (ret != fd) {
+			pgs_session_error(session,
+					  "[ANDROID] Failed to protect fd");
+			goto error;
+		}
+#endif
 		result = msg;
 		res_len = len;
 	}
@@ -488,7 +502,6 @@ static void pgs_inbound_udp_read(void *psession)
 	size_t wlen;
 	bool ok = session->outbound.write(session->outbound.ctx, result,
 					  res_len, &wlen);
-
 	if (!ok)
 		goto error;
 
@@ -834,10 +847,14 @@ static bool pgs_init_udp_inbound(pgs_session_t *session, int fd)
 	pgs_session_debug(session, "udp -> %s:%d", session->cmd.dest,
 			  session->cmd.port);
 
-	// since dns could modify the cmd_len, we move the data to the begining
+	// since dns could modify the cmd_len, we move the data to the beginning
 	memmove(ctx->cache->buffer, ctx->cache->buffer + cmd_len,
 		ctx->cache_len - cmd_len);
 	ctx->cache_len -= cmd_len;
+	if (session->cmd.port == 53 /* skip dns */) {
+		session->proxy = false;
+		goto ret;
+	}
 #ifdef WITH_ACL
 	if (session->local->acl != NULL) {
 		bool bypass_match = pgs_acl_match_host_bypass(
@@ -861,7 +878,7 @@ static bool pgs_init_udp_inbound(pgs_session_t *session, int fd)
 		}
 	}
 #endif
-
+ret:
 	return pgs_init_outbound(session, PROTOCOL_TYPE_UDP);
 clean:
 	return false;
@@ -1050,6 +1067,10 @@ static bool pgs_init_outbound(pgs_session_t *session, pgs_protocol_t protocol)
 		pgs_list_add(session->filters, filter_node);
 
 		if (protocol == PROTOCOL_TYPE_UDP) {
+			pgs_ss_filter_ctx_t *sfctx = ss_filter->ctx;
+			sfctx->is_udp = true;
+
+			// ref: https://shadowsocks.org/doc/what-is-shadowsocks.html#udp
 			return pgs_init_udp_outbound_over_udp(session);
 		}
 
@@ -1546,7 +1567,8 @@ pgs_udp_relay_ctx_t *pgs_udp_relay_ctx_new(pgs_session_t *session)
 		if (!err) {
 			inet_pton(AF_INET, session->config->server_address,
 				  &ptr->in_addr.sin_addr);
-			ptr->in_addr.sin_port = htons(session->cmd.port);
+			ptr->in_addr.sin_port =
+				htons(session->config->server_port);
 		} else {
 			// DNS query
 			session->outbound.ready = false;

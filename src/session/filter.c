@@ -1,4 +1,6 @@
 #include "session/filter.h"
+#include "session/session.h"
+#include <string.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -406,7 +408,7 @@ static int ss_decode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
 
 					sfctx->plen = 0;
 					if (len == 0) {
-						return FILTER_SUCCESS;
+						goto success;
 					}
 				}
 				break;
@@ -458,8 +460,31 @@ static int ss_decode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
 		*olen = mlen;
 		*clen = len;
 		*out = buff;
-		return FILTER_SUCCESS;
+		goto success;
 	}
+
+success:
+	if (sfctx->is_udp) {
+		// skip address if from UDP
+		// resize buffer
+		int addr_len = socks5_cmd_get_addr_len(buff);
+		if (addr_len == 0)
+			// should never hit
+			return FILTER_FAIL;
+
+		size_t prefix_len = 1 + addr_len + 2;
+		if ((*olen) < prefix_len)
+			// should never hit
+			return FILTER_FAIL;
+
+		size_t nlen = ((*olen) - prefix_len);
+		uint8_t *nbuff = malloc(sizeof(uint8_t) * nlen);
+		memcpy(nbuff, buff + prefix_len, nlen);
+		free(buff);
+		*olen = nlen;
+		*out = nbuff;
+	}
+	return FILTER_SUCCESS;
 }
 
 static int trojan_udp_encode(void *ctx, const uint8_t *msg, size_t len,
@@ -671,6 +696,7 @@ pgs_ss_filter_ctx_t *pgs_ss_filter_ctx_new(const pgs_session_t *session)
 	ptr->cmd_len = session->cmd.cmd_len;
 	ptr->cipher = ss_extra_conf->method;
 	ptr->iv_sent = false;
+	ptr->is_udp = false;
 
 	ptr->aead_decode_state = READY;
 	ptr->plen = 0;

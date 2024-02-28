@@ -47,6 +47,7 @@ typedef struct pgs_ss_filter_ctx_s {
 	size_t cmd_len;
 
 	bool iv_sent;
+	bool is_udp;
 
 	/* AEAD decode state machine */
 	enum {
