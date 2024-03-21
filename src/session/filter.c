@@ -350,12 +350,15 @@ static int ss_decode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
 		while (true) {
 			switch (sfctx->aead_decode_state) {
 			case READY: {
+				// printf("enter aead cipher(klm): plen: %d, olen: %d, clen: %d, input_len: %d\n",
+				//        sfctx->plen, *olen, *clen, input_len);
 				if (sfctx->plen == 0) {
 					// parse plen
 					if (len < 2 + sfctx->tag_len) {
 						sfctx->aead_decode_state =
 							WAIT_MORE_FOR_LEN;
 						// "need more data for payload len"
+						// printf("aead cipher(klm): need more data for payload len\n");
 						return FILTER_NEED_MORE_DATA;
 					}
 					uint8_t chunk_len[2];
@@ -381,6 +384,7 @@ static int ss_decode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
 						sfctx->aead_decode_state =
 							WAIT_MORE_FOR_PAYLOAD;
 						// "need more data for payload"
+						// printf("aead cipher(klm):  need more for payload \n");
 						return FILTER_NEED_MORE_DATA;
 					}
 
@@ -405,6 +409,10 @@ static int ss_decode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
 					*olen = buff_len;
 					*clen += (sfctx->plen + sfctx->tag_len);
 					len -= (sfctx->plen + sfctx->tag_len);
+
+					// printf("leave aead cipher(klm): plen: %d, olen: %d, clen: %d, input_len: %d\n",
+					//        sfctx->plen, *olen, *clen,
+					//        input_len);
 
 					sfctx->plen = 0;
 					if (len == 0) {
@@ -434,9 +442,12 @@ static int ss_decode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
 
 	} else {
 		// aes
+		// printf("enter aws cipher(aws): len: %d, olen: %d, clen: %d, input_len: %d\n",
+		//        len, *olen, *clen, input_len);
 		size_t offset = 0, decode_len = 0;
 		if (sfctx->decryptor == NULL) {
 			if (len < sfctx->iv_len) {
+				// printf("aws cipher(aws):  need more for iv \n");
 				return FILTER_NEED_MORE_DATA;
 			}
 			memcpy(sfctx->dec_iv, msg, sfctx->iv_len);
@@ -460,6 +471,9 @@ static int ss_decode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
 		*olen = mlen;
 		*clen = len;
 		*out = buff;
+
+		// printf("leave aws cipher(aws): mlen: %d, olen: %d, clen: %d, input_len: %d\n",
+		//        mlen, *olen, *clen, input_len);
 		goto success;
 	}
 
@@ -581,6 +595,7 @@ pgs_filter_t *pgs_filter_new(pgs_filter_type type, const pgs_session_t *session)
 		break;
 	}
 	case (FILTER_SS): {
+		// chainning only support ss for now
 		ptr->ctx =
 			pgs_ss_filter_ctx_new(session->config, &session->cmd);
 		ptr->free = (void *)pgs_ss_filter_ctx_free;
@@ -717,11 +732,15 @@ pgs_ss_filter_ctx_t *pgs_ss_filter_ctx_new(const pgs_server_config_t *config,
 	ptr->encryptor = pgs_cryptor_new(ss_extra_conf->method, PGS_ENCRYPT,
 					 ptr->enc_key, ptr->enc_iv);
 	ptr->decryptor = NULL;
+
+	pgs_socks5_cmd_t socks5_cmd_holder = { 0 };
+	ptr->socks5_cmd = socks5_cmd_holder; /* only used in chains */
 	return ptr;
 }
 
 void pgs_ss_filter_ctx_free(pgs_ss_filter_ctx_t *ptr)
 {
+	pgs_socks5_cmd_free(ptr->socks5_cmd);
 	if (ptr->encryptor)
 		pgs_cryptor_free(ptr->encryptor);
 	if (ptr->decryptor)

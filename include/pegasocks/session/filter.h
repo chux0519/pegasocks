@@ -43,6 +43,7 @@ typedef struct pgs_trojan_filter_ctx_s {
 } pgs_trojan_filter_ctx_t;
 
 typedef struct pgs_ss_filter_ctx_s {
+	pgs_socks5_cmd_t socks5_cmd;
 	const uint8_t *cmd;
 	size_t cmd_len;
 

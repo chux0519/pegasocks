@@ -180,6 +180,7 @@ void pgs_session_start_udp(pgs_session_t *session, int fd);
 void pgs_session_free(pgs_session_t *session);
 
 pgs_socks5_cmd_t socks5_cmd_parse(const uint8_t *, size_t);
+pgs_socks5_cmd_t socks5_cmd_from_dest(const uint8_t *, uint16_t);
 void pgs_socks5_cmd_free(pgs_socks5_cmd_t);
 
 void on_local_event(struct bufferevent *bev, short events, void *ctx);

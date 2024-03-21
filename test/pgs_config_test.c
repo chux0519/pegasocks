@@ -484,6 +484,8 @@ void test_nest_config()
 	PGS_STREUQAL((const char *)next->password, "password");
 	assert(next->server_port == 10087);
 
+	assert(next->prev == server);
+
 	pgs_config_extra_ss_t *ss_config = server->extra;
 	assert(ss_config->method == AEAD_CHACHA20_POLY1305);
 

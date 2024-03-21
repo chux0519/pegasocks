@@ -176,6 +176,7 @@ static void pgs_server_config_init(pgs_server_config_t *ptr)
 	ptr->server_type = NULL;
 	ptr->password = NULL;
 	ptr->extra = NULL;
+	ptr->prev = NULL;
 	ptr->next = NULL;
 }
 
@@ -282,6 +283,7 @@ static int pgs_parse_single_server_config(pgs_config_t *config,
 			server_config->next = NULL;
 			return -1;
 		}
+		server_config->next->prev = server_config;
 	} else {
 		server_config->next = NULL;
 	}

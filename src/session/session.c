@@ -1,10 +1,12 @@
 #include "session/session.h"
 #include "config.h"
+#include "defs.h"
 #include "session/filter.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <ipset/ipset.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #ifdef WITH_APPLET
 #include "applet.h"
@@ -196,6 +198,8 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 	uint8_t *output = NULL;
 	size_t ilen = len;
 	size_t olen = 0;
+	size_t consumed = 0;
+	*clen = 0;
 	int status = FILTER_SUCCESS;
 	switch (dir) {
 	case (FILTER_DIR_DECODE): {
@@ -203,7 +207,9 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 		{
 			filter = (pgs_filter_t *)(cur->val);
 			status = filter->decode(filter->ctx, input, ilen,
-						&output, &olen, clen);
+						&output, &olen, &consumed);
+			bool should_break = false;
+
 			switch (status) {
 			case (FILTER_FAIL):
 				if (output)
@@ -212,6 +218,13 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 			case FILTER_SKIP:
 				continue;
 			case (FILTER_NEED_MORE_DATA):
+				if (clen != 0) {
+					// got data, and we can pass it to the next filter
+					should_break = false;
+				} else {
+					// should pause, when data comes resume(filter context saved the state)
+					should_break = true;
+				}
 				break;
 			case (FILTER_SUCCESS):
 			default:
@@ -222,6 +235,16 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 
 			input = output;
 			ilen = olen;
+			if (*clen == 0)
+				*clen +=
+					consumed; // only the outtest filter will count the consumed
+
+			pgs_session_debug(session,
+					  "len: %d, consumed: %d, clen: %d",
+					  len, consumed, *clen);
+
+			if (should_break) // break the for each loop if needed
+				break;
 		}
 		break;
 	}
@@ -260,6 +283,7 @@ static inline int apply_filters(pgs_session_t *session, const uint8_t *msg,
 		return FILTER_FAIL;
 	}
 
+ret:
 	*result = input;
 	*res_len = ilen;
 	return status;
@@ -1060,20 +1084,80 @@ static bool pgs_init_outbound(pgs_session_t *session, pgs_protocol_t protocol)
 			session->config->server_address,
 			session->config->server_port);
 	} else if (IS_SHADOWSOCKS_SERVER(server_type)) {
-		pgs_config_extra_ss_t *ssconf = session->config->extra;
+		const pgs_server_config_t *cur_config = session->config;
+		const pgs_server_config_t *last_filter_config = NULL;
 
-		pgs_filter_t *ss_filter = pgs_filter_new(FILTER_SS, session);
-		pgs_list_node_t *filter_node = pgs_list_node_new(ss_filter);
-		pgs_list_add(session->filters, filter_node);
+		bool all_ss_server = true;
+		while (cur_config->next != NULL) {
+			// we only support tcp shadowsocks chain for now
+			if (!IS_SHADOWSOCKS_SERVER(cur_config->server_type)) {
+				all_ss_server = false;
+			}
+			cur_config = cur_config->next;
+		}
+
+		if (!all_ss_server) {
+			pgs_session_error(session,
+					  "not all shadowsocks server");
+			return false;
+		}
+
+		// cur_config now is the tail
+		while (cur_config != NULL) {
+			// www.google.com:80 -> A -> B -> C
+			// encode: C -> B -> A
+			// decode: A -> B -> C
+			// filter order: C -> B -> A
+			// cmd of filter C: www.google.com:80 with payload
+			// cmd of filter B: C.host:C.port with not data
+			// cmd of filter A: B.host:B.port with not data
+			// change cmd content
+			pgs_filter_t *next_ss_filter = NULL;
+			const pgs_server_config_t *origin_config =
+				session->config;
+			session->config = cur_config;
+
+			if (last_filter_config == NULL) {
+				// cur_config is the tail, we use the user input cmd
+				next_ss_filter =
+					pgs_filter_new(FILTER_SS, session);
+			} else {
+				// construct cmd by last loop's server address and port
+				pgs_socks5_cmd_t cur_filter_cmd =
+					socks5_cmd_from_dest(
+						(const uint8_t *)
+							last_filter_config
+								->server_address,
+						last_filter_config->server_port);
+
+				// patch cmd and config, then, change it back
+				pgs_socks5_cmd_t origin_cmd = session->cmd;
+				session->cmd = cur_filter_cmd;
+
+				next_ss_filter =
+					pgs_filter_new(FILTER_SS, session);
+				pgs_ss_filter_ctx_t *fctx = next_ss_filter->ctx;
+				fctx->socks5_cmd =
+					cur_filter_cmd; // filter hold the cmd, it will be freed when filter destroy
+
+				session->cmd = origin_cmd;
+			}
+			session->config = origin_config;
+
+			pgs_list_node_t *filter_node =
+				pgs_list_node_new(next_ss_filter);
+			pgs_list_add(session->filters, filter_node);
+
+			last_filter_config = cur_config;
+			cur_config = cur_config->prev;
+		}
 
 		if (protocol == PROTOCOL_TYPE_UDP) {
-			pgs_ss_filter_ctx_t *sfctx = ss_filter->ctx;
-			sfctx->is_udp = true;
-
 			// ref: https://shadowsocks.org/doc/what-is-shadowsocks.html#udp
 			return pgs_init_udp_outbound_over_udp(session);
 		}
 
+		// TCP
 		// setup fd
 		int fd = socket(AF_INET, SOCK_STREAM, 0);
 		evutil_make_socket_nonblocking(fd);
@@ -1179,6 +1263,77 @@ void pgs_session_free(pgs_session_t *session)
 	pgs_socks5_cmd_free(session->cmd);
 
 	free(session);
+}
+
+pgs_socks5_cmd_t socks5_cmd_from_dest(const uint8_t *dest, uint16_t port)
+{
+	pgs_socks5_cmd_t ret = { 0 };
+	struct cork_ip addr;
+	int err = cork_ip_init(&addr, (const char *)dest);
+
+	uint8_t *cmd = NULL;
+	size_t cmd_len = 0;
+	if (!err) {
+		if (addr.version == 4) {
+			cmd_len = 10;
+			cmd = malloc(sizeof(uint8_t) * cmd_len);
+			cmd[0] = 0x05;
+			cmd[1] = 0x00;
+			cmd[2] = 0x00;
+			cmd[3] = SOCKS5_CMD_IPV4;
+			cmd[4] = addr.ip.v4._.u8[0];
+			cmd[5] = addr.ip.v4._.u8[1];
+			cmd[6] = addr.ip.v4._.u8[2];
+			cmd[7] = addr.ip.v4._.u8[3];
+			cmd[8] = port >> 8;
+			cmd[9] = port & 0xFF;
+		} else if (addr.version == 6) {
+			cmd_len = 22;
+			cmd = malloc(sizeof(uint8_t) * cmd_len);
+			cmd[0] = 0x05;
+			cmd[1] = 0x00;
+			cmd[2] = 0x00;
+			cmd[3] = SOCKS5_CMD_IPV6;
+			cmd[4] = addr.ip.v6._.u8[0];
+			cmd[5] = addr.ip.v6._.u8[1];
+			cmd[6] = addr.ip.v6._.u8[2];
+			cmd[7] = addr.ip.v6._.u8[3];
+			cmd[8] = addr.ip.v6._.u8[4];
+			cmd[9] = addr.ip.v6._.u8[5];
+			cmd[10] = addr.ip.v6._.u8[6];
+			cmd[11] = addr.ip.v6._.u8[7];
+			cmd[12] = addr.ip.v6._.u8[8];
+			cmd[13] = addr.ip.v6._.u8[9];
+			cmd[14] = addr.ip.v6._.u8[10];
+			cmd[15] = addr.ip.v6._.u8[11];
+			cmd[16] = addr.ip.v6._.u8[12];
+			cmd[17] = addr.ip.v6._.u8[13];
+			cmd[18] = addr.ip.v6._.u8[14];
+			cmd[19] = addr.ip.v6._.u8[15];
+			cmd[20] = port >> 8;
+			cmd[21] = port & 0xFF;
+		} else {
+			size_t len = strlen((const char *)dest);
+			cmd_len = len + 7;
+			cmd = malloc(sizeof(uint8_t) * cmd_len);
+			cmd[0] = 0x05;
+			cmd[1] = 0x00;
+			cmd[2] = 0x00;
+			cmd[3] = SOCKS5_CMD_HOSTNAME;
+			cmd[4] = len;
+			memcpy(cmd + 5, dest, len);
+			cmd[5 + len] = port >> 8;
+			cmd[6 + len] = port & 0xFF;
+		}
+	}
+
+	ret.atype = cmd[3];
+	ret.cmd_len = cmd_len;
+	ret.raw_cmd = cmd;
+	ret.dest = strdup((const char *)dest);
+	ret.port = port;
+
+	return ret;
 }
 
 pgs_socks5_cmd_t socks5_cmd_parse(const uint8_t *cmd, size_t cmd_len)

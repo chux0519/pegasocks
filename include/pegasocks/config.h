@@ -94,6 +94,7 @@ typedef struct pgs_server_config_s {
 	uint8_t *password;
 	void *extra; // type specific
 
+	const struct pgs_server_config_s *prev;
 	struct pgs_server_config_s *next;
 } pgs_server_config_t;
 
