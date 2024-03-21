@@ -93,6 +93,8 @@ typedef struct pgs_server_config_s {
 	int server_port;
 	uint8_t *password;
 	void *extra; // type specific
+
+	struct pgs_server_config_s *next;
 } pgs_server_config_t;
 
 typedef struct pgs_config_s {

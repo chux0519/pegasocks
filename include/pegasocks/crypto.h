@@ -12,6 +12,7 @@
 #include <stdio.h>
 
 #define SHA224_LEN 28
+#define VMESS_UUID_LEN 36
 #define MD5_LEN 16
 
 #define AES_128_CFB_KEY_LEN 16

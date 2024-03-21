@@ -91,7 +91,8 @@ typedef struct pgs_ws_filter_ctx_s {
 pgs_ws_filter_ctx_t *pgs_ws_filter_ctx_new(const pgs_session_t *);
 void pgs_ws_filter_ctx_free(pgs_ws_filter_ctx_t *);
 
-pgs_ss_filter_ctx_t *pgs_ss_filter_ctx_new(const pgs_session_t *);
+pgs_ss_filter_ctx_t *pgs_ss_filter_ctx_new(const pgs_server_config_t *,
+					   const pgs_socks5_cmd_t *);
 void pgs_ss_filter_ctx_free(pgs_ss_filter_ctx_t *);
 
 #endif

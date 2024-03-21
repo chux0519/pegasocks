@@ -39,7 +39,7 @@ void test_base_config()
 	assert(config->ping_interval == 120);
 	assert(config->timeout == 60);
 	assert(config->log_level == 1);
-	assert(config->ssl_verify == true);
+	assert(config->ssl_verify == false);
 	pgs_config_free(config);
 }
 
@@ -64,13 +64,13 @@ void test_ssl_config()
         \"timeout\": 60,\
         \"log_file\": \"log_file\",\
 				\"ssl\": {\
-						\"verify\": false \
+						\"verify\": true \
 				},\
         \"log_level\": 1\
     }";
 	pgs_config_t *config = pgs_config_parse((const char *)json);
 	assert(config != NULL);
-	assert(config->ssl_verify == false);
+	assert(config->ssl_verify == true);
 	pgs_config_free(config);
 }
 
@@ -431,6 +431,65 @@ void test_shadowsocks_config()
 	pgs_config_free(config);
 }
 
+void test_nest_config()
+{
+	static const char json[] = "{\
+        \"servers\": [\
+            {\
+                \"server_address\": \"ss.example.com\",\
+                \"server_type\": \"shadowsocks\",\
+                \"server_port\": 10086,\
+                \"method\": \"chacha20-ietf-poly1305\",\
+                \"password\": \"password\",\
+								\"next\": {\
+									\"server_address\": \"ss.example.com2\",\
+									\"server_type\": \"shadowsocks\",\
+									\"server_port\": 10087,\
+									\"method\": \"chacha20-ietf-poly1305\",\
+									\"password\": \"password\"\
+								}\
+            }\
+        ],\
+        \"local_address\": \"0.0.0.0\",\
+        \"local_port\": 1080,\
+        \"control_port\": 11080,\
+        \"ping_interval\": 120,\
+        \"timeout\": 60,\
+        \"log_file\": \"log_file\",\
+        \"log_level\": 1\
+    }";
+	pgs_config_t *config = pgs_config_parse((const char *)json);
+	assert(config != NULL);
+	PGS_STREUQAL(config->local_address, "0.0.0.0");
+	assert(config->log_file != NULL);
+	assert(config->log_file != stderr);
+	assert(config->local_port == 1080);
+	assert(config->control_port == 11080);
+	assert(config->ping_interval == 120);
+	assert(config->timeout == 60);
+	assert(config->log_level == 1);
+
+	pgs_server_config_t *server = &config->servers[0];
+	assert(server != NULL);
+	PGS_STREUQAL(server->server_address, "ss.example.com");
+	PGS_STREUQAL(server->server_type, "shadowsocks");
+	PGS_STREUQAL((const char *)server->password, "password");
+	assert(server->password != NULL);
+	assert(server->server_port == 10086);
+	assert(server->next != NULL);
+
+	pgs_server_config_t *next = server->next;
+	PGS_STREUQAL(next->server_address, "ss.example.com2");
+	PGS_STREUQAL(next->server_type, "shadowsocks");
+	PGS_STREUQAL((const char *)next->password, "password");
+	assert(next->server_port == 10087);
+
+	pgs_config_extra_ss_t *ss_config = server->extra;
+	assert(ss_config->method == AEAD_CHACHA20_POLY1305);
+
+	pgs_config_free(config);
+}
+
 int main()
 {
 	test_base_config();
@@ -454,5 +513,7 @@ int main()
 	printf("test_v2ray_wss_config passed\n");
 	test_shadowsocks_config();
 	printf("test_shadowsocks_config passed\n");
+	test_nest_config();
+	printf("test_nest_config passed\n");
 	return 0;
 }

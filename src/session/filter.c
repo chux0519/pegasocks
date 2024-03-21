@@ -1,4 +1,5 @@
 #include "session/filter.h"
+#include "config.h"
 #include "session/session.h"
 #include <string.h>
 #include <stddef.h>
@@ -402,7 +403,6 @@ static int ss_decode(void *ctx, const uint8_t *msg, size_t len, uint8_t **out,
 					buff_len += sfctx->plen;
 					*out = buff;
 					*olen = buff_len;
-					// *olen += sfctx->plen;
 					*clen += (sfctx->plen + sfctx->tag_len);
 					len -= (sfctx->plen + sfctx->tag_len);
 
@@ -581,7 +581,8 @@ pgs_filter_t *pgs_filter_new(pgs_filter_type type, const pgs_session_t *session)
 		break;
 	}
 	case (FILTER_SS): {
-		ptr->ctx = pgs_ss_filter_ctx_new(session);
+		ptr->ctx =
+			pgs_ss_filter_ctx_new(session->config, &session->cmd);
 		ptr->free = (void *)pgs_ss_filter_ctx_free;
 		ptr->encode = ss_encode;
 		ptr->decode = ss_decode;
@@ -674,11 +675,12 @@ void pgs_ws_filter_ctx_free(pgs_ws_filter_ctx_t *ptr)
 	free(ptr);
 }
 
-pgs_ss_filter_ctx_t *pgs_ss_filter_ctx_new(const pgs_session_t *session)
+pgs_ss_filter_ctx_t *pgs_ss_filter_ctx_new(const pgs_server_config_t *config,
+					   const pgs_socks5_cmd_t *cmd)
 {
 	pgs_ss_filter_ctx_t *ptr = malloc(sizeof(pgs_ss_filter_ctx_t));
 
-	pgs_config_extra_ss_t *ss_extra_conf = session->config->extra;
+	pgs_config_extra_ss_t *ss_extra_conf = config->extra;
 
 	pgs_cryptor_type_info(ss_extra_conf->method, &ptr->key_len,
 			      &ptr->iv_len, &ptr->tag_len);
@@ -686,14 +688,14 @@ pgs_ss_filter_ctx_t *pgs_ss_filter_ctx_new(const pgs_session_t *session)
 	ptr->dec_key = malloc(ptr->key_len);
 	ptr->ikm = malloc(ptr->key_len);
 	ptr->enc_salt = malloc(ptr->key_len);
-	evp_bytes_to_key(session->config->password,
-			 strlen((const char *)session->config->password),
-			 ptr->ikm, ptr->key_len);
+	evp_bytes_to_key(config->password,
+			 strlen((const char *)config->password), ptr->ikm,
+			 ptr->key_len);
 
 	ptr->enc_iv = calloc(1, ptr->iv_len);
 	ptr->dec_iv = calloc(1, ptr->iv_len);
-	ptr->cmd = session->cmd.raw_cmd;
-	ptr->cmd_len = session->cmd.cmd_len;
+	ptr->cmd = cmd->raw_cmd;
+	ptr->cmd_len = cmd->cmd_len;
 	ptr->cipher = ss_extra_conf->method;
 	ptr->iv_sent = false;
 	ptr->is_udp = false;

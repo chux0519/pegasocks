@@ -51,8 +51,13 @@ pgs_config_t *pgs_config_parse(const char *json)
 	ptr->root_value = json_parse_string(json);
 
 	if (ptr->root_value == NULL ||
-	    json_value_get_type(ptr->root_value) != JSONObject)
+	    json_value_get_type(ptr->root_value) != JSONObject) {
+		pgs_config_error(
+			ptr,
+			"Error: failed to parse json file, maybe not a valid json file");
 		goto error;
+	}
+
 	root_obj = json_value_get_object(ptr->root_value);
 
 	const char *acl_file =
@@ -151,8 +156,10 @@ pgs_config_t *pgs_config_parse(const char *json)
 	ptr->servers_count = json_array_get_count(servers_array);
 
 	ptr->servers = pgs_config_parse_servers(ptr, servers_array);
-	if (ptr->servers == NULL)
+	if (ptr->servers == NULL) {
+		pgs_config_error(ptr, "Error: failed to parse servers");
 		goto error;
+	}
 
 	return ptr;
 error:
@@ -160,6 +167,126 @@ error:
 	pgs_config_free(ptr);
 
 	return NULL;
+}
+
+static void pgs_server_config_init(pgs_server_config_t *ptr)
+{
+	ptr->server_address = NULL;
+	ptr->server_port = 0;
+	ptr->server_type = NULL;
+	ptr->password = NULL;
+	ptr->extra = NULL;
+	ptr->next = NULL;
+}
+
+static int pgs_parse_single_server_config(pgs_config_t *config,
+					  pgs_server_config_t *server_config,
+					  JSON_Object *server)
+{
+	const char *server_address =
+		json_object_get_string(server, CONFIG_SERVER_ADDRESS);
+	if (server_address == NULL) {
+		pgs_config_error(config, "Error: %s not found",
+				 CONFIG_SERVER_ADDRESS);
+		return -1;
+	}
+	server_config->server_address = server_address;
+
+	double server_port = json_object_get_number(server, CONFIG_SERVER_PORT);
+	if (server_port == 0) {
+		pgs_config_error(config, "Error: %s not found",
+				 CONFIG_SERVER_PORT);
+		return -1;
+	}
+	server_config->server_port = (int)server_port;
+
+	const char *server_type =
+		json_object_get_string(server, CONFIG_SERVER_TYPE);
+	if (server_type == NULL) {
+		pgs_config_error(config, "Error: %s not found",
+				 CONFIG_SERVER_TYPE);
+		return -1;
+	}
+	server_config->server_type = server_type;
+
+	const char *password =
+		json_object_get_string(server, CONFIG_SERVER_PASSWORD);
+	if (password == NULL) {
+		pgs_config_error(config, "Error: %s not found",
+				 CONFIG_SERVER_PASSWORD);
+		return -1;
+	}
+
+	if (IS_TROJAN_SERVER(server_type)) {
+		// password = to_hexstring(sha224(password))
+		uint8_t encoded_pass[SHA224_LEN];
+		uint64_t encoded_len = 0;
+		sha224((const uint8_t *)password, strlen(password),
+		       encoded_pass, &encoded_len);
+		if (encoded_len != SHA224_LEN) {
+			pgs_config_error(
+				config,
+				"Error: sha224 length mismatch, expected %d, got %d",
+				SHA224_LEN, encoded_len);
+			return -1;
+		}
+
+		uint8_t *hexpass = to_hexstring(encoded_pass, encoded_len);
+
+		server_config->password = hexpass;
+	} else if (IS_V2RAY_SERVER(server_type)) {
+		size_t len = strlen(password);
+		if (len != VMESS_UUID_LEN) {
+			pgs_config_error(
+				config,
+				"Error: invalid v2ray uuid length, expected %d, got %d",
+				VMESS_UUID_LEN, len);
+			return -1;
+		}
+		char uuid_hex[32];
+		for (int j = 0, k = 0; j < 36 && k < 32;) {
+			if (password[j] != '-')
+				uuid_hex[k++] = password[j++];
+			else
+				j++;
+		}
+		uint8_t *uuid = malloc(16 * sizeof(uint8_t));
+		hextobin(uuid_hex, uuid, 16);
+		server_config->password = uuid;
+	} else if (IS_SHADOWSOCKS_SERVER(server_type)) {
+		uint8_t *pass = (uint8_t *)strdup(password);
+		server_config->password = pass;
+	} else {
+		pgs_config_error(config, "Error: server type(%s) not supported",
+				 server_type);
+		return -1;
+	}
+	// parse type specific data
+	server_config->extra =
+		pgs_server_config_parse_extra(config, server_type, server);
+	if (server_config->extra == NULL) {
+		pgs_config_error(config,
+				 "Error: pgs_server_config_parse_extra");
+		return -1;
+	}
+
+	JSON_Object *next = json_object_get_object(server, "next");
+	if (next != NULL) {
+		// chain
+		server_config->next = malloc(sizeof(pgs_server_config_t));
+		pgs_server_config_init(server_config->next);
+		if (pgs_parse_single_server_config(config, server_config->next,
+						   next)) {
+			// free next
+			free(server_config->next);
+			server_config->next = NULL;
+			return -1;
+		}
+	} else {
+		server_config->next = NULL;
+	}
+
+	return 0;
 }
 
 pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
@@ -171,71 +298,11 @@ pgs_server_config_t *pgs_config_parse_servers(pgs_config_t *config,
 		return NULL;
 	pgs_server_config_t *ptr = pgs_servers_config_new(len);
 	for (int i = 0; i < len; i++) {
+		// TODO: multiple support
 		server = json_array_get_object(servers_array, i);
 		if (server == NULL)
 			goto error;
-
-		const char *server_address =
-			json_object_get_string(server, CONFIG_SERVER_ADDRESS);
-		if (servers_array == NULL)
-			goto error;
-		ptr[i].server_address = server_address;
-
-		double server_port =
-			json_object_get_number(server, CONFIG_SERVER_PORT);
-		if (server_port == 0)
-			goto error;
-		ptr[i].server_port = (int)server_port;
-
-		const char *server_type =
-			json_object_get_string(server, CONFIG_SERVER_TYPE);
-		if (server_type == NULL)
-			goto error;
-		ptr[i].server_type = server_type;
-
-		const char *password =
-			json_object_get_string(server, CONFIG_SERVER_PASSWORD);
-		if (password == NULL)
-			goto error;
-
-		if (IS_TROJAN_SERVER(server_type)) {
-			// password = to_hexstring(sha224(password))
-			uint8_t encoded_pass[SHA224_LEN];
-			uint64_t encoded_len = 0;
-			sha224((const uint8_t *)password, strlen(password),
-			       encoded_pass, &encoded_len);
-			if (encoded_len != SHA224_LEN)
-				goto error;
-
-			uint8_t *hexpass =
-				to_hexstring(encoded_pass, encoded_len);
-
-			ptr[i].password = hexpass;
-		} else if (IS_V2RAY_SERVER(server_type)) {
-			size_t len = strlen(password);
-			if (len != 36) // invalid uuid
-				goto error;
-			char uuid_hex[32];
-			for (int j = 0, k = 0; j < 36 && k < 32;) {
-				if (password[j] != '-')
-					uuid_hex[k++] = password[j++];
-				else
-					j++;
-			}
-			uint8_t *uuid = malloc(16 * sizeof(uint8_t));
-			hextobin(uuid_hex, uuid, 16);
-			ptr[i].password = uuid;
-		} else if (IS_SHADOWSOCKS_SERVER(server_type)) {
-			uint8_t *pass = (uint8_t *)strdup(password);
-			ptr[i].password = pass;
-		}
-		if (ptr[i].password == NULL)
-			goto error;
-
-		// parse type specific data
-		ptr[i].extra = pgs_server_config_parse_extra(
-			config, server_type, server);
-		if (ptr[i].extra == NULL)
+		if (pgs_parse_single_server_config(config, &ptr[i], server))
 			goto error;
 	}
 	return ptr;
@@ -295,13 +362,24 @@ pgs_server_config_t *pgs_servers_config_new(uint64_t len)
 {
 	pgs_server_config_t *ptr = malloc(sizeof(pgs_server_config_t) * len);
 	for (int i = 0; i < len; i++) {
-		ptr[i].server_address = NULL;
-		ptr[i].server_port = 0;
-		ptr[i].server_type = NULL;
-		ptr[i].password = NULL;
-		ptr[i].extra = NULL;
+		pgs_server_config_init(&ptr[i]);
 	}
 	return ptr;
+}
+
+static void pgs_child_server_free(pgs_server_config_t *ptr)
+{
+	if (ptr->server_type != NULL && ptr->password != NULL &&
+	    (IS_TROJAN_SERVER(ptr->server_type) ||
+	     IS_V2RAY_SERVER(ptr->server_type) ||
+	     IS_SHADOWSOCKS_SERVER(ptr->server_type)))
+		free(ptr->password);
+	if (ptr->extra)
+		pgs_server_config_free_extra(ptr->server_type, ptr->extra);
+	if (ptr->next)
+		pgs_child_server_free(ptr->next);
+	free(ptr);
+	ptr = NULL;
 }
 
 void pgs_servers_config_free(pgs_server_config_t *ptr, uint64_t len)
@@ -317,6 +395,9 @@ void pgs_servers_config_free(pgs_server_config_t *ptr, uint64_t len)
 		     IS_V2RAY_SERVER(ptr[i].server_type) ||
 		     IS_SHADOWSOCKS_SERVER(ptr[i].server_type)))
 			free(ptr[i].password);
+
+		if (ptr->next != NULL)
+			pgs_child_server_free(ptr->next);
 	}
 	free(ptr);
 	ptr = NULL;
